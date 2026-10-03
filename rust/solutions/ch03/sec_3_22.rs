@@ -8,7 +8,7 @@
 //! handle.
 
 use ch03::sec_3_3::Queue;
-use sicp_runtime::{SchemeError, Value};
+use sicp_runtime::{SicpError, Value};
 
 /// A message to the queue object, the book's `dispatch` symbols.
 #[derive(Clone, Debug, PartialEq)]
@@ -25,7 +25,7 @@ pub enum QueueMsg {
 
 /// The book's `make-queue` in message-passing style: the state lives in
 /// the captured `Queue`, and the returned closure is the only way in.
-pub fn make_queue() -> impl Fn(QueueMsg) -> Result<Value, SchemeError> {
+pub fn make_queue() -> impl Fn(QueueMsg) -> Result<Value, SicpError> {
     let state = Queue::new();
     move |message| match message {
         QueueMsg::Insert(item) => {
@@ -82,7 +82,7 @@ fn ex_3_22() {
     assert_eq!(q(QueueMsg::Delete), Ok(Value::sym("done")));
     assert!(matches!(
         q(QueueMsg::Front),
-        Err(SchemeError::UserRaised { .. })
+        Err(SicpError::UserRaised { .. })
     ));
 
     // Two queues made from the same factory hold separate state, while

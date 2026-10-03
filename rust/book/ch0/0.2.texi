@@ -26,7 +26,7 @@ compiler checks it, the way it checks everything else about the value an
 expression produces.
 
 Rust has three looping constructs, and no special form for tail-recursive
-counting the way the book's @code{do} loops or named-@code{let} would.
+counting the way the source book's @code{do} loops or named-@code{let} would.
 @code{while} repeats for as long as a condition holds, checked before each
 pass; @code{loop} repeats unconditionally until a @code{break}, which can
 hand back a value from the loop; @code{for} walks an iterator (@ref{0.5}
@@ -65,7 +65,7 @@ runnable listing above is @code{examples/sec_0_2_loops.rs}.
 
 @subheading Recursion, iteration, and the call stack
 
-The book's recurring theme in this section is that Scheme's tail-call
+The book's recurring theme in @ref{1.2} is that Scheme's tail-call
 optimization has no Rust equivalent. A recursive Rust function keeps one
 stack frame alive for every call still waiting on a result, exactly like a
 recursive @newterm{process} in the book's sense (1.2.1) whether or not the

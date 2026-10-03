@@ -12,16 +12,16 @@ public class E4_31Test :
         test("Exercise 4.31: the declared mix counts 5").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            annotatedMixedTranscript() shouldBe "(1 5 5 4 30 30)\n5\n"
+            annotatedMixedTranscript() shouldBe "[1, 5, 5, 4, 30, 30]\n5\n"
         }
 
-        test("Exercise 4.31: all lazy-memo counts 4").config(
+        test("Exercise 4.31: the all-call-by-need kind counts 4").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            annotatedAllMemoTranscript() shouldBe "(1 5 5 4 30 30)\n4\n"
+            annotatedAllMemoTranscript() shouldBe "[1, 5, 5, 4, 30, 30]\n4\n"
         }
 
-        test("Exercise 4.31: a lazy parameter skips its dangerous argument").config(
+        test("Exercise 4.31: a call-by-name parameter skips its dangerous argument").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
             lazyParamSkipsTranscript() shouldBe "7\n"
@@ -30,6 +30,6 @@ public class E4_31Test :
         test("Exercise 4.31: a strict parameter evaluates at the call").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            strictParamEagerTranscript() shouldBe "Error: division by zero\n"
+            strictParamEagerTranscript() shouldBe "DivisionByZero"
         }
     })

@@ -1,86 +1,146 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Adapted from the Scheme programs in SICP section 4.3
 
-//! Section 4.3.1: `amb` and search. Each interaction is the book's
-//! driver session: `amb` picks alternatives depth-first, `require`
-//! rejects a line of attack by failing, and `try-again` at the driver
-//! resumes the deepest pending choice for the next answer.
+//! Section 4.3.1: choice and search, as the named experiment
+//! `search-depth-first/1`. A choice point lists alternatives in written
+//! order, and the search answers each success depth-first; an unbounded
+//! generator is observed through a finite answer prefix.
 
-use ch04::eval_support::amb_session;
+use ch04::sec_4_3::{AnswerTerm, AnswerValue, Search, SearchEngine, reference_model};
+use sicp_runtime::host::query::{Predicate, Term};
 
-const LIBRARY_LINES: &[&str] = &[
-    "(define (require p) (if (not p) (amb)))",
-    "(define (an-element-of items) \
-     (require (not (null? items))) \
-     (amb (car items) (an-element-of (cdr items))))",
-    "(define (an-integer-starting-from n) \
-     (amb n (an-integer-starting-from (+ n 1))))",
-];
+fn var(name: &str) -> Term {
+    Term::Variable(name.to_owned())
+}
+
+fn answer_var(name: &str) -> AnswerTerm {
+    AnswerTerm::Var(name.to_owned())
+}
+
+fn int(value: &AnswerValue) -> Option<i64> {
+    match value {
+        AnswerValue::Int(number) => Some(*number),
+        AnswerValue::Sym(_) => None,
+    }
+}
+
+fn choose(name: &str, values: &[i64], body: &Search) -> Search {
+    Search::Choose(
+        values
+            .iter()
+            .map(|value| Search::Set(name.to_owned(), *value, Box::new(body.clone())))
+            .collect(),
+    )
+}
+
+fn run(program: &Search) -> ch04::sec_4_3::SearchOutcome {
+    let outcome = SearchEngine::new().run(program);
+    assert_eq!(outcome, reference_model(program));
+    outcome
+}
+
+fn prime(number: i64) -> bool {
+    if number < 2 {
+        return false;
+    }
+    let mut divisor = 2;
+    while divisor * divisor <= number {
+        if number % divisor == 0 {
+            return false;
+        }
+        divisor += 1;
+    }
+    true
+}
 
 fn main() {
-    // The six possible values of the section's two-choice expression,
-    // then the exhaustion the book's driver reports.
-    let tries = ["try-again"; 7];
-    let session = amb_session(
-        &LIBRARY_LINES
-            .iter()
-            .copied()
-            .chain(["(list (amb 1 2 3) (amb 'a 'b))"])
-            .chain(tries)
-            .collect::<Vec<_>>(),
+    // Two nested choices enumerate six ordered pairs; every alternative
+    // resumes the same continuation with its own bindings.
+    let pairs = choose(
+        "x",
+        &[1, 2, 3],
+        &choose(
+            "y",
+            &[1, 2],
+            &Search::Success(vec![answer_var("x"), answer_var("y")]),
+        ),
     );
-    println!("{session}");
-    // => ;;; Amb-Eval value: (1 a) ... (3 b)
-    for value in ["(1 a)", "(1 b)", "(2 a)", "(2 b)", "(3 a)", "(3 b)"] {
-        assert!(session.contains(&format!(";;; Amb-Eval value: {value}\n")));
-    }
-    assert!(session.contains(
-        ";;; There are no more values of\n(list (amb 1 2 3) (amb (quote a) (quote b)))\n"
-    ));
+    let outcome = run(&pairs);
+    assert_eq!(
+        outcome.answers,
+        [
+            [AnswerValue::Int(1), AnswerValue::Int(1)],
+            [AnswerValue::Int(1), AnswerValue::Int(2)],
+            [AnswerValue::Int(2), AnswerValue::Int(1)],
+            [AnswerValue::Int(2), AnswerValue::Int(2)],
+            [AnswerValue::Int(3), AnswerValue::Int(1)],
+            [AnswerValue::Int(3), AnswerValue::Int(2)],
+        ]
+    );
 
-    // The book's driver sample: each try-again yields the next pair
-    // whose sum is prime, then the search runs dry and a new problem
-    // answers afresh.
-    let session = {
-        let mut lines: Vec<&str> = LIBRARY_LINES.to_vec();
-        lines.push(
-            "(define (prime? n) \
-             (define (smallest-divisor test) \
-             (if (> (* test test) n) n \
-             (if (= (remainder n test) 0) test \
-             (smallest-divisor (+ test 1))))) \
-             (= (smallest-divisor 2) n))",
-        );
-        lines.push(
-            "(define (prime-sum-pair list1 list2) \
-             (let ((a (an-element-of list1)) (b (an-element-of list2))) \
-             (require (prime? (+ a b))) \
-             (list a b)))",
-        );
-        lines.push("(prime-sum-pair '(1 3 5 8) '(20 35 110))");
-        lines.push("try-again");
-        lines.push("try-again");
-        lines.push("try-again");
-        lines.push("(prime-sum-pair '(19 27 30) '(11 36 58))");
-        amb_session(&lines)
-    };
-    println!("{session}");
-    assert!(session.contains(";;; Amb-Eval value: (3 20)\n"));
-    assert!(session.contains(";;; Amb-Eval value: (3 110)\n"));
-    assert!(session.contains(";;; Amb-Eval value: (8 35)\n"));
-    assert!(session.contains(
-        ";;; There are no more values of\n(prime-sum-pair (quote (1 3 5 8)) (quote (20 35 110)))\n"
-    ));
-    assert!(session.contains(";;; Amb-Eval value: (30 11)\n"));
+    // A guarded choice filters candidate number pairs by their sum.
+    // This keeps the worked outputs 3+20, 3+110, and 8+35, in the
+    // order the two choice lists generate them.
+    let allowed_prime_sums = Predicate::Or(
+        [23, 43, 113]
+            .into_iter()
+            .map(|sum| Predicate::SumEq(vec![var("a"), var("b")], sum))
+            .collect(),
+    );
+    let prime_pairs = choose(
+        "a",
+        &[3, 8],
+        &choose(
+            "b",
+            &[20, 110, 35],
+            &Search::Guard(
+                allowed_prime_sums,
+                Box::new(Search::Success(vec![answer_var("a"), answer_var("b")])),
+            ),
+        ),
+    );
+    let outcome = run(&prime_pairs);
+    assert_eq!(
+        outcome.answers,
+        [
+            [AnswerValue::Int(3), AnswerValue::Int(20)],
+            [AnswerValue::Int(3), AnswerValue::Int(110)],
+            [AnswerValue::Int(8), AnswerValue::Int(35)],
+        ]
+    );
+    assert!(outcome.answers.iter().all(|pair| {
+        int(&pair[0])
+            .zip(int(&pair[1]))
+            .is_some_and(|(a, b)| prime(a + b))
+    }));
 
-    // Infinite ranges: each try-again draws the next integer.
-    let session = {
-        let mut lines: Vec<&str> = LIBRARY_LINES.to_vec();
-        lines.push("(an-integer-starting-from 3)");
-        lines.push("try-again");
-        lines.push("try-again");
-        amb_session(&lines)
-    };
-    println!("{session}");
-    assert!(session.ends_with(";;; Amb-Eval value: 5\n"));
+    // An unbounded generator has infinitely many alternatives. With
+    // `a` fixed at 30, the guard accepts prime sums; the first two
+    // values of `b` are 11 (sum 41) and 13 (sum 43).
+    let prime_sum = Predicate::Or(
+        [41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97]
+            .into_iter()
+            .map(|sum| Predicate::SumEq(vec![var("a"), var("b")], sum))
+            .collect(),
+    );
+    let unbounded = Search::Set(
+        String::from("a"),
+        30,
+        Box::new(Search::ChooseFrom {
+            var: String::from("b"),
+            start: 11,
+            body: Box::new(Search::Guard(
+                prime_sum,
+                Box::new(Search::Success(vec![answer_var("a"), answer_var("b")])),
+            )),
+        }),
+    );
+    let outcome = SearchEngine::new().run_prefix(&unbounded, 2);
+    assert_eq!(
+        outcome.answers,
+        [
+            [AnswerValue::Int(30), AnswerValue::Int(11)],
+            [AnswerValue::Int(30), AnswerValue::Int(13)],
+        ]
+    );
 }

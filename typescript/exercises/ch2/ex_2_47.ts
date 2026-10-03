@@ -27,7 +27,7 @@ export function edge1FrameList(_frame: List<Vect2>): Vect2 {
   throw new PendingSolution();
 }
 
-/** The second edge selector for the list representation. */
+/** The list representation's second-edge selector. */
 export function edge2FrameList(_frame: List<Vect2>): Vect2 {
   throw new PendingSolution();
 }
@@ -50,7 +50,7 @@ export function edge1FramePair(_frame: FramePair): Vect2 {
   throw new PendingSolution();
 }
 
-/** The second edge selector for the pair representation. */
+/** The pair representation's second-edge selector. */
 export function edge2FramePair(_frame: FramePair): Vect2 {
   throw new PendingSolution();
 }

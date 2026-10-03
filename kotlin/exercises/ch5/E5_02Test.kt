@@ -12,6 +12,11 @@ public class E5_02Test :
         test("Exercise 5.02: the machine written in the register-machine language").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            factorialAssemblyReport() shouldBe listOf("MEASURE")
+            factorialAssemblyReport() shouldBe
+                listOf(
+                    "5 instructions, 2 labels; fact-loop=0 fact-done=5",
+                    "120",
+                    "720",
+                )
         }
     })

@@ -12,6 +12,12 @@ public class E5_06Test :
         test("Exercise 5.06: the redundant save and restore").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            modifiedFibReport() shouldBe listOf("MEASURE")
+            modifiedFibReport() shouldBe
+                listOf(
+                    "55",
+                    "55",
+                    "steps=281 saves=48",
+                    "steps=257 saves=36",
+                )
         }
     })

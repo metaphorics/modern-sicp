@@ -1,116 +1,77 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 5.2 *)
+   Adapted from the Scheme programs in SICP section 5.2 *)
 
-(** The register-machine simulator of section 5.2: the assembler that
-    turns controller text into instruction objects with resolved
-    labels, the execution-procedure dispatch, and the monitored stack
-    of 5.2.4. The instruction ADT and the typed failures are the 5.1
-    substrate's, re-exported; the machine type is an abstract mutable
-    record left open to 5.3's vector memory and 5.4's evaluator. *)
+(** The section 5.2 machines: the [Sec_5_1] simulator over [value]
+    words with the section's own operations -- the stack monitors of
+    5.2.4 ([initialize-stack], [print-stack-statistics]) and [print] --
+    writing into a transcript, and the reader that runs a register
+    machine fixture of [spec/host-subsets/ocaml/programs/machine]. *)
 
+type error = Sec_5_1.error
+
+(** The machine word, [Sec_5_1.value]. *)
 type value = Sec_5_1.value =
   | Int of int
   | Float of float
   | Bool of bool
-  | Symbol of string
-  | Label of string
+  | Str of string
+  | Addr of string
+  | Unassigned
 
-type error = Sec_5_1.error =
-  | Parse of string
-  | Unknown_register of string
-  | Unknown_operation of string
-  | Unknown_label of string
-  | Bad_instruction of string
-  | Arity of string
-  | Op_failed of string
-  | Stack_underflow of string
-  | Branch_without_test
-
-type source = Sec_5_1.source =
-  | Reg of string
-  | Const of value
-  | Label_source of string
-
-type instruction = Sec_5_1.instruction =
-  | Assign of string * source
-  | Assign_op of string * string * source list
-  | Test of string * source list
-  | Branch of string
-  | Goto_label of string
-  | Goto_reg of string
-  | Perform of string * source list
-  | Save of string
-  | Restore of string
-
-type op = Sec_5_1.op =
-  | Value_op of (value list -> (value, error) result)
-  | Action_op of (value list -> (unit, error) result)
-
-(** The substrate's renderers and reader, re-exported under this
-    module's names. *)
-val value_to_string : value -> string
-
-val equal_value : value -> value -> bool
-val error_to_string : error -> string
-val instruction_to_string : instruction -> string
-val source_to_string : source -> string
-
-(** A parsed controller: the instructions in order and each label with
-    the index it names, the assembler's input. *)
-type program = Sec_5_1.program =
-  { code : instruction array
-  ; labels : (string * int) list
-  }
-
-val parse_program : string -> (program, error) result
-val arith_operations : (string * op) list
-
-(** [instruction_registers inst] names every register [inst] reads or
-    writes; the machine's own [flag] is never named. The scan-out the
-    register-derivation exercise builds on. *)
-val instruction_registers : instruction -> string list
-
-(** One assembled machine. The register table always holds [flag], the
-    operations list always begins with [initialize-stack] and
-    [print-stack-statistics], and every label resolves to an index into
-    the instruction array before [start] may run. *)
+(** A 5.2 machine. *)
 type machine
 
-(** [make_machine ~registers ~operations ~controller] allocates the
-    registers, installs the operations, and assembles the controller:
-    an unknown register, operation, or label, or a register or label
-    used twice, fails before the machine can start. *)
+(** [make_machine ~registers ~operations ~controller] assembles a
+    machine whose table is [operations] plus the section's
+    [initialize-stack], [print-stack-statistics], and [print]; those
+    write into the machine's transcript. *)
 val make_machine
   :  registers:string list
-  -> operations:(string * op) list
-  -> controller:string
+  -> operations:(string * value Sec_5_1.op) list
+  -> controller:value Sec_5_1.instruction list
   -> (machine, error) result
 
-(** [make_machine_from_program ~registers ~operations program] assembles
-    a controller that some other syntax has already parsed into the
-    typed program -- the seam the new-syntax exercise plugs into. *)
-val make_machine_from_program
-  :  registers:string list
-  -> operations:(string * op) list
-  -> program
-  -> (machine, error) result
+(** [simulator m] is the underlying simulator, for drivers that step it. *)
+val simulator : machine -> value Sec_5_1.machine
 
-(** [set_register m r v] is [set-register-contents!]: it stores a value
-    in the named register before [start]. *)
 val set_register : machine -> string -> value -> (unit, error) result
-
-(** [get_register m r] is [get-register-contents]: it reads a register
-    of the stopped machine. *)
 val get_register : machine -> string -> (value, error) result
-
-(** [start m] simulates the machine from the first instruction until
-    the sequence ends or an instruction fails. *)
 val start : machine -> (unit, error) result
 
-(** [print_stack_statistics m] renders the monitored stack's counters,
-    [total-pushes] and [maximum-depth]. *)
+(** [transcript m] is every line the machine's actions wrote, in order. *)
+val transcript : machine -> string list
+
+(** [print_stack_statistics m] is the monitor line of 5.2.4:
+    [total-pushes = P maximum-depth = D]. *)
 val print_stack_statistics : machine -> string
 
-(** [transcript m] is what the machine's [print-stack-statistics]
-    actions have printed, in order. *)
-val transcript : machine -> string list
+(** An operation's declared operand or result type in a fixture. *)
+type op_type =
+  | Int_type
+  | Float_type
+  | Bool_type
+  | Unit_type
+
+(** A register machine fixture: its registers, the operations it
+    declares with their types, its typed test inputs, and its
+    controller. *)
+type fixture =
+  { registers : string list
+  ; operations : (string * op_type list * op_type) list
+  ; inputs : (string * value) list
+  ; controller : value Sec_5_1.instruction list
+  }
+
+(** [read_fixture ~filename text] decodes the constructor-literal
+    fixture [text]: [Machine { registers; operations; inputs;
+    controller }].  Every declared operation must exist in
+    [Sec_5_1.arith_operations] or be [print], with a result type that
+    matches its kind (a [Bool_type] result is a test, [Unit_type] an
+    action). *)
+val read_fixture : filename:string -> string -> (fixture, string) result
+
+(** [run_fixture ~emit fixture] runs [fixture]: [print] writes its
+    operand and a newline, each declared operation checks its operand
+    types, and after the controller stops each declared register is
+    written as [name: value], in declaration order. *)
+val run_fixture : emit:(string -> unit) -> fixture -> (unit, error) result

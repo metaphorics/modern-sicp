@@ -1,0 +1,5 @@
+{
+  "case_id": "lazy/02-delay-force",
+  "constructor": "lazy_delay_force",
+  "observation": "driver-dispatched named case; no expected result is recorded here"
+}

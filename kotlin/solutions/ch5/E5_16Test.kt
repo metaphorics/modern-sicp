@@ -5,10 +5,7 @@ package sicp.ch5.solutions
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.ch5.arithOperations
-import sicp.ch5.getRegisterContents
-import sicp.ch5.setRegisterContents
-import sicp.runtime.VInt
+import sicp.guest.GValue
 
 public class E5_16Test :
     FunSpec({
@@ -45,15 +42,12 @@ public class E5_16Test :
         }
         test("Exercise 5.16: the switch off leaves no trace lines") {
             val lines =
-                machineRun {
-                    val machine = TracingMachine(listOf("a", "b", "t"), arithOperations)
-                    machine.install(gcdController)
-                    machine.setRegisterContents("a", VInt(206))
-                    machine.setRegisterContents("b", VInt(40))
-                    machine.traceOn = false
-                    machine.start()
-                    machine.transcript.toString().lines()
-                }
+                TracingMachine(
+                    setOf("a", "b", "t"),
+                    machineArithmetic,
+                    gcdController,
+                    mapOf("a" to GValue.VLong(206), "b" to GValue.VLong(40)),
+                ).apply { traceOn = false }.run()
             lines.filter { it.isNotBlank() } shouldBe emptyList()
         }
     })

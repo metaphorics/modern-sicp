@@ -1,0 +1,46 @@
+# OCaml edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its OCaml-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+core/01-square	programs/core/01-square.ml	native,direct,analyzed,eceval,compiled	native	function call and arithmetic
+core/02-factorial-recursive	programs/core/02-factorial-recursive.ml	native,direct,analyzed,eceval,compiled	native	recursive factorial
+core/03-factorial-iterative	programs/core/03-factorial-iterative.ml	native,direct,analyzed,eceval,compiled	native	iterative factorial with a reference cell
+core/04-sqrt-newton	programs/core/04-sqrt-newton.ml	native,direct,analyzed,eceval,compiled	native	Newton square-root iteration
+core/05-gcd	programs/core/05-gcd.ml	native,direct,analyzed,eceval,compiled	native	Euclid greatest common divisor
+core/06-expt	programs/core/06-expt.ml	native,direct,analyzed,eceval,compiled	native	exponent by linear recursion and iteration
+core/07-fibonacci	programs/core/07-fibonacci.ml	native,direct,analyzed,eceval,compiled	native	tree recursion over Fibonacci
+core/08-cond-branching	programs/core/08-cond-branching.ml	native,direct,analyzed,eceval,compiled	native	multi-way conditionals
+core/09-predicates	programs/core/09-predicates.ml	native,direct,analyzed,eceval,compiled	native	boolean predicates and equality
+core/10-list-building	programs/core/10-list-building.ml	native,direct,analyzed,eceval,compiled	native	list construction and pattern matching
+core/11-append-reverse	programs/core/11-append-reverse.ml	native,direct,analyzed,eceval,compiled	native	append and reverse
+core/12-count-leaves	programs/core/12-count-leaves.ml	native,direct,analyzed,eceval,compiled	native	recursive counting over nested constructors
+core/13-map-filter-accumulate	programs/core/13-map-filter-accumulate.ml	native,direct,analyzed,eceval,compiled	native	map, filter, fold over lists
+core/14-higher-order	programs/core/14-higher-order.ml	native,direct,analyzed,eceval,compiled	native	procedures as arguments and results
+core/15-closure-counter	programs/core/15-closure-counter.ml	native,direct,analyzed,eceval,compiled	native	lexical mutable capture through one reference
+core/16-symbols-quotation	programs/core/16-symbols-quotation.ml	native,direct,analyzed,eceval,compiled	native	explicit syntax data as typed constructors
+core/17-dotted-pairs	programs/core/17-dotted-pairs.ml	native,direct,analyzed,eceval,compiled	native	pair structure with constructors and cells
+core/18-strings-display	programs/core/18-strings-display.ml	native,direct,analyzed,eceval,compiled	native	string concatenation and printing order
+core/19-deep-recursion	programs/core/19-deep-recursion.ml	native,direct,analyzed,eceval,compiled	native	deep recursion depth
+core/20-error-stop	programs/core/20-error-stop.ml	native,direct,analyzed,eceval,compiled	native	error stopping before the rest of the program
+core/metacircular	programs/core/metacircular.ml	native,direct,analyzed,eceval,compiled	native	guest self-interpretation of the evaluator
+lazy/01-non-strict-application	programs/lazy/01-non-strict-application.ml	reference,lazy	reference	non-strict compound arguments
+lazy/02-delay-force	programs/lazy/02-delay-force.ml	reference,lazy	reference	memoized and repeated forcing
+lazy/03-church-pairs	programs/lazy/03-church-pairs.ml	reference,lazy	reference	lazy pairs built from delayed arguments
+lazy/04-lazy-list	programs/lazy/04-lazy-list.ml	reference,lazy	reference	lazy lists and demand
+amb/01-amb-basics	programs/amb/01-amb-basics.ml	reference,search	reference	choice, failure, and answer order
+amb/02-prime-sum-pair	programs/amb/02-prime-sum-pair.ml	reference,search	reference	prime sum pairs with require
+amb/03-multiple-dwelling	programs/amb/03-multiple-dwelling.ml	reference,search	reference	constraint search over dwellings
+amb/04-pythagorean-triples	programs/amb/04-pythagorean-triples.ml	reference,search	reference	generator search over triples
+query/01-basic-personnel	programs/query/01-basic-personnel.query	reference,query	reference	assertions and pattern matching
+query/02-compound-queries	programs/query/02-compound-queries.query	reference,query	reference	and, or, and negation
+query/03-rules	programs/query/03-rules.query	reference,query	reference	rules, unification, and the occurs check
+query/04-append-form	programs/query/04-append-form.query	reference,query	reference	append defined by rules
+machine/01-gcd	programs/machine/01-gcd.machine	reference,machine	reference	GCD register machine
+machine/02-factorial-recursive	programs/machine/02-factorial-recursive.machine	reference,machine	reference	recursive factorial machine and stack
+machine/03-fibonacci	programs/machine/03-fibonacci.machine	reference,machine	reference	tree-recursive Fibonacci machine
+machine/04-gcd-print	programs/machine/04-gcd-print.machine	reference,machine	reference	machine operations with printing effects
+compiler/01-primitive-combination	programs/compiler/01-primitive-combination.ml	native,direct,analyzed,eceval,compiled	native	instruction sequences for primitive combinations
+compiler/02-factorial	programs/compiler/02-factorial.ml	native,direct,analyzed,eceval,compiled	native	compiled factorial with linkage

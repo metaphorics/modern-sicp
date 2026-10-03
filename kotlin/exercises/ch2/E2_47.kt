@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.47: here are two possible constructors for frames. For each
  * constructor supply the appropriate selectors to produce an
@@ -14,4 +12,4 @@ import sicp.runtime.PendingSolution
  * The scaffold returns whether both constructors' coordinate maps agree
  * on the unit square's four corners for one sample frame.
  */
-public fun ex_2_47(): Boolean = throw PendingSolution()
+public fun ex_2_47(): Boolean = throw PendingExercise()

@@ -1,67 +1,40 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 4.1 exercise 4.21 *)
+   Adapted from SICP section 4.1 exercise 4.21 *)
 
-(** Exercise 4.21: recursion without [define] or [letrec]. Each
-    procedure receives itself as an argument and calls that argument
-    for the recursive step, so the plain base evaluator, which has no
-    recursion support at all, runs both demonstrations. *)
+module S = Sicp_ch4.Sec_4_1
 
-let ( >>= ) = Result.bind
-
-module Eval_error = Sicp_common.Eval_error
-module Reader = Sicp_common.Reader
-module Value = Sicp_common.Value
-module SE = Sicp_ch4.Sec_4_1
-
-(** [eval] is the base evaluator: the demonstrations are pure lambda
-    applications the shared Reader parses directly. *)
-let eval : SE.eval_t = SE.eval
-
-let render = function
-  | Ok v -> Value.to_string v
-  | Error e -> "Error: " ^ Eval_error.to_string e
+let untyped_factorial =
+  "let fact = fun n -> (fun fact -> fact fact n) (fun ft k -> if k = 1 then 1 else k * \
+   ft ft (k - 1))\n\
+   let () = print_int (fact 10)\n"
 ;;
 
-let run text =
-  let env = SE.the_global_environment () in
-  Reader.read_program text
-  |> Result.map_error (fun e -> Eval_error.Invalid_form (Reader.to_string e))
-  >>= fun exps ->
-  let rec go = function
-    | [] -> Ok (Value.symbol "ok")
-    | [ exp ] -> eval exp env
-    | exp :: rest -> eval exp env >>= fun _ -> go rest
-  in
-  go exps
+let factorial =
+  "type 'a fix = Fix of ('a fix -> 'a)\n\
+   let self_apply x = match x with Fix f -> f x\n\
+   let fact n = self_apply (Fix (fun ft -> fun k -> if k = 1 then 1 else k * self_apply \
+   ft (k - 1))) n\n\
+   let () = print_int (fact 10)\n"
 ;;
 
-(** [ex_4_21 ()] evaluates the statement's self-application trick as a
-      Fibonacci procedure on [10] -- part (a)'s analog of the
-      factorial -- and part (b)'s mutually recursive even?/odd? pair
-      without definitions, applied to [4]. *)
+let fibonacci =
+  "type 'a fix = Fix of ('a fix -> 'a)\n\
+   let self_apply x = match x with Fix f -> f x\n\
+   let fib n = self_apply (Fix (fun fb -> fun k -> if k < 2 then k else self_apply fb (k \
+   - 1) + self_apply fb (k - 2))) n\n\
+   let () = print_int (fib 10)\n"
+;;
+
+let parity =
+  "type test = Test of (test -> test -> int -> bool)\n\
+   let call p q r n = match p with Test f -> f q r n\n\
+   let f x = (fun even odd -> call even even odd x) (Test (fun ev od n -> if n = 0 then \
+   true else call od ev od (n - 1))) (Test (fun ev od n -> if n = 0 then false else call \
+   ev ev od (n - 1)))\n\
+   let () = print_string (if f 10 then \"even\" else \"odd\"); print_string \" \"; \
+   print_string (if f 7 then \"even\" else \"odd\")\n"
+;;
+
 let ex_4_21 () =
-  let fib =
-    run
-      {|
-((lambda (n)
-   ((lambda (fib) (fib fib n))
-    (lambda (ft k)
-      (if (< k 2)
-          k
-          (+ (ft ft (- k 1)) (ft ft (- k 2)))))))
- 10)
-|}
-  in
-  let parity =
-    run
-      {|
-((lambda (even? odd?)
-   (even? even? odd? 4))
- (lambda (ev? od? n)
-   (if (= n 0) true (od? ev? od? (- n 1))))
- (lambda (ev? od? n)
-   (if (= n 0) false (ev? ev? od? (- n 1)))))
-|}
-  in
-  [ render fib; render parity ]
+  List.map (S.transcript S.run) [ untyped_factorial; factorial; fibonacci; parity ]
 ;;

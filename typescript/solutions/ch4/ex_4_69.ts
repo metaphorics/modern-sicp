@@ -1,30 +1,99 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-import { makeQueryEngine } from "../../packages/ch4/src/04-logic.js";
-import { genealogy } from "./ex_4_63.js";
-
 /**
- * The greats rules over the 4.63 database: descend one son step from ?x,
- * then re-ask the rest of the relationship through the variable-led
- * call. A list-headed call unifies against no ordinary conclusion, so
- * the grandson anchor rule catches ((grandson) ?x ?y) and grounds the
- * recursion.
+ * Exercise 4.69: greats through grandson-ended relations. The
+ * compound relationship of the book becomes a `related` atom whose
+ * first field is the relationship list: `grandson` chains two son
+ * links, and a `great`-headed relation holds when its tail does one
+ * generation lower. Ground queries terminate; the open-relationship
+ * query enumerates ever-longer relations without end, so it is
+ * exhibited but never run.
  */
-export const greatRules = [
-  "(rule ((grandson) ?x ?y) (grandson ?x ?y))",
-  "(rule ((great . ?relation) ?x ?y) (and (son ?x ?child) (?relation ?child ?y)))",
+import {
+  type Database,
+  type Query,
+  qlist,
+  qpair,
+  qtext,
+  queryAtom,
+  qvar,
+  type Rule,
+  rule,
+  type Term,
+} from "../../packages/ch4/src/04-logic.js";
+import { answerLines } from "./ex_4_55.js";
+import { familyRules, genealogyDatabase } from "./ex_4_63.js";
+
+const grandson: Term = qlist(qtext("grandson"));
+const great = (rest: Term): Term => qpair(qtext("great"), rest);
+
+/** A relation ending in grandson: the base list, or great of one. */
+export const endsInGrandsonRules: ReadonlyArray<Rule> = [
+  rule(queryAtom("ends-in-grandson", grandson)),
+  rule(
+    queryAtom("ends-in-grandson", great(qvar("rest"))),
+    queryAtom("ends-in-grandson", qvar("rest")),
+  ),
+];
+/** Related by a list relation: grandson base, great-headed step. */
+export const relatedRules: ReadonlyArray<Rule> = [
+  rule(
+    queryAtom("related", grandson, qvar("ancestor"), qvar("descendant")),
+    queryAtom("grandson", qvar("descendant"), qvar("ancestor")),
+  ),
+  rule(queryAtom("related", great(qvar("rel")), qvar("x"), qvar("y")), {
+    tag: "and",
+    clauses: [
+      queryAtom("ends-in-grandson", qvar("rel")),
+      queryAtom("related", qvar("rel"), qvar("x"), qvar("z")),
+      queryAtom("son", qvar("z"), qvar("y")),
+    ],
+  }),
 ];
 
-/** Answers one greats query over the 4.63 database plus the greats rules. */
-export const familyAnswers = (query: string, limit = 20): ReadonlyArray<string> => {
-  const engine = makeQueryEngine();
-  engine.load([genealogy, ...greatRules]);
-  return engine.answers(query, limit);
+/** Irad, the great-grandson of Adam. */
+export const iradsRelation: Query = queryAtom(
+  "related",
+  great(grandson),
+  qtext("Adam"),
+  qvar("who"),
+);
+
+/** The great-great-great-great-great-grandsons of Adam. */
+export const distantRelations: Query = queryAtom(
+  "related",
+  great(great(great(great(great(grandson))))),
+  qtext("Adam"),
+  qvar("who"),
+);
+
+/**
+ * Which relationship links Adam to Irad: the relation enumerates
+ * ever-longer grandson-ended lists, so the driver would never
+ * return. Exhibited, never executed (UNRUN).
+ */
+export const openRelationship: Query = queryAtom(
+  "related",
+  qvar("relationship"),
+  qtext("Adam"),
+  qtext("Irad"),
+);
+
+/** The answer lines for the two ground great queries, in order. */
+export const greatAnswers = (): readonly [ReadonlyArray<string>, ReadonlyArray<string>] => {
+  const db: Database = genealogyDatabase();
+  for (const candidate of [...familyRules, ...endsInGrandsonRules, ...relatedRules]) {
+    db.addRule(candidate);
+  }
+  return [answerLines(db, iradsRelation), answerLines(db, distantRelations)];
 };
 
 export function ex_4_69(): string {
-  const [great] = familyAnswers("((great grandson) Adam ?who)");
-  const [fifth] = familyAnswers("((great great great great great grandson) Adam ?who)");
-  return `Adam's great-grandson is ${great}; at five greats the line reaches ${fifth}.`;
+  const [irad, distant] = greatAnswers();
+  return (
+    `Adam's great-grandson is ${irad.length} person; his five-greats ` +
+    `grandsons are ${distant.length}. The open-relationship query would ` +
+    `enumerate relations forever.`
+  );
 }

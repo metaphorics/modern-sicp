@@ -1,235 +1,43 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-/**
- * Exercise 4.22: let in the analyzed evaluator. A let is analyzed into the
- * execution procedure of its lambda combination, exactly as the direct
- * evaluator derives let to a combination. The analyzer here is complete
- * (every clause routes through the local analyzer), because the module's
- * analyze helpers recurse through the module's analyze and would leave a
- * let nested in an if, lambda, or application body unanalyzed.
- */
-import { Effect } from "effect";
 import type { ExecutionProcedure } from "../../packages/ch4/src/01-metacircular.js";
-import {
-  analyzeQuoted,
-  analyzeSelfEvaluating,
-  analyzeVariable,
-  assignmentValue,
-  assignmentVariable,
-  beginActions,
-  condToIf,
-  defineVariableValue,
-  definitionValue,
-  definitionVariable,
-  executeApplication,
-  ifAlternative,
-  ifConsequent,
-  ifPredicate,
-  isApplication,
-  isAssignment,
-  isBegin,
-  isCond,
-  isDefinition,
-  isIf,
-  isLambda,
-  isQuoted,
-  isSelfEvaluating,
-  isTrue,
-  isVariable,
-  lambdaBody,
-  lambdaParameters,
-  makeProcedure,
-  ok,
-  operands,
-  operator,
-  setupEnvironment,
-  setVariableValue,
-  symbol,
-} from "../../packages/ch4/src/01-metacircular.js";
-import type { Env, Evaluate, ExecutionValue, Value } from "../../packages/ch4/src/core.js";
-import {
-  type EvaluationError,
-  RuntimeError,
-  UnknownSyntax,
-} from "../../packages/ch4/src/errors.js";
-import { type Cons, cons, type List, nil, toArray } from "../../packages/ch4/src/list.js";
-import { format, read } from "../../packages/ch4/src/read.js";
+/**
+ * Exercise 4.22: `let` in the analyzed evaluator. A grouped binding is
+ * a derived expression, so `analyzeLet` analyzes the combination it
+ * stands for: `call(lam(params, bodyDecls), inits)` — exactly the
+ * direct evaluator's `letToCall` target, which is why this file
+ * borrows that derivation rather than spelling a second one. The
+ * analyzed form therefore equals the direct form, closures made by the
+ * analyzed lambda store their body's execution procedure, and running
+ * the analysis needs no let machinery at run time.
+ */
+import { analyze, Session } from "../../packages/ch4/src/01-metacircular.js";
+import type { Env } from "../../packages/ch4/src/runtime/env.js";
+import type { Outcome } from "../../packages/ch4/src/runtime/errors.js";
+import { type LetExpr, type LetNode, letToCall, lowerLetExpr } from "./ex_4_06.js";
 
-export const isLet = (exp: Value): exp is Cons<Value> =>
-  exp._tag === "Cons" && exp.head._tag === "Symbol" && exp.head.name === "let";
+/**
+ * The analyzed evaluator's let case: lower to the call form and
+ * delegate to `analyze`.
+ */
+export const analyzeLet = (node: LetNode): ExecutionProcedure => analyze(letToCall(node));
 
-interface Bindings {
-  readonly names: Value[];
-  readonly inits: Value[];
-  readonly body: List<Value>;
-}
-
-const readBindings = (exp: Cons<Value>): Bindings => {
-  const bindingList = exp.tail;
-  if (bindingList._tag !== "Cons") {
-    throw new RuntimeError({ message: "malformed let: missing bindings", detail: format(exp) });
-  }
-  const names: Value[] = [];
-  const inits: Value[] = [];
-  const first = bindingList.head;
-  let rest: List<Value>;
-  if (first._tag === "Cons" || first._tag === "Nil") {
-    rest = first;
-  } else {
-    throw new RuntimeError({
-      message: "malformed let: bindings must be a list",
-      detail: format(first),
-    });
-  }
-  while (rest._tag === "Cons") {
-    const binding = rest.head;
-    if (binding._tag !== "Cons" || binding.tail._tag !== "Cons") {
-      throw new RuntimeError({ message: "malformed let binding", detail: format(binding) });
-    }
-    names.push(binding.head);
-    inits.push(binding.tail.head);
-    rest = rest.tail;
-  }
-  return { names, inits, body: bindingList.tail };
-};
-
-/** The book's let->combination: ((lambda (names...) body...) inits...). */
-export const letToCombination = (exp: Cons<Value>): Value => {
-  const { names, inits, body } = readBindings(exp);
-  const lambda = cons<Value>(symbol("lambda"), cons(listOf(names), body));
-  return cons<Value>(lambda, listOf(inits));
-};
-
-const listOf = (items: ReadonlyArray<Value>): List<Value> =>
-  items.reduceRight<List<Value>>((tail, head) => cons(head, tail), nil);
-
-const analyzeSequenceLocal = (
-  analyzeExp: (exp: Value) => ExecutionProcedure,
-  exps: List<Value>,
-): ExecutionProcedure => {
-  if (exps._tag === "Nil") {
-    return () => Effect.fail(new RuntimeError({ message: "Empty sequence: ANALYZE", detail: "" }));
-  }
-  const loop = (first: ExecutionProcedure, rest: List<Value>): ExecutionProcedure =>
-    rest._tag === "Nil"
-      ? first
-      : loop((env) => Effect.flatMap(first(env), () => analyzeExp(rest.head)(env)), rest.tail);
-  return loop(analyzeExp(exps.head), exps.tail);
-};
-
-const runOperandsLocal = (
-  aprocs: ReadonlyArray<ExecutionProcedure>,
+/** Analyze-and-run over syntax that may carry grouped bindings. */
+export const evalAnalyzedLet = (
+  expr: LetExpr,
   env: Env,
-): Effect.Effect<List<Value>, EvaluationError> => {
-  const args: Value[] = [];
-  const runFrom = (i: number): Effect.Effect<List<Value>, EvaluationError> => {
-    const aproc = aprocs[i];
-    if (aproc === undefined) {
-      return Effect.succeed(nil);
-    }
-    return Effect.flatMap(aproc(env), (value) => {
-      args.push(value);
-      return runFrom(i + 1);
-    });
-  };
-  return Effect.map(runFrom(0), () => listOf(args));
-};
-
-const makeAnalyzer = (): ((exp: Value) => ExecutionProcedure) => {
-  const analyzeExp = (exp: Value): ExecutionProcedure => {
-    if (isSelfEvaluating(exp)) {
-      return analyzeSelfEvaluating(exp);
-    }
-    if (isQuoted(exp)) {
-      return analyzeQuoted(exp);
-    }
-    if (isVariable(exp)) {
-      return analyzeVariable(exp);
-    }
-    if (isAssignment(exp)) {
-      const variable = assignmentVariable(exp);
-      const vproc = analyzeExp(assignmentValue(exp));
-      return (env) =>
-        Effect.flatMap(vproc(env), (value) =>
-          Effect.map(setVariableValue(variable, value, env), () => ok),
-        );
-    }
-    if (isDefinition(exp)) {
-      const variable = definitionVariable(exp);
-      const vproc = analyzeExp(definitionValue(exp));
-      return (env) =>
-        Effect.flatMap(vproc(env), (value) =>
-          Effect.map(defineVariableValue(variable, value, env), () => ok),
-        );
-    }
-    if (isIf(exp)) {
-      const pproc = analyzeExp(ifPredicate(exp));
-      const cproc = analyzeExp(ifConsequent(exp));
-      const aproc = analyzeExp(ifAlternative(exp));
-      return (env) =>
-        Effect.flatMap(pproc(env), (predicate) => (isTrue(predicate) ? cproc(env) : aproc(env)));
-    }
-    if (isLet(exp)) {
-      return analyzeExp(letToCombination(exp));
-    }
-    if (isLambda(exp)) {
-      const vars = lambdaParameters(exp);
-      const bproc = analyzeSequenceLocal(analyzeExp, lambdaBody(exp));
-      const bodyValue: ExecutionValue = { _tag: "Execution", run: bproc };
-      return (env) => Effect.succeed(makeProcedure(vars, listOf([bodyValue]), env));
-    }
-    if (isBegin(exp)) {
-      return analyzeSequenceLocal(analyzeExp, beginActions(exp));
-    }
-    if (isCond(exp)) {
-      return analyzeExp(condToIf(exp));
-    }
-    if (isApplication(exp)) {
-      const fproc = analyzeExp(operator(exp));
-      const aprocs = toArray(operands(exp)).map(analyzeExp);
-      return (env) =>
-        Effect.flatMap(fproc(env), (procedure) =>
-          Effect.flatMap(runOperandsLocal(aprocs, env), (args) =>
-            executeApplication(procedure, args),
-          ),
-        );
-    }
-    return () => Effect.fail(new UnknownSyntax({ expr: format(exp) }));
-  };
-  return analyzeExp;
-};
-
-const analyzer = makeAnalyzer();
-
-/** The exercise's clause: a let analyzes into its combination's procedure. */
-export const analyzeLet = (exp: Cons<Value>): ExecutionProcedure => analyzer(letToCombination(exp));
-
-/** The analyzed evaluator with let support. */
-export const evalAnalyzedWithLet: Evaluate = (exp, env) => analyzer(exp)(env);
-
-/** Evaluates forms in order in ONE global environment, analyzed, with let. */
-export const runAnalyzed = (
-  sources: ReadonlyArray<string>,
-): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(setupEnvironment(), (env) =>
-    Effect.flatMap(
-      Effect.forEach(sources, (source) => evalAnalyzedWithLet(read(source), env)),
-      (values) => {
-        const last = values[values.length - 1];
-        return last !== undefined
-          ? Effect.succeed(last)
-          : Effect.die(new Error("no forms evaluated"));
-      },
-    ),
-  );
+  session: Session = new Session("core"),
+): Outcome => analyze(lowerLetExpr(expr))(env);
 
 export function ex_4_22(): string {
   return (
-    "A let is a derived expression, so analyzing it means analyzing the combination it " +
-    "stands for: analyze-let analyzes ((lambda (names...) body...) inits...) and hands " +
-    "back that application's execution procedure. Nothing else changes; a let nested in " +
-    "a lambda body analyzes once with the closure, and each call runs the combination " +
-    "with no let machinery left at run time."
+    "The analyzed evaluator's let case lowers to `call(lam(params, bodyDecls), inits)` — " +
+    "the direct evaluator's `letToCall` target — and delegates to `analyze`, so the " +
+    "analyzed form equals the direct form and no let machinery exists at run time. " +
+    "Through analysis, `(let x = 3) x + 4` answers 7, the nested-body f answers 20 for 4, " +
+    "nested grouped bindings answer 12 exactly as the fully derived hand-written " +
+    "combination does, and the execution procedure from analyzeLet answers 7 on a fresh " +
+    "environment."
   );
 }

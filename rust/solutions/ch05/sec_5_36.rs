@@ -1,81 +1,59 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The reference solution of exercise 5.36: operand order and argument
-//! list construction.
+//! The reference solution of exercise 5.36: call operands evaluate
+//! left to right.
+//!
+//! The contract fixes what the book leaves to the implementation:
+//! calls and nested operands evaluate left to right, as in Rust. Two
+//! operand functions announce themselves as they run, so the
+//! transcript records the order while the combined value proves the
+//! argument list still arrives in source order. Both engines must
+//! print the same three lines in the same order.
 
-use std::cell::RefCell;
-use std::rc::Rc;
+use sicp_runtime::host::CheckedProgram;
 
-use ch05::sec_5_2::Fault;
-use ch05::sec_5_5::{
-    Config, DRIVER_WITH_GUARD, RuntimeFn, compile_block, controller_replacing_driver,
-    make_compiled_evaluator, new_state,
-};
-use sicp_runtime::Value;
+fn admitted(source: &str) -> CheckedProgram {
+    match sicp_runtime::host::admit(source) {
+        Ok(program) => program,
+        Err(diag) => panic!("admitted: {}", diag.message),
+    }
+}
 
 mod ex_5_36 {
-    //! Exercise 5.36: default code evaluates operands right to left.
-    //! The alternative evaluates left to right and uses end-adjoin to
-    //! keep the argument list in source order.
+    //! Exercise 5.36: the recording order is left to right and the
+    //! built combination keeps source order.
 
     use super::*;
 
-    fn run(left_to_right: bool) -> Result<(Vec<String>, Vec<i128>, usize), Fault> {
-        let recorded = Rc::new(RefCell::new(Vec::<i128>::new()));
-        let record: RuntimeFn = {
-            let recorded = Rc::clone(&recorded);
-            Rc::new(move |args| {
-                let Some(Value::Int(n)) = args.first() else {
-                    return Err(Fault::Parse("record needs an integer".to_owned()));
-                };
-                recorded.borrow_mut().push(*n);
-                Ok(Value::Int(*n))
-            })
-        };
-        let cfg = Config {
-            left_to_right,
-            ..ch05::sec_5_5::default_config()
-        };
-        let source = "(list (record 1) (record 2))";
-        let (entry, block) = compile_block(&cfg, &new_state(), source)?;
-        let operations = [("record".to_owned(), record)];
-        let runtime: Vec<(String, RuntimeFn)> = operations.into_iter().collect();
-        let controller = controller_replacing_driver(DRIVER_WITH_GUARD) + "\n" + &block;
-        let mut evaluator = make_compiled_evaluator(Some(&controller), &[], &runtime, "")?;
-        evaluator.arm_entry(&entry);
-        evaluator.run()?;
-        let order = recorded.borrow().clone();
-        let transcript = evaluator.transcript();
-        Ok((transcript, order, block.lines().count()))
+    const ORDERED: &str = "fn first() -> i64 {\n    println!(\"first\");\n    1\n}\n\nfn second() -> i64 {\n    println!(\"second\");\n    2\n}\n\nfn combine(a: i64, b: i64) -> i64 {\n    a * 10 + b\n}\n\nfn main() {\n    println!(\"{}\", combine(first(), second()));\n}\n";
+
+    fn positions(transcript: &str) -> (usize, usize, usize) {
+        let first = transcript
+            .find("first")
+            .unwrap_or_else(|| panic!("order lost: {transcript}"));
+        let second = transcript
+            .find("second")
+            .unwrap_or_else(|| panic!("order lost: {transcript}"));
+        let value = transcript
+            .find("12")
+            .unwrap_or_else(|| panic!("order lost: {transcript}"));
+        (first, second, value)
     }
 
-    pub fn ex_5_36() -> Result<Vec<String>, Fault> {
-        let (right_transcript, right_order, right_size) = run(false)?;
-        let (left_transcript, left_order, left_size) = run(true)?;
-        assert_eq!(right_order, vec![2, 1]);
-        assert_eq!(left_order, vec![1, 2]);
-        assert!(right_transcript.iter().any(|line| line == "(1 2)"));
-        assert!(left_transcript.iter().any(|line| line == "(1 2)"));
-        assert_eq!(right_size, left_size);
-        Ok(vec![
-            format!(
-                "right-to-left recording order: {right_order:?}; list: {}",
-                right_transcript.join(" ")
-            ),
-            format!(
-                "left-to-right recording order: {left_order:?}; list: {}",
-                left_transcript.join(" ")
-            ),
-            format!("instruction counts: {right_size} / {left_size}"),
-        ])
-    }
-
+    /// Both engines print `first`, then `second`, then `12`: the
+    /// operands ran left to right and combined in source order.
     #[test]
-    fn ex_5_36_check() -> Result<(), Fault> {
-        let lines = ex_5_36()?;
-        assert!(lines[0].contains("[2, 1]"));
-        assert!(lines[1].contains("[1, 2]"));
-        Ok(())
+    fn ex_5_36_operands_run_left_to_right() {
+        let program = admitted(ORDERED);
+        let interpreted = ch05::sec_5_4::Eceval::run(&program);
+        let compiled = ch05::sec_5_5::compiled_run(&program);
+        assert!(interpreted.trap.is_none(), "{interpreted:?}");
+        assert_eq!(interpreted.stdout, compiled.stdout, "engines agree");
+        for transcript in [interpreted.stdout, compiled.stdout] {
+            let (first, second, value) = positions(&transcript);
+            assert!(first < second, "{transcript}");
+            assert!(second < value, "{transcript}");
+        }
     }
 }

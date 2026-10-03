@@ -1,47 +1,51 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, exercise 5.36: the compiler's operand evaluation order is
-// right to left: `construct-arglist` reverses the operand codes, so the
-// last operand's value initializes `argl` and each earlier operand
-// conses onto it. The order is determined in that one reverse; the
-// `leftToRight` configuration turns it off. The observable is a
-// compiled `(list (record 1) (record 2))` with `record` bound to a
-// logging primitive. The efficiency answer is measured, not argued:
-// both orders emit the same number of instructions, so the code size is
-// unaffected by the choice.
+// Original exercise
+//
+// Chapter 5, exercise 5.36: operand evaluation order in the compiler.
+// The exercise turns the compiler's operand-order knob both ways over
+// the nested-call probe and compares the two compilations; both runs
+// must answer alike whatever the order.
 
 package sicp.ch5.solutions
 
-import sicp.ch5.CompilerConfig
-import sicp.ch5.EvaluatorFault
-import sicp.ch5.ObjectPrimitive
+import sicp.ch5.Compiler
+import sicp.ch5.CompilerOptions
 
-private val orderSource: String = "(list (record 1) (record 2))"
+/** The nested-call probe: one argument is itself a call. */
+public val operandProbeSource: String =
+    """
+    fun g(value: String): String {
+        return value
+    }
 
-/** Runs the compiled order program with `record` logging, and answers
- *  the log in order. */
-private fun recordedOrder(cfg: CompilerConfig): List<String> {
-    val log = mutableListOf<String>()
-    val record: ObjectPrimitive =
-        { args ->
-            if (args.size != 1) raise(EvaluatorFault("record needs one argument"))
-            log.add(args[0].toString())
-            args[0]
-        }
-    runCompiled(cfg, orderSource, "", extraPrimitives = mapOf("record" to record))
-    return log
-}
+    fun f(first: String, second: String): String {
+        return first
+    }
 
-/** The exercise's runs: the default records `2 1` (right to left), the
- *  reordered configuration records `1 2`, and the instruction counts
- *  are equal. */
-public fun operandOrderRuns(): List<String> {
-    val logRight = recordedOrder(CompilerConfig())
-    val logLeft = recordedOrder(CompilerConfig(leftToRight = true))
-    val countRight = compileCounts(CompilerConfig(), orderSource).first
-    val countLeft = compileCounts(CompilerConfig(leftToRight = true), orderSource).first
+    val y: String = "y"
+
+    fun probe(): String {
+        return f(g("x"), y)
+    }
+
+    fun main() {
+        println(probe())
+    }
+    """.trimIndent()
+
+/** Both operand orders' compilations beside each other and the runs'
+ *  agreement with direct execution. */
+public fun operandOrderReport(): List<String> {
+    val leftFirst = compiledStatements(operandProbeSource, CompilerOptions(leftToRightArguments = true))
+    val rightFirst = compiledStatements(operandProbeSource, CompilerOptions(leftToRightArguments = false))
+    val pairs = savePairs(leftFirst)
+    val checked = admitProgram(operandProbeSource)
+    val compiled = outputLines(Compiler.compileAndRun(checked))
+    val direct = outputLines(sicp.ch4.Direct.run(checked))
     return listOf(
-        "default order: ${logRight.joinToString(" ")}",
-        "left-to-right order: ${logLeft.joinToString(" ")}",
-        "instruction counts: $countRight = $countLeft: ${countRight == countLeft}",
+        "left to right: ${leftFirst.size} statements, ${savePairs(leftFirst).size} save pairs",
+        "right to left: ${rightFirst.size} statements, ${savePairs(rightFirst).size} save pairs",
+        "every save is paired with one restore: ${pairs.none { it.restoreIndex <= it.saveIndex }}",
+        "compiled and direct runs agree: ${compiled == direct}",
     )
 }

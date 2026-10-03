@@ -1,7 +1,7 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(** Exercise 4.39: the order of the restrictions, measured with the backtrack counter. The statement lives in the section; this
+(** Exercise 4.39: the order of the restrictions, measured with the search counters. The statement lives in the section; this
     signature is the exercise's public contract. *)
 
 (** [ex_4_39 ()] runs the demonstration the statement asks for

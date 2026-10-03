@@ -12,43 +12,56 @@ import {
 } from "../../packages/ch2/src/02-picture-language.js";
 import {
   type Datum,
+  listDatum,
   memq,
-  qlist,
-  qnum,
-  qsym,
+  numDatum,
   showDataList,
   showDatum,
+  symDatum,
 } from "../../packages/ch2/src/03-symbolic-data.js";
 
 /**
- * Exercise 2.53: the book's seven printed-output predictions, restated
- * over this edition's constructors. Each predictor returns the printed
- * value this edition's renderers produce for one of the book's
- * expressions; the answers are pinned by the colocated test.
+ * Exercise 2.53: the statement's seven printed-output predictions,
+ * restated over this edition's constructors. Each predictor returns the
+ * printed value this edition's renderers produce for one of the seven
+ * shapes; the answers are pinned by the colocated test.
  */
 
-const xy = list(qlist(qsym("x1"), qsym("x2")), qlist(qsym("y1"), qsym("y2")));
+const xy = list(
+  listDatum(symDatum("x1"), symDatum("x2")),
+  listDatum(symDatum("y1"), symDatum("y2")),
+);
 
-/** The book's `(list 'a 'b 'c)`. */
-export const predictList = (): string => showDatum(qlist(qsym("a"), qsym("b"), qsym("c")));
+/** The flat list `[a, b, c]`. */
+export const predictList = (): string =>
+  showDatum(listDatum(symDatum("a"), symDatum("b"), symDatum("c")));
 
-/** The book's `(list (list 'george))`. */
-export const predictNested = (): string => showDatum(qlist(qlist(qsym("george"))));
+/** The nested list `[[george]]`. */
+export const predictNested = (): string => showDatum(listDatum(listDatum(symDatum("george"))));
 
-/** The book's `(cdr '((x1 x2) (y1 y2)))`. */
+/** Tail of `[[x1, x2], [y1, y2]]`. */
 export const predictCdr = (): string => showDataList(getOrElse(cdr(xy), nil));
 
-/** The book's `(cadr '((x1 x2) (y1 y2)))`. */
+/** Head of the tail of `[[x1, x2], [y1, y2]]`. */
 export const predictCadr = (): string =>
-  showDatum(getOrElse(car(getOrElse(cdr(xy), nil)), qnum(0)));
+  showDatum(getOrElse(car(getOrElse(cdr(xy), nil)), numDatum(0)));
 
-/** The book's `(pair? (car '(a short list)))`: is the head a list? */
+/** Is the head of `[a, short, list]` itself a list? */
 export const predictHeadIsList = (headOfA: Datum): boolean => headOfA._tag === "Lst";
 
-/** The book's `(memq 'red '((red shoes) (blue socks)))`. */
+/** Membership of `red` in `[[red, shoes], [blue, socks]]`. */
 export const predictMemqSublists = (): Option<List<Datum>> =>
-  memq(qsym("red"), list(qlist(qsym("red"), qsym("shoes")), qlist(qsym("blue"), qsym("socks"))));
+  memq(
+    symDatum("red"),
+    list(
+      listDatum(symDatum("red"), symDatum("shoes")),
+      listDatum(symDatum("blue"), symDatum("socks")),
+    ),
+  );
 
-/** The book's `(memq 'red '(red shoes blue socks))`. */
+/** Membership of `red` in `[red, shoes, blue, socks]`. */
 export const predictMemqFlat = (): Option<List<Datum>> =>
-  memq(qsym("red"), list(qsym("red"), qsym("shoes"), qsym("blue"), qsym("socks")));
+  memq(
+    symDatum("red"),
+    list(symDatum("red"), symDatum("shoes"), symDatum("blue"), symDatum("socks")),
+  );

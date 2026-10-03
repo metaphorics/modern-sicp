@@ -1,118 +1,88 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The reference solution of exercise 5.19: breakpoints stop the
-//! machine before the nth instruction after a label; the held
-//! machine can be examined, proceeded, and its breakpoints cancelled.
+//! The reference solution of exercise 5.19: breakpoints with
+//! proceed and cancel.
 
-use ch05::sec_5_2::{Fault, Stop, gcd_machine};
-use sicp_runtime::Value;
+use ch05::sec_5_1::gcd_machine;
+use ch05::sec_5_2::{Fault, Machine, Run, assemble};
 
-fn gcd_with_inputs(a: i128, b: i128) -> ch05::sec_5_2::Machine {
-    let mut machine = gcd_machine();
-    machine.set_register("a", Value::Int(a)).unwrap();
-    machine.set_register("b", Value::Int(b)).unwrap();
-    machine
+/// Runs the GCD machine on `a` and `b` up to the `n`th visit of the
+/// loop label: the machine stops before that visit's instruction.
+fn stop_at_loop(a: i64, b: i64, n: usize) -> Result<(Run, Machine), Fault> {
+    let mut machine = Machine::new(assemble(&gcd_machine())?);
+    machine.set_register("a", a)?;
+    machine.set_register("b", b)?;
+    machine.set_breakpoint("loop", n)?;
+    let outcome = machine.run()?;
+    Ok((outcome, machine))
 }
 
 mod ex_5_19 {
-    //! Exercise 5.19: Alyssa's breakpoints, with proceed and
-    //! cancel, over gcd(12, 8).
+    //! Exercise 5.19: set a breakpoint, hold the machine at it,
+    //! proceed on request, and cancel breakpoints.
 
     use super::*;
 
-    /// A breakpoint at `test-b` 4 sits just before the assignment
-    /// `a <- b` (offset 4: the test, the branch, and the assign to
-    /// `t` come first). Each stop reports the label and offset and
-    /// holds the machine; two holds later the third pass branches
-    /// straight to `gcd-done` and the run ends with a = 4.
+    /// A breakpoint at the first visit of `loop` holds the machine
+    /// just before the test, with the inputs still in `a` and `b`.
+    /// Proceeding runs the loop to its end: the run reports no
+    /// breakpoint and a = 4.
     #[test]
-    fn ex_5_19_breakpoint_holds_and_proceeds() {
-        let mut machine = gcd_with_inputs(12, 8);
-        machine.set_breakpoint("test-b", 4).unwrap();
-        let stop = machine.start().unwrap();
-        assert_eq!(
-            stop,
-            Stop::Breakpoint {
-                label: "test-b".to_owned(),
-                offset: 4
-            }
-        );
-        assert_eq!(machine.get_register("a").unwrap(), Value::Int(12));
-        assert_eq!(machine.get_register("b").unwrap(), Value::Int(8));
+    fn ex_5_19_breakpoint_holds_and_proceeds() -> Result<(), Fault> {
+        let (held, mut machine) = stop_at_loop(12, 8, 1)?;
+        assert_eq!(held.at_breakpoint.as_deref(), Some("loop"));
+        assert_eq!(machine.pc(), 1);
+        assert_eq!(held.registers["a"], 12);
+        assert_eq!(held.registers["b"], 8);
 
-        let stop = machine.proceed().unwrap();
-        assert_eq!(
-            stop,
-            Stop::Breakpoint {
-                label: "test-b".to_owned(),
-                offset: 4
-            }
-        );
-        assert_eq!(machine.get_register("a").unwrap(), Value::Int(8));
-        assert_eq!(machine.get_register("b").unwrap(), Value::Int(4));
-
-        assert_eq!(machine.proceed().unwrap(), Stop::End);
-        assert_eq!(machine.get_register("a").unwrap(), Value::Int(4));
-        assert_eq!(
-            machine.transcript(),
-            [
-                "breakpoint at test-b: 4".to_owned(),
-                "breakpoint at test-b: 4".to_owned(),
-            ]
-        );
+        let outcome = machine.resume()?;
+        assert_eq!(outcome.at_breakpoint, None);
+        assert_eq!(outcome.registers["a"], 4);
+        Ok(())
     }
 
-    /// Cancelling one breakpoint lets the next start run through;
-    /// cancelling all breakpoints clears any hold.
+    /// A breakpoint names a visit: the second holds after the first
+    /// pass (a = 8, b = 4), the third after the second (a = 4,
+    /// b = 0), and the third pass ends the run.
     #[test]
-    fn ex_5_19_cancel_breakpoint() {
-        let mut machine = gcd_with_inputs(12, 8);
-        machine.set_breakpoint("test-b", 4).unwrap();
-        machine.cancel_breakpoint("test-b", 4).unwrap();
-        assert_eq!(machine.start().unwrap(), Stop::End);
-        assert_eq!(machine.get_register("a").unwrap(), Value::Int(4));
-        assert!(machine.transcript().is_empty());
+    fn ex_5_19_breakpoint_names_a_visit() -> Result<(), Fault> {
+        let (held, _) = stop_at_loop(12, 8, 2)?;
+        assert_eq!(held.at_breakpoint.as_deref(), Some("loop"));
+        assert_eq!(held.registers["a"], 8);
+        assert_eq!(held.registers["b"], 4);
 
-        let mut machine = gcd_with_inputs(12, 8);
-        machine.set_breakpoint("test-b", 1).unwrap();
-        machine.set_breakpoint("test-b", 4).unwrap();
-        machine.cancel_all_breakpoints();
-        assert_eq!(machine.start().unwrap(), Stop::End);
-        assert_eq!(machine.get_register("a").unwrap(), Value::Int(4));
+        let (held, _) = stop_at_loop(12, 8, 3)?;
+        assert_eq!(held.at_breakpoint.as_deref(), Some("loop"));
+        assert_eq!(held.registers["a"], 4);
+        assert_eq!(held.registers["b"], 0);
+        Ok(())
     }
 
-    /// A breakpoint names an instruction: offset zero and offsets
-    /// past the sequence are refused, as is an unknown label, and a
-    /// set breakpoint is idempotent to re-set.
+    /// Cancelling the breakpoints lets the next run go straight
+    /// through, and the answer is unaffected.
     #[test]
-    fn ex_5_19_bad_breakpoints_refused() {
-        let mut machine = gcd_with_inputs(12, 8);
-        assert_eq!(
-            machine.set_breakpoint("test-b", 0),
-            Err(Fault::BadBreakpoint {
-                label: "test-b".to_owned(),
-                n: 0
-            })
-        );
-        assert_eq!(
-            machine.set_breakpoint("no-such-label", 1),
-            Err(Fault::UnknownLabel {
-                label: "no-such-label".to_owned()
-            })
-        );
-        assert_eq!(
-            machine.set_breakpoint("gcd-done", 1),
-            Err(Fault::BadBreakpoint {
-                label: "gcd-done".to_owned(),
-                n: 1
-            })
-        );
-        machine.set_breakpoint("test-b", 4).unwrap();
-        machine.set_breakpoint("test-b", 4).unwrap();
-        assert!(matches!(machine.start().unwrap(), Stop::Breakpoint { .. }));
-        machine.cancel_all_breakpoints();
-        assert_eq!(machine.proceed().unwrap(), Stop::End);
-        assert_eq!(machine.get_register("a").unwrap(), Value::Int(4));
+    fn ex_5_19_cancel_breakpoint() -> Result<(), Fault> {
+        let mut machine = Machine::new(assemble(&gcd_machine())?);
+        machine.set_register("a", 12)?;
+        machine.set_register("b", 8)?;
+        machine.set_breakpoint("loop", 1)?;
+        machine.clear_breakpoints();
+        let outcome = machine.run()?;
+        assert_eq!(outcome.at_breakpoint, None);
+        assert_eq!(outcome.registers["a"], 4);
+        Ok(())
+    }
+
+    /// A breakpoint names a declared label: an unknown one is
+    /// refused, and no run is started.
+    #[test]
+    fn ex_5_19_unknown_label_refused() -> Result<(), Fault> {
+        let mut machine = Machine::new(assemble(&gcd_machine())?);
+        let fault = machine
+            .set_breakpoint("nosuch", 1)
+            .expect_err("unknown label");
+        assert_eq!(fault, Fault::UnboundLabel("nosuch".to_owned()));
+        Ok(())
     }
 }

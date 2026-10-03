@@ -21,7 +21,7 @@ mod ex_1_42 {
 
     /// Exercise 1.42: composition
     ///
-    /// Returns `(compose square inc)(6)`, which is 49.
+    /// Returns `compose(square, inc)(6)`, which is 49.
     pub fn ex_1_42() -> f64 {
         compose(square, inc)(6.0)
     }

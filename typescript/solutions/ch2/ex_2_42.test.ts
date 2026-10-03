@@ -34,8 +34,8 @@ const noTwoAttack = (rs: number[]): boolean => {
 
 describe("exercise 2.42", () => {
   it("emptyBoard is nil and adjoinPosition conses in front", () => {
-    expect(showList(emptyBoard())).toBe("()");
-    expect(showList(adjoinPosition(3, 2, list(1, 2)))).toBe("(3 1 2)");
+    expect(showList(emptyBoard())).toBe("[]");
+    expect(showList(adjoinPosition(3, 2, list(1, 2)))).toBe("[3, 1, 2]");
   });
 
   it("isSafe rejects same-row and diagonal attacks, allows the rest", () => {

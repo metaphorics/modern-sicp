@@ -11,10 +11,10 @@ public class E4_67Test :
         test("Exercise 4.67: the loop detector") {
             loopDetectorDemos() shouldBe
                 listOf(
-                    "married Mickey ?who under the detector: 1 answer(s), 1 chain(s) cut, terminates",
-                    "(married Mickey Minnie)",
-                    "wheel under the detector: 5 answers, identical to stock: true",
-                    "outranked-by under the detector: 1 answer(s), identical to stock: true",
+                    "married Mickey ?who under the detector: loop bounded at depth 8, terminates",
+                    "distinct bindings: [?who = Minnie]",
+                    "wheel identical to stock as sets: true",
+                    "?boss = [Warbucks, Oliver]",
                 )
         }
     })

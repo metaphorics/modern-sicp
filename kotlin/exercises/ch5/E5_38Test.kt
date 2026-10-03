@@ -12,6 +12,6 @@ public class E5_38Test :
         test("Exercise 5.38: the counts and the n-ary runs pin the open coding").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            openCodedRuns() shouldBe emptyList()
+            openCodedRuns().last() shouldBe "compiled and direct runs agree: true"
         }
     })

@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.85: design `drop`, which lowers a tower value to its
  * simplest representation. The test for lowerable: `project` the value,
@@ -14,4 +12,4 @@ import sicp.runtime.PendingSolution
  * all. Finally `applyGenericDropping` rewrites the raising dispatch of
  * exercise 2.84 so every answer leaves the tower simplified.
  */
-public fun ex_2_85(): List<String> = throw PendingSolution()
+public fun ex_2_85(): List<String> = throw PendingExercise()

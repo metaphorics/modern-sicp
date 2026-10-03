@@ -12,10 +12,10 @@ public class E4_50Test :
         test("Exercise 4.50: the seeded shuffle enumerates 3, 2, 5, 1, 4").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            rambEnumeration() shouldBe listOf("(3)", "(2)", "(5)", "(1)", "(4)")
+            rambEnumeration() shouldBe listOf("[3]", "[2]", "[5]", "[1]", "[4]")
         }
 
-        test("Exercise 4.50: the ramb generator escapes the boring first words").config(
+        test("Exercise 4.50: the random-choice generator escapes the boring first words").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
             rambGeneratedFirst() shouldBe

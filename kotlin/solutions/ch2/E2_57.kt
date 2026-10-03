@@ -88,16 +88,15 @@ public fun derivN(
         }
     }
 
-public fun printNaryExpr(e: NaryExpr): String =
-    when (e) {
-        is NaryExpr.Num -> e.n.toString()
-        is NaryExpr.Var -> e.name
-        is NaryExpr.Sum -> "(+ ${e.terms.joinToString(" ") { printNaryExpr(it) }})"
-        is NaryExpr.Product -> "(* ${e.factors.joinToString(" ") { printNaryExpr(it) }})"
-    }
-
-/** The derivative of `(* x y (+ x 3))` w.r.t. `x`: `(+ (* x y) (* y (+ x 3)))`. */
-public fun ex_2_57(): String {
-    val expr = NaryExpr.Product(listOf(NaryExpr.Var("x"), NaryExpr.Var("y"), NaryExpr.Sum(listOf(NaryExpr.Var("x"), NaryExpr.Num(3)))))
-    return printNaryExpr(derivN(expr, "x"))
+/** The derivative tree for the section's three-factor product example. */
+public fun ex_2_57(): NaryExpr {
+    val expression =
+        NaryExpr.Product(
+            listOf(
+                NaryExpr.Var("x"),
+                NaryExpr.Var("y"),
+                NaryExpr.Sum(listOf(NaryExpr.Var("x"), NaryExpr.Num(3))),
+            ),
+        )
+    return derivN(expression, "x")
 }

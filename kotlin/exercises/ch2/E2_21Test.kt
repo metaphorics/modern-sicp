@@ -6,12 +6,15 @@ package sicp.ch2.exercises
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.core.test.Enabled
 import io.kotest.matchers.shouldBe
+import sicp.runtime.Whole
+import sicp.runtime.datumList
+import sicp.runtime.renderDatum
 
 public class E2_21Test :
     FunSpec({
-        test("Exercise 2.21: squareList of (1 2 3 4) is (1 4 9 16)").config(
+        test("Exercise 2.21 renders the squared datum sequence").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            ex_2_21() shouldBe "(1 4 9 16)"
+            ex_2_21() shouldBe renderDatum(datumList(Whole(1L), Whole(4L), Whole(9L), Whole(16L)))
         }
     })

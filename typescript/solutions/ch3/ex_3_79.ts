@@ -5,7 +5,7 @@ import { integralDelayed, type Stream, streamMap2 } from "../../packages/ch3/src
 
 /**
  * Exercise 3.79: the general second-order solver. The statement
- * generalizes `solve-2nd` of exercise 3.78 to any second-order
+ * generalizes `solve2nd` of exercise 3.78 to any second-order
  * equation `d^2y/dt^2 = f(dy/dt, y)`: instead of summing the two
  * scaled taps, the network feeds an arbitrary function of the two
  * state signals into the derivative integrator. The statement's
@@ -19,7 +19,7 @@ import { integralDelayed, type Stream, streamMap2 } from "../../packages/ch3/src
  * statement's order (derivative first, position second). */
 export type SecondDerivative = (dy: number, y: number) => number;
 
-/** The book's generalized `solve-2nd`: the stream of `y` values for
+/** The book's generalized `solve2nd`: the stream of `y` values for
  * `y'' = f(y', y)` from `y(0) = y0` and `y'(0) = dy0`, integrated at
  * step `dt`. */
 export const solveGeneral = (

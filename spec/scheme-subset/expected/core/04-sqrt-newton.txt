@@ -1,4 +1,0 @@
-;; SPDX-License-Identifier: GPL-3.0-only
-;; Adapted from SICP sections 4.1 to 5.2
-3.00009155413138
-1.4142156862745097

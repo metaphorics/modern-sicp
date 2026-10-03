@@ -3,17 +3,17 @@
 
 package sicp.ch3.exercises
 
-import sicp.runtime.VInt
-import sicp.runtime.VSym
-import sicp.runtime.Value
+import sicp.runtime.Datum
+import sicp.runtime.Symbol
+import sicp.runtime.Whole
 
 /**
  * One node of the tree table: a (key, value) record with the two
  * subtree slots, mutable in place like the records of the section.
  */
 public class TreeNode(
-    public val key: Value,
-    public var value: Value,
+    public val key: Datum,
+    public var value: Datum,
     public var left: TreeNode? = null,
     public var right: TreeNode? = null,
 )
@@ -24,12 +24,12 @@ public class TreeNode(
  * between them is a caller error.
  */
 public fun compareKeys(
-    a: Value,
-    b: Value,
+    a: Datum,
+    b: Datum,
 ): Int =
     when {
-        a is VSym && b is VSym -> a.name.compareTo(b.name)
-        a is VInt && b is VInt -> a.n.compareTo(b.n)
+        a is Symbol && b is Symbol -> a.name.compareTo(b.name)
+        a is Whole && b is Whole -> a.value.compareTo(b.value)
         else -> throw IllegalArgumentException("incomparable table keys: $a against $b")
     }
 
@@ -42,7 +42,7 @@ public fun compareKeys(
 public class TreeTable {
     private var root: TreeNode? = null
 
-    public fun lookup(key: Value): Value? {
+    public fun lookup(key: Datum): Datum? {
         var node = root
         while (node != null) {
             val cmp = compareKeys(key, node.key)
@@ -55,8 +55,8 @@ public class TreeTable {
     }
 
     public fun insert(
-        key: Value,
-        value: Value,
+        key: Datum,
+        value: Datum,
     ) {
         val fresh = TreeNode(key, value)
         val head = root

@@ -9,11 +9,11 @@ use std::rc::Rc;
 
 use ch03::sec_3_1::{Reply, make_withdraw};
 use ch03::sec_3_2::{define, int_of, make_withdraw_procedure};
-use sicp_runtime::{Env, SchemeError, Value};
+use sicp_runtime::{Env, SicpError, Value};
 
 /// Renders one answer of a procedure object the way the interactions
 /// print: the value, or the book's error text.
-fn show(answer: &Result<Value, SchemeError>) -> String {
+fn show(answer: &Result<Value, SicpError>) -> String {
     match answer {
         Ok(value) => value.to_string(),
         Err(err) => format!("Error: {err}"),

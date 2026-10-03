@@ -4,59 +4,64 @@
 package sicp.ch3.exercises
 
 import arrow.core.Either
-import sicp.runtime.VNil
-import sicp.runtime.VPair
-import sicp.runtime.Value
-import sicp.runtime.setCdr
+import sicp.runtime.Datum
+import sicp.runtime.Empty
+import sicp.runtime.PairCell
+import sicp.runtime.pair
 
-/** The queue operations of 3.3.2, as an interface: the members the
- * object expression below captures the two local pointers through. */
+/** A message-passing queue implemented by an object over two captured pointers. */
 public interface MessagePassingQueue {
     public fun emptyQueue(): Boolean
 
-    public fun insert(item: Value)
+    public fun insert(item: Datum)
 
-    public fun delete(): Either<QueueError, Value>
+    public fun delete(): Either<QueueError, Datum>
 
-    public fun printQueue(): String
+    public fun items(): List<Datum>
 }
 
 /**
- * The book's make-queue as a message-passing object: the two pointers
- * are local `var`s of this very call, and the returned object's
- * members capture them. No class field holds the state; two calls to
- * `makeQueue` open two frames and so build two independent queues.
+ * The two pointers live in local variables of this call. The returned
+ * object's methods capture them, so separate calls build independent queues.
  */
 public fun makeQueue(): MessagePassingQueue {
-    var front: VPair? = null
-    var rear: VPair? = null
+    var front: PairCell? = null
+    var rear: PairCell? = null
     return object : MessagePassingQueue {
         override fun emptyQueue(): Boolean = front == null
 
-        override fun insert(item: Value) {
-            val cell = VPair(item, VNil)
+        override fun insert(item: Datum) {
+            val cell = pair(item, Empty)
             val tail = rear
             if (tail == null) {
                 front = cell
                 rear = cell
             } else {
-                tail.setCdr(cell)
+                tail.second = cell
                 rear = cell
             }
         }
 
-        override fun delete(): Either<QueueError, Value> {
+        override fun delete(): Either<QueueError, Datum> {
             val head = front
             if (head == null) {
                 return Either.Left(QueueError.EmptyQueue)
             }
-            front = head.cdr as? VPair
+            front = head.second as? PairCell
             if (front == null) {
                 rear = null
             }
-            return Either.Right(head.car)
+            return Either.Right(head.first)
         }
 
-        override fun printQueue(): String = front?.toString() ?: "()"
+        override fun items(): List<Datum> {
+            val result = mutableListOf<Datum>()
+            var cursor = front
+            while (cursor != null) {
+                result.add(cursor.first)
+                cursor = cursor.second as? PairCell
+            }
+            return result
+        }
     }
 }

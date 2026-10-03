@@ -100,14 +100,5 @@ public fun derivPow(
         }
     }
 
-public fun printPowExpr(e: PowExpr): String =
-    when (e) {
-        is PowExpr.Num -> e.n.toString()
-        is PowExpr.Var -> e.name
-        is PowExpr.Sum -> "(+ ${printPowExpr(e.a1)} ${printPowExpr(e.a2)})"
-        is PowExpr.Product -> "(* ${printPowExpr(e.a1)} ${printPowExpr(e.a2)})"
-        is PowExpr.Pow -> "(** ${printPowExpr(e.base)} ${e.n})"
-    }
-
-/** The derivative of `x^3` w.r.t. `x`: `3 x^2`, printed as `(* 3 (** x 2))`. */
-public fun ex_2_56(): String = printPowExpr(derivPow(PowExpr.Pow(PowExpr.Var("x"), 3L), "x"))
+/** The derivative tree for the power-rule sample. */
+public fun ex_2_56(): PowExpr = derivPow(PowExpr.Pow(PowExpr.Var("x"), 3L), "x")

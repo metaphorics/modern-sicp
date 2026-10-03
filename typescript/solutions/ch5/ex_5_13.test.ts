@@ -2,14 +2,16 @@
 // Original exercise
 
 import { describe, expect, it } from "vitest";
-import { derivedRegisterRuns } from "./ex_5_13.js";
+import { gcdController } from "./ex_5_07.ts";
+import { controllerRegisters, ex_5_13 } from "./ex_5_13.ts";
 
-describe("exercise 5.13 registers derived from the controller", () => {
-  it("derives the register list and runs the machine on it", () => {
-    expect(derivedRegisterRuns()).toEqual([
-      "derived registers: a b t",
-      "gcd(206, 40) = 2",
-      "allocated registers: a b t",
-    ]);
+describe("exercise 5.13 the controller decides the registers", () => {
+  it("the derived list names exactly the controller's registers", () => {
+    expect(controllerRegisters(gcdController)).toEqual(["a", "b", "t"]);
+  });
+  it("the derived machine answers like the hand-listed one", () => {
+    const result = ex_5_13(206, 40);
+    expect(result.registers).toEqual(["a", "b", "t"]);
+    expect(result.answer).toBe(2);
   });
 });

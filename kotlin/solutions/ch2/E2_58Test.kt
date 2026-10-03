@@ -8,7 +8,7 @@ import io.kotest.matchers.shouldBe
 
 public class E2_58Test :
     FunSpec({
-        test("part a) parses the book's fully-parenthesized example") {
+        test("part a parses the fully parenthesized infix example") {
             val expected =
                 Expr.Sum(
                     Expr.Var("x"),
@@ -16,7 +16,7 @@ public class E2_58Test :
                 )
             parseFullyParenthesized("(x + (3 * (x + (y + 2))))") shouldBe expected
         }
-        test("part b) applies standard precedence: * binds tighter than +, left-associatively") {
+        test("part b applies multiplication precedence and left-associative addition") {
             val expected =
                 Expr.Sum(
                     Expr.Var("x"),
@@ -24,15 +24,15 @@ public class E2_58Test :
                 )
             parseWithPrecedence("x + 3 * (x + y + 2)") shouldBe expected
         }
-        test("both parsers agree on the differentiated result, despite differently associated sums") {
-            val a = parseFullyParenthesized("(x + (3 * (x + (y + 2))))")
-            val b = parseWithPrecedence("x + 3 * (x + y + 2)")
-            printExpr(deriv(a, "x")) shouldBe printExpr(deriv(b, "x"))
+        test("both parsers produce structurally equal derivatives") {
+            val parenthesized = parseFullyParenthesized("(x + (3 * (x + (y + 2))))")
+            val precedenceAware = parseWithPrecedence("x + 3 * (x + y + 2)")
+            deriv(parenthesized, "x") shouldBe deriv(precedenceAware, "x")
         }
-        test("deriv differentiates the precedence-parsed result without any change") {
-            printExpr(deriv(parseWithPrecedence("x + 3 * (x + y + 2)"), "x")) shouldBe "4"
+        test("differentiation simplifies the precedence-parsed derivative to four") {
+            deriv(parseWithPrecedence("x + 3 * (x + y + 2)"), "x") shouldBe Expr.Num(4)
         }
-        test("ex_2_58 matches the hand-computed derivative") {
-            ex_2_58() shouldBe "4"
+        test("ex_2_58 returns the hand-computed derivative tree") {
+            ex_2_58() shouldBe Expr.Num(4)
         }
     })

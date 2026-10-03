@@ -1,185 +1,63 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 4, exercise 4.77: delayed not and lisp-value filters -- a
-// filter whose variables are unbound becomes a promise carried on the
-// frame and is fulfilled as soon as the bindings exist.
+// Chapter 4, exercise 4.77: filters must wait for their bindings.
 
 package sicp.ch4.solutions
 
-import sicp.ch4.Frame
-import sicp.ch4.QuerySystem
-import sicp.ch4.bindingInFrame
-import sicp.ch4.firstConjunct
-import sicp.ch4.isEmptyConjunction
-import sicp.ch4.isVar
-import sicp.ch4.negatedQuery
-import sicp.ch4.restConjuncts
-import sicp.ch4.singletonStream
-import sicp.runtime.LStream
-import sicp.runtime.VPair
-import sicp.runtime.VSym
-import sicp.runtime.VTagged
-import sicp.runtime.Value
+import sicp.ch4.QAnd
+import sicp.ch4.QGuard
+import sicp.ch4.QNot
+import sicp.ch4.QPattern
+import sicp.ch4.QQuery
+import sicp.ch4.QRule
+import sicp.ch4.QueryDriver
 
-/** The promise: a frame binding whose key is a fresh deferred marker and
- * whose value is the filter's query. */
-public class DeferredFilterSystem : QuerySystem() {
-    private var markerId = 0
-    public var deferredCreated: Long = 0L
-    public var fulfilled: Long = 0L
-    public var unresolved: Long = 0L
+// Exercise 4.77: filters wait for their bindings. A filter over unbound
+// variables decides nothing: the negation's subquery succeeds on the open
+// pattern and drops every frame, and the guard has no amount to compare and
+// drops every frame. `QueryDriver.postponing` carries the filter on the
+// frame as a promise instead: a `not` or guard that meets an unbound
+// variable waits, and runs the moment the last of its variables is bound --
+// as soon as possible, never earlier. The promise leaves a rule body with
+// the frame, so a filter the caller's later conjunct binds still works.
 
-    private fun variablesOf(
-        exp: Value,
-        into: MutableSet<Value>,
-    ) {
-        when {
-            isVar(exp) -> {
-                into.add(exp)
-            }
+// Exercise 4.77: the postponing driver keeps the frames the naive order drops.
 
-            exp is VPair -> {
-                variablesOf(exp.car, into)
-                variablesOf(exp.cdr, into)
-            }
+private val notProgrammer: QQuery = QNot(QPattern(list(sym("job"), v("x"), list(sym("computer"), sym("programmer")))))
+private val supervised: QQuery = QPattern(list(sym("supervisor"), v("x"), v("y")))
+private val salaryOf: QQuery = QPattern(list(sym("salary"), v("who"), v("amount")))
+private val over30000: QQuery = QGuard({ terms -> termLong(terms[0]) > termLong(terms[1]) }, listOf(v("amount"), sym("30000")))
 
-            else -> {}
-        }
-    }
+/** The person is not a programmer, phrased as a rule whose whole body is the filter. */
+private val nonProgrammer: QRule = QRule(list(sym("non-programmer"), v("x")), notProgrammer)
 
-    private fun ready(
-        query: Value,
-        frame: Frame,
-    ): Boolean {
-        val vars = mutableSetOf<Value>()
-        variablesOf(query, vars)
-        return vars.all { bindingInFrame(it, frame) != null }
-    }
-
-    private fun markerKey(kind: String): Value {
-        markerId += 1
-        return VTagged(kind, VSym("d-$markerId"))
-    }
-
-    /** not over an unbound variable defers; over bound variables it is
-     * the stock filter. */
-    public override fun negate(
-        operands: Value,
-        frameStream: LStream<Frame>,
-    ): LStream<Frame> =
-        flatmapFrames(
-            { frame ->
-                val query = negatedQuery(operands)
-                if (ready(query, frame)) {
-                    if (qeval(query, singletonStream(frame)) is LStream.Empty) {
-                        singletonStream(frame)
-                    } else {
-                        LStream.Empty
-                    }
-                } else {
-                    deferredCreated += 1
-                    singletonStream(frame.extended(markerKey("deferred-not"), query))
-                }
-            },
-            frameStream,
-        )
-
-    /** lisp-value defers the same way; the full form re-enters the
-     * underlying filter once its variables exist. */
-    public override fun lispValue(
-        operands: Value,
-        frameStream: LStream<Frame>,
-    ): LStream<Frame> {
-        val fullForm = VPair(VSym("lisp-value"), operands)
-        return flatmapFrames(
-            { frame ->
-                if (ready(fullForm, frame)) {
-                    if (qeval(fullForm, singletonStream(frame)) is LStream.Empty) LStream.Empty else singletonStream(frame)
-                } else {
-                    deferredCreated += 1
-                    singletonStream(frame.extended(markerKey("deferred-lisp"), fullForm))
-                }
-            },
-            frameStream,
-        )
-    }
-
-    /** Fulfillment: run every promise whose variables are now bound; a
-     * fulfilled filter that fails kills the frame. */
-    private fun fulfill(frame: Frame): Frame? {
-        var result = frame
-        var progressed = true
-        while (progressed) {
-            progressed = false
-            for ((key, query) in result.bindings.entries.toList()) {
-                if (key !is VTagged || (key.tag != "deferred-not" && key.tag != "deferred-lisp")) continue
-                if (!ready(query, result)) continue
-                progressed = true
-                fulfilled += 1
-                val stripped = Frame(result.bindings.removing(key))
-                val satisfied = qeval(query, singletonStream(stripped)) !is LStream.Empty
-                // a not marker passes when the subquery fails; a
-                // lisp-value marker passes when it succeeds
-                val passes = if (key.tag == "deferred-not") !satisfied else satisfied
-                if (!passes) return null
-                result = stripped
-            }
-        }
-        return result
-    }
-
-    public override fun conjoin(
-        conjuncts: Value,
-        frameStream: LStream<Frame>,
-    ): LStream<Frame> {
-        if (isEmptyConjunction(conjuncts)) {
-            return flatmapFrames({ f -> fulfill(f)?.let { singletonStream(it) } ?: LStream.Empty }, frameStream)
-        }
-        val next =
-            flatmapFrames({ f -> fulfill(f)?.let { singletonStream(it) } ?: LStream.Empty }, qeval(firstConjunct(conjuncts), frameStream))
-        return conjoin(restConjuncts(conjuncts), next)
-    }
-
-    /** Any promise left on a finished frame stays unresolved. */
-    public fun countUnresolved(frame: Frame) {
-        val pending = frame.bindings.keys.count { it is VTagged && it.tag == "deferred" }
-        unresolved += pending
-    }
-}
-
-public fun deferredSystem(): DeferredFilterSystem {
-    val system = DeferredFilterSystem()
-    system.load(microshaftDatabase)
-    system.load(proseRules)
-    return system
-}
-
-/** The two wrong-answer cases of 4.4.3 with the filters written first,
- * plus the already-bound order for contrast. */
-private fun boundedQuery(
-    system: DeferredFilterSystem,
-    query: String,
-): List<String> =
-    try {
-        answersOf(system, query)
-    } catch (overflow: StackOverflowError) {
-        listOf("the naive order diverges in this engine before answering")
-    }
-
+/** Naive orders that the stock driver fails and the postponing driver
+ * answers, the orders that never needed the wait, a promise that leaves a
+ * rule body, and a filter whose variable nothing binds. */
 public fun delayedFilterDemos(): List<String> {
-    val out = mutableListOf<String>()
-    val system = deferredSystem()
-    val notFirst = "(and (not (job ?x (computer programmer))) (supervisor ?x ?y))"
-    out.add("query: $notFirst")
-    out.addAll(boundedQuery(system, notFirst))
-    out.add("deferred=${system.deferredCreated} fulfilled=${system.fulfilled} unresolved=${system.unresolved}")
-    val lispFirst = "(and (lisp-value > ?amount 30000) (salary ?who ?amount))"
-    out.add("query: $lispFirst")
-    out.addAll(boundedQuery(system, lispFirst))
-    out.add("deferred=${system.deferredCreated} fulfilled=${system.fulfilled} unresolved=${system.unresolved}")
-    val boundOrder = "(and (salary ?who ?amount) (lisp-value > ?amount 30000))"
-    val boundAnswers = boundedQuery(system, boundOrder)
-    out.add("query: $boundOrder -- answers=${boundAnswers.size}")
-    out.addAll(boundAnswers)
-    out.add("deferred=${system.deferredCreated} fulfilled=${system.fulfilled} unresolved=${system.unresolved}")
-    return out
+    val db = microshaftSystem()
+    db.addRule(nonProgrammer)
+    val stock = QueryDriver.streaming(db)
+    val postponing = QueryDriver.postponing(db)
+    val pair = listOf(v("x"), v("y"))
+    val salary = listOf(v("who"), v("amount"))
+    val notFirst = QAnd(listOf(notProgrammer, supervised))
+    val guardFirst = QAnd(listOf(over30000, salaryOf))
+    val viaRule = QAnd(listOf(QPattern(list(sym("non-programmer"), v("x"))), supervised))
+    val noSuchJob = QNot(QPattern(list(sym("job"), v("ghost"), list(sym("no"), sym("such"), sym("job")))))
+    val unbound = QAnd(listOf(supervised, noSuchJob))
+    val unboundAgrees = answerLines(postponing, unbound, pair) == answerLines(stock, unbound, pair)
+    val boundNot = answerLines(stock, QAnd(listOf(supervised, notProgrammer)), pair)
+    val boundGuard = answerLines(stock, QAnd(listOf(salaryOf, over30000)), salary)
+    val postponedNot = answerLines(postponing, notFirst, pair)
+    val postponedGuard = answerLines(postponing, guardFirst, salary)
+    return listOf(
+        "stock not-first: ${answerLines(stock, notFirst, pair).size} line(s), the unbound filter drops everything",
+        "stock lisp-value-first: ${answerLines(stock, guardFirst, salary).size} line(s), the unbound guard drops everything",
+        "postponed not-first: ${postponedNot.size / pair.size} answer(s), the bound order's: ${postponedNot == boundNot}",
+        "postponed lisp-value-first: ${postponedGuard.size / salary.size} answer(s), the bound order's: ${postponedGuard == boundGuard}",
+        "stock rule filter, bound later by the caller: ${answerLines(stock, viaRule, pair).size} line(s)",
+        "postponed rule filter, bound later by the caller: ${answerLines(postponing, viaRule, pair) == boundNot}",
+        "postponed bound order: ${answerLines(postponing, QAnd(listOf(supervised, notProgrammer)), pair) == boundNot}",
+        "a filter no conjunct binds runs at the end, as stock: $unboundAgrees",
+    ) + postponedNot + postponedGuard
 }

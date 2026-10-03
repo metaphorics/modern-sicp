@@ -1,119 +1,98 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 5.5 *)
+   Adapted from SICP section 5.5 *)
 
-(** Exercise 5.37: with [preserving] disabled, every register in every
-    preserved set is saved and restored unconditionally.  Compiling
-    the recursive factorial without the mechanism adds the blind saves
-    of [continue] around every sequence link and of [env], [proc], and
-    [argl] around every operand evaluation, whether or not the second
-    sequence needs them.  The machine pays for each one: the measured
-    pushes grow well past the base 144 at n = 5 while the answer stays
-    120. *)
-
+module Ast = Sicp_common.Ast
+module Check = Sicp_common.Check
+module Eval_error = Sicp_common.Eval_error
 module C = Sicp_ch5.Sec_5_5
+module M = Sicp_ch5.Sec_5_1
 
-let ( >>= ) = Result.bind
+let ( let* ) = Result.bind
+let union a b = a @ List.filter (fun r -> not (List.mem r a)) b
+let difference a b = List.filter (fun r -> not (List.mem r b)) a
 
-let factorial_source =
-  {|(define (factorial n)
-  (if (= n 1)
-      1
-      (* (factorial (- n 1)) n)))|}
+let rec always_preserving regs (first : C.seq) second =
+  match regs with
+  | [] -> C.append_sequences [ first; second ]
+  | r :: rest ->
+    always_preserving
+      rest
+      (C.make_instruction_sequence
+         (union [ r ] first.needs)
+         (difference first.modifies [ r ])
+         ((M.Save r :: first.statements) @ [ M.Restore r ]))
+      second
 ;;
 
-let no_preserving = { C.default_config with preserving_on = false }
-
-(** [compile_count cfg src] is the compilation's statement count and
-    its save/restore count. *)
-let compile_count cfg src =
-  let state = C.new_state () in
-  match Sicp_common.Reader.read src with
-  | Error e -> Error (C.Parse (Sicp_common.Reader.to_string e))
-  | Ok exp ->
-    C.compile cfg state [] exp "val" C.Next
-    >>= fun seq ->
-    let saves =
-      List.length
-        (List.filter
-           (fun s ->
-              (String.length s >= 6 && String.sub s 0 6 = "(save ")
-              || (String.length s >= 9 && String.sub s 0 9 = "(restore "))
-           seq.stmts)
-    in
-    Ok (List.length seq.stmts, saves)
+let rec compile_without_preserving state e target linkage =
+  C.compile_open
+    ~preserving:always_preserving
+    ~self:compile_without_preserving
+    state
+    e
+    target
+    linkage
 ;;
 
-(** [run_monitored cfg n] compiles [factorial] under [cfg], runs it at
-    [n] on a monitored machine, and answers the pushes and depth. *)
-let run_monitored cfg n =
-  let state = C.new_state () in
-  let monitored_driver =
-    ";; branches if flag is set:\n(branch (label external-entry))\n"
-    ^ {|read-eval-print-loop
-  (perform (op initialize-stack))
-  (perform (op prompt-for-input))
-  (assign exp (op read))
-  (assign env (op get-global-environment))
-  (assign continue (label print-result))
-  (goto (label eval-dispatch))
-print-result
-  (perform (op print-stack-statistics))
-  (perform (op announce-output))
-  (perform (op user-print) (reg val))
-  (goto (label read-eval-print-loop))|}
-  in
-  let controller =
-    String.concat
-      "\n"
-      (List.map
-         (fun (nm, text) -> if nm = "driver" then monitored_driver else text)
-         C.eceval_fragments)
-  in
-  C.compile_block ~cfg state factorial_source
-  >>= fun (entry, block) ->
-  C.make_compiled_evaluator
-    ~controller:(controller ^ "\n" ^ block)
-    ~source:(Printf.sprintf "(factorial %d)" n)
-    ~state
-    ()
-  >>= fun m ->
-  C.set_register m "val" (Sicp_ch5.Sec_5_4.Lab entry)
-  >>= fun () ->
-  C.set_flag m true;
-  (match C.start m with
-   | Ok () -> Ok ()
-   | Error (C.Op_failed m2) when m2 = Sicp_ch5.Sec_5_4.input_exhausted -> Ok ()
-   | Error e -> Error e)
-  >>= fun () ->
-  let stats =
-    List.filter
-      (fun l -> String.length l > 14 && String.sub l 0 14 = "(total-pushes")
-      (C.transcript m)
-  in
-  Ok stats
+let stack_operations (s : C.seq) =
+  List.filter
+    (function
+      | M.Save _ | M.Restore _ -> true
+      | _ -> false)
+    s.statements
 ;;
 
-(** [ex_5_37 ()] compares the two compilations: the statement and
-    save/restore counts, and the measured monitored sessions at n = 5. *)
+let rendered s =
+  String.concat "; " (List.map Sec_5_35.statement_to_string (stack_operations s))
+;;
+
+let last_rhs source =
+  let* p = Sec_5_33.program ~filename:"ex_5_37.ml" source in
+  match List.rev (Check.items p) with
+  | Ast.Value_item (_, [ b ]) :: _ -> Ok (p, b.rhs)
+  | _ -> Error (Eval_error.Invalid_form "the unit ends in one binding")
+;;
+
+let factorial_program = Sec_5_33.factorial ^ "\nlet result = factorial 5\n"
+let simple = "let f a b = a + b\nlet g a = a\nlet combination = f (g 1) 2\n"
+
 let ex_5_37 () =
-  compile_count C.default_config factorial_source
-  >>= fun (stmts_with, saves_with) ->
-  compile_count no_preserving factorial_source
-  >>= fun (stmts_without, saves_without) ->
-  run_monitored C.default_config 5
-  >>= fun stats_with ->
-  run_monitored no_preserving 5
-  >>= fun stats_without ->
+  let* _, combination = last_rhs simple in
+  let* p, _ = last_rhs factorial_program in
+  let* factorial_rhs =
+    match Check.items p with
+    | Ast.Value_item (true, [ b ]) :: _ -> Ok b.rhs
+    | _ -> Error (Eval_error.Invalid_form "factorial first")
+  in
+  let with_ = C.compile (C.new_state ()) factorial_rhs "val" C.Next in
+  let without = compile_without_preserving (C.new_state ()) factorial_rhs "val" C.Next in
+  let items = Check.items p in
+  let* run_with = Sec_5_33.run_code (C.compile_program (C.new_state ()) items) in
+  let* run_without =
+    Sec_5_33.run_code
+      (C.compile_program_with ~compile:compile_without_preserving (C.new_state ()) items)
+  in
+  let size (s : C.seq) =
+    Printf.sprintf
+      "%d statements, %d saves/restores"
+      (List.length s.statements)
+      (List.length (stack_operations s))
+  in
+  let run (r : Sec_5_33.run) =
+    Printf.sprintf
+      "answers %s with %d pushes, depth %d"
+      (Sicp_common.Value.to_string r.value)
+      r.pushes
+      r.depth
+  in
   Ok
-    [ Printf.sprintf
-        "with preserving: %d statements, %d saves/restores"
-        stmts_with
-        saves_with
-    ; Printf.sprintf
-        "without: %d statements, %d saves/restores"
-        stmts_without
-        saves_without
-    ; "monitored with: " ^ String.concat " " stats_with
-    ; "monitored without: " ^ String.concat " " stats_without
+    [ "f (g 1) 2 with preserving: "
+      ^ rendered (C.compile (C.new_state ()) combination "val" C.Next)
+    ; "f (g 1) 2 without: "
+      ^ rendered (compile_without_preserving (C.new_state ()) combination "val" C.Next)
+    ; "factorial with preserving: " ^ size with_
+    ; "factorial without: " ^ size without
+    ; "factorial 5 with preserving: " ^ run run_with
+    ; "factorial 5 without: " ^ run run_without
     ]
 ;;

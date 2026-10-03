@@ -9,10 +9,10 @@ mod ex_2_84 {
         add, contents, install_generic_arithmetic, make_complex_from_real_imag, make_rational,
         type_tag,
     };
-    use sicp_runtime::{Key, OpTable, SchemeError, Value};
+    use sicp_runtime::{Key, OpTable, SicpError, Value};
     use std::rc::Rc;
 
-    fn tag_list_key(args: &[Value]) -> Result<Key, SchemeError> {
+    fn tag_list_key(args: &[Value]) -> Result<Key, SicpError> {
         let mut key = Key::Nil;
         for a in args.iter().rev() {
             key = Key::pair(Key::Sym(type_tag(a)?), key);
@@ -28,11 +28,11 @@ mod ex_2_84 {
         clippy::cast_precision_loss,
         reason = "the exact-to-inexact promotion `raise` performs; i128 magnitudes here stay far under f64's mantissa"
     )]
-    fn as_f64(v: &Value) -> Result<f64, SchemeError> {
+    fn as_f64(v: &Value) -> Result<f64, SicpError> {
         match v {
             Value::Int(n) => Ok(*n as f64),
             Value::Real(x) => Ok(*x),
-            other => Err(SchemeError::TypeMismatch(format!("{other}"))),
+            other => Err(SicpError::TypeMismatch(format!("{other}"))),
         }
     }
 
@@ -41,14 +41,13 @@ mod ex_2_84 {
     pub fn install_raise(table: &OpTable) {
         table.put(
             Key::sym("raise"),
-            one_tag("scheme-number"),
+            one_tag("integer"),
             Rc::new(|args: &[Value]| match &args[0] {
                 Value::Int(n) => Ok(Value::tagged(
                     "rational",
                     Value::Pair(sicp_runtime::cons_cell(Value::Int(*n), Value::Int(1))),
                 )),
-                Value::Real(_) => Ok(Value::tagged("real", args[0].clone())),
-                other => Err(SchemeError::TypeMismatch(format!("{other}"))),
+                other => Err(SicpError::TypeMismatch(format!("{other}"))),
             }),
         );
         table.put(
@@ -56,15 +55,15 @@ mod ex_2_84 {
             one_tag("rational"),
             Rc::new(|args: &[Value]| {
                 let Value::Pair(cell) = &args[0] else {
-                    return Err(SchemeError::TypeMismatch("rational".into()));
+                    return Err(SicpError::TypeMismatch("rational".into()));
                 };
                 let (Value::Int(n), Value::Int(d)) =
                     (cell.car.borrow().clone(), cell.cdr.borrow().clone())
                 else {
-                    return Err(SchemeError::TypeMismatch("rational".into()));
+                    return Err(SicpError::TypeMismatch("rational".into()));
                 };
                 if d == 0 {
-                    return Err(SchemeError::DivisionByZero);
+                    return Err(SicpError::DivisionByZero);
                 }
                 #[expect(
                     clippy::cast_precision_loss,
@@ -101,13 +100,9 @@ mod ex_2_84 {
 
     /// The exercise's `apply_generic`: on a miss, raise the arguments
     /// successively until the tags agree or the tower runs out.
-    fn apply_generic_raise(
-        table: &OpTable,
-        op: &str,
-        args: &[Value],
-    ) -> Result<Value, SchemeError> {
+    fn apply_generic_raise(table: &OpTable, op: &str, args: &[Value]) -> Result<Value, SicpError> {
         if let Some(proc) = table.get(&Key::sym(op), &tag_list_key(args)?) {
-            let bare: Result<Vec<Value>, SchemeError> = args.iter().map(contents).collect();
+            let bare: Result<Vec<Value>, SicpError> = args.iter().map(contents).collect();
             return proc(&bare?);
         }
         if let [a1, a2] = args {
@@ -131,14 +126,14 @@ mod ex_2_84 {
             if tag_list_key(&raised)? == tag_list_key(args)?
                 || type_tag(&raised[0])? != type_tag(&raised[1])?
             {
-                return Err(SchemeError::UserRaised {
+                return Err(SicpError::UserRaised {
                     message: "No method for these types".into(),
                     irritants: vec![Value::sym(op)],
                 });
             }
             return apply_generic_raise(table, op, &raised);
         }
-        Err(SchemeError::UserRaised {
+        Err(SicpError::UserRaised {
             message: "No method for these types".into(),
             irritants: vec![Value::sym(op)],
         })
@@ -146,7 +141,7 @@ mod ex_2_84 {
 
     /// Mixed arithmetic: integer plus complex, rational plus complex,
     /// and a rational raised against a real.
-    pub fn ex_2_84() -> Result<(String, String), SchemeError> {
+    pub fn ex_2_84() -> Result<(String, String), SicpError> {
         let table = OpTable::new();
         install_generic_arithmetic(&table)?;
         install_raise(&table);

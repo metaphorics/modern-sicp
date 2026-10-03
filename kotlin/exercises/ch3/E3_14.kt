@@ -3,14 +3,12 @@
 
 package sicp.ch3.exercises
 
+import sicp.runtime.PairCell
 import sicp.runtime.PendingSolution
-import sicp.runtime.VPair
 
 /**
- * Exercise 3.14: `mystery` walks a chain, holding the old `cdr` in a
- * temporary while it repoints each pair's `cdr` at the cells it has
- * already passed. The question is what `mystery` does in general, and
- * what prints as `v` and `w` after `val w = mystery(v)` for
- * `v = (a b c d)`.
+ * Exercise 3.14: `mystery` saves each current second field, points it at
+ * the reversed prefix, and advances. Determine the resulting datum graphs
+ * and which original pair cells the two references share.
  */
-public fun mystery(x: VPair): VPair = throw PendingSolution()
+public fun mystery(x: PairCell): PairCell = throw PendingSolution()

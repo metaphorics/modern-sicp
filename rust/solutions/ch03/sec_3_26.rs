@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::rc::Rc;
 
-use sicp_runtime::{SchemeError, Value};
+use sicp_runtime::{SicpError, Value};
 
 /// One node of the tree table: the key, its current value, and the two
 /// subtrees. Values sit behind a `RefCell` so an insertion that finds
@@ -153,7 +153,7 @@ fn walk(node: Option<&Rc<TreeNode>>, out: &mut Vec<Value>) {
 }
 
 mod ex_3_26 {
-    use super::{SchemeError, Tree, Value};
+    use super::{SicpError, Tree, Value};
 
     /// Exercise 3.26: a table as a binary tree ordered by key
     ///
@@ -162,17 +162,17 @@ mod ex_3_26 {
     ///
     /// # Errors
     /// Reraises the lookup failure when a stored key goes missing.
-    pub fn ex_3_26() -> Result<(Vec<i128>, Vec<i128>), SchemeError> {
+    pub fn ex_3_26() -> Result<(Vec<i128>, Vec<i128>), SicpError> {
         let table = Tree::new();
         for (key, value) in [(5, 50), (3, 30), (8, 80), (1, 10), (4, 40)] {
             table.insert(Value::int(key), Value::int(value));
         }
         table.insert(Value::int(3), Value::int(33));
 
-        let read = |key: i128| -> Result<i128, SchemeError> {
+        let read = |key: i128| -> Result<i128, SicpError> {
             match table.lookup(&Value::int(key)) {
                 Some(Value::Int(n)) => Ok(n),
-                _ => Err(SchemeError::TypeMismatch(format!("missing key {key}"))),
+                _ => Err(SicpError::TypeMismatch(format!("missing key {key}"))),
             }
         };
         let values = vec![read(1)?, read(3)?, read(4)?, read(5)?, read(8)?];

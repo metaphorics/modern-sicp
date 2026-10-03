@@ -2,10 +2,11 @@
 // Original exercise
 
 /**
- * Exercise 4.20: letrec as a derived expression. Part (a) transforms a
- * letrec into a let that pre-binds the names to *unassigned* and then
- * assigns them with set!. Part (b) asks what is loose about Louis's claim
- * that a plain let can replace letrec.
+ * Exercise 4.20: recursive local bindings as a derived expression. Part (a)
+ * transforms a recursive binding block into a local block that pre-binds the
+ * names to *unassigned* and then assigns them with TypeScript assignment.
+ * Part (b) asks what is loose about Louis's claim that a plain local binding
+ * can replace recursive bindings.
  */
 export class PendingSolution extends Error {
   constructor() {
@@ -14,15 +15,16 @@ export class PendingSolution extends Error {
   }
 }
 
-/** The book's f written with letrec: mutually recursive local bindings. */
-export const letrecSource = `(define (f x)
-  (letrec ((even?
-            (lambda (n)
-              (if (= n 0) true (odd? (- n 1)))))
-           (odd?
-            (lambda (n)
-              (if (= n 0) false (even? (- n 1))))))
-    (even? x)))`;
+/** Typed mutually recursive binding premise. */
+export type RecursiveBinding = {
+  readonly name: "even" | "odd";
+  readonly base: boolean;
+  readonly calls: "odd" | "even";
+};
+export const recursiveBindings: readonly RecursiveBinding[] = [
+  { name: "even", base: true, calls: "odd" },
+  { name: "odd", base: false, calls: "even" },
+];
 
 export function ex_4_20(): string {
   throw new PendingSolution();

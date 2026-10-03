@@ -33,14 +33,14 @@
             <rdf:li>constructor</rdf:li>
             <rdf:li>selector</rdf:li>
             <rdf:li>pair</rdf:li>
-            <rdf:li>add-rat</rdf:li>
-            <rdf:li>sub-rat</rdf:li>
-            <rdf:li>make-rat</rdf:li>
-            <rdf:li>numer</rdf:li>
-            <rdf:li>denom</rdf:li>
-            <rdf:li>cons</rdf:li>
-            <rdf:li>car</rdf:li>
-            <rdf:li>cdr</rdf:li>
+            <rdf:li>addition</rdf:li>
+            <rdf:li>subtraction</rdf:li>
+            <rdf:li>make-rational</rdf:li>
+            <rdf:li>numerator</rdf:li>
+            <rdf:li>denominator</rdf:li>
+            <rdf:li>pairing</rdf:li>
+            <rdf:li>first</rdf:li>
+            <rdf:li>rest</rdf:li>
           </rdf:Bag>
         </dc:subject>
       </cc:Work>
@@ -64,11 +64,11 @@
   <g transform="translate(-84.1875,-77.71875)" id="layer3" style="display:inline">
     <text x="366.64755" y="109.84668" id="text6868" xml:space="preserve" style="font-size:24.8181572px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-align:center;line-height:125%;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#383838;fill-opacity:1;stroke:none;font-family:Linux Biolinum O;-inkscape-font-specification:Linux Biolinum O"><tspan x="366.64755" y="109.84668" id="tspan6870" style="font-size:20px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:Inconsolata LGC;-inkscape-font-specification:Inconsolata LGC">Programs that use rational numbers</tspan></text>
     <text x="365.82935" y="166.94888" id="text6872" xml:space="preserve" style="font-size:24.8181572px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-align:center;line-height:125%;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#383838;fill-opacity:1;stroke:none;font-family:Linux Biolinum O;-inkscape-font-specification:Linux Biolinum O"><tspan x="365.82935" y="166.94888" id="tspan6874">Rational numbers in problem domain</tspan></text>
-    <text x="367.73843" y="224.22156" id="text6876" xml:space="preserve" style="font-size:24.8181572px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-align:center;line-height:125%;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#383838;fill-opacity:1;stroke:none;font-family:Linux Biolinum O;-inkscape-font-specification:Linux Biolinum O"><tspan x="367.73843" y="224.22156" id="tspan6878" style="font-size:20px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:Inconsolata LGC;-inkscape-font-specification:Inconsolata LGC">add-rat  sub-rat  ...</tspan></text>
+    <text x="367.73843" y="224.22156" id="text6876" xml:space="preserve" style="font-size:24.8181572px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-align:center;line-height:125%;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#383838;fill-opacity:1;stroke:none;font-family:Linux Biolinum O;-inkscape-font-specification:Linux Biolinum O"><tspan x="367.73843" y="224.22156" id="tspan6878" style="font-size:20px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:Inconsolata LGC;-inkscape-font-specification:Inconsolata LGC">+ − × ÷ ...</tspan></text>
     <text x="365.82935" y="281.49423" id="text6880" xml:space="preserve" style="font-size:24.8181572px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-align:center;line-height:125%;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#383838;fill-opacity:1;stroke:none;font-family:Linux Biolinum O;-inkscape-font-specification:Linux Biolinum O"><tspan x="365.82935" y="281.49423" id="tspan6882">Rational numbers as numerators and denominators</tspan></text>
-    <text x="365.82935" y="338.76691" id="text6884" xml:space="preserve" style="font-size:24.8181572px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-align:center;line-height:125%;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#383838;fill-opacity:1;stroke:none;font-family:Linux Biolinum O;-inkscape-font-specification:Linux Biolinum O"><tspan x="365.82935" y="338.76691" id="tspan6886" style="font-size:20px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:Inconsolata LGC;-inkscape-font-specification:Inconsolata LGC">make-rat  numer  denom</tspan></text>
+    <text x="365.82935" y="338.76691" id="text6884" xml:space="preserve" style="font-size:24.8181572px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-align:center;line-height:125%;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#383838;fill-opacity:1;stroke:none;font-family:Linux Biolinum O;-inkscape-font-specification:Linux Biolinum O"><tspan x="365.82935" y="338.76691" id="tspan6886" style="font-size:20px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:Inconsolata LGC;-inkscape-font-specification:Inconsolata LGC">make numerator denominator</tspan></text>
     <text x="365.82935" y="396.03958" id="text6888" xml:space="preserve" style="font-size:24.8181572px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-align:center;line-height:125%;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#383838;fill-opacity:1;stroke:none;font-family:Linux Biolinum O;-inkscape-font-specification:Linux Biolinum O"><tspan x="365.82935" y="396.03958" id="tspan6890">Rational numbers as pairs</tspan></text>
-    <text x="365.82935" y="453.31226" id="text6892" xml:space="preserve" style="font-size:24.8181572px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-align:center;line-height:125%;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#383838;fill-opacity:1;stroke:none;font-family:Linux Biolinum O;-inkscape-font-specification:Linux Biolinum O"><tspan x="365.82935" y="453.31226" id="tspan6894" style="font-size:20px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:Inconsolata LGC;-inkscape-font-specification:Inconsolata LGC">cons  car  cdr</tspan></text>
+    <text x="365.82935" y="453.31226" id="text6892" xml:space="preserve" style="font-size:24.8181572px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-align:center;line-height:125%;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#383838;fill-opacity:1;stroke:none;font-family:Linux Biolinum O;-inkscape-font-specification:Linux Biolinum O"><tspan x="365.82935" y="453.31226" id="tspan6894" style="font-size:20px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:Inconsolata LGC;-inkscape-font-specification:Inconsolata LGC">pair first rest</tspan></text>
     <text x="365.82935" y="510.58493" id="text6896" xml:space="preserve" style="font-size:24.8181572px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-align:center;line-height:125%;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#383838;fill-opacity:1;stroke:none;font-family:Linux Biolinum O;-inkscape-font-specification:Linux Biolinum O"><tspan x="365.82935" y="510.58493" id="tspan6898">However pairs are implemented</tspan></text>
   </g>
   <g transform="translate(-84.1875,-77.71875)" id="layer5" style="display:inline">

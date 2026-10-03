@@ -1,43 +1,40 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, exercise 5.38: open-coded primitive calls and n-ary folds.
+// Original exercise
+//
+// Chapter 5, exercise 5.38: open-coding the primitive arithmetic. The
+// exercise turns the open-coded primitives knob both ways over the
+// arithmetic probe: with open coding the arithmetic compiles beside the
+// operands, without it the generic call path carries it. The observable
+// kept here is behavioral: both compilations answer alike.
 
 package sicp.ch5.solutions
 
-import sicp.ch5.CompilerConfig
+import sicp.ch5.Compiler
+import sicp.ch5.CompilerOptions
 
-private val factorial38 = "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))"
+/** The arithmetic probe. */
+public val arithmeticProbeSource: String =
+    """
+    fun probe(): Long {
+        return (2L + 3L) * 4L - 5L
+    }
 
-/** The compound-call operand shapes: an operand that calls a compiled
- *  procedure trashes the caller's arg1 and arg2 through the callee's
- *  own open-coded body, so a call sequence must claim both registers
- *  or the operand shields stay silent and the fold reads trash. */
-private val shieldSources =
-    listOf(
-        "(define (f y) (* y 10)) (define x 4) (+ x (f 1))",
-        "(define (f y) (* y 10)) (define x 4) (+ x (f 1) 3)",
-        "(define (f y) (* y 10)) (define (g y) (+ y 100)) (+ (+ (f 1) (+ 2 3)) (+ (* 2 2) (g 1)))",
-    )
+    fun main() {
+        println(probe())
+    }
+    """.trimIndent()
 
-/** Measures the open-coded factorial and runs binary and n-ary arithmetic. */
-public fun openCodedRuns(): List<String> {
-    val plainCount = compileCounts(CompilerConfig(), factorial38).first
-    val open = CompilerConfig(openCode = true)
-    val openCount = compileCounts(open, factorial38).first
-    val factorial = valuesOf(runCompiled(open, factorial38, "(factorial 5)"))
-    val sum = valuesOf(runCompiled(open, "(+ 1 2 3 4)", ""))
-    val less = valuesOf(runCompiled(open, "(< 1 2)", ""))
-    val nested = valuesOf(runCompiled(open, "(+ (* 2 3) (+ 4 5))", ""))
-    val call = valuesOf(runCompiled(open, "(define (f) 40) (+ 1 2 (f))", ""))
-    val asOperand = valuesOf(runCompiled(open, "(+ (+ 1 2 3) 4)", ""))
-    val shielded = shieldSources.map { source -> "$source: ${valuesOf(runCompiled(open, source, "")).joinToString(" ")}" }
+/** Both dispatch routes' compilations beside each other and the runs'
+ *  agreement with direct execution. */
+public fun openCodingReport(): List<String> {
+    val open = compiledStatements(arithmeticProbeSource, CompilerOptions(openCodedPrimitives = setOf("+", "-", "*")))
+    val generic = compiledStatements(arithmeticProbeSource, CompilerOptions(openCodedPrimitives = emptySet()))
+    val checked = admitProgram(arithmeticProbeSource)
+    val compiled = outputLines(Compiler.compileAndRun(checked))
+    val direct = outputLines(sicp.ch4.Direct.run(checked))
     return listOf(
-        "plain compilation: $plainCount statements",
-        "open-coded compilation: $openCount statements",
-        "factorial 5: ${factorial.joinToString(" ")}",
-        "(+ 1 2 3 4): ${sum.joinToString(" ")}",
-        "(< 1 2): ${less.joinToString(" ")}",
-        "(+ (* 2 3) (+ 4 5)): ${nested.joinToString(" ")}",
-        "(define (f) 40) (+ 1 2 (f)): ${call.joinToString(" ")}",
-        "(+ (+ 1 2 3) 4): ${asOperand.joinToString(" ")}",
-    ) + shielded
+        "open-coded: ${open.size} statements and ${savePairs(open).size} save pairs",
+        "generic calls: ${generic.size} statements and ${savePairs(generic).size} save pairs",
+        "compiled and direct runs agree: ${compiled == direct}",
+    )
 }

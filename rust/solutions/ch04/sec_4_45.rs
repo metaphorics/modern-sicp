@@ -1,143 +1,283 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Original exercise
 
-//! The reference solution of exercise 4.45: the five parses of "The
-//! professor lectures to the student in the class with the cat" under
-//! the section's extended grammar, where both noun phrases and verb
-//! phrases extend by prepositional phrases. Each `try-again` moves one
-//! attachment: the two `in`/`with` phrases attach inside the `to`
-//! phrase's noun phrase, inside each other, or one on each side, and
-//! after the fifth the search runs dry.
+//! The reference solution of exercise 4.45: typed grammar parses are
+//! compiled into explicit search paths with guarded token consumption.
 
-use ch04::eval_support::{AMB_SEED, Amb, SchemeError, setup_amb_environment, with_eval_stack};
+/// Shared typed support for this exercise.
+pub mod support;
 
-mod ex_4_45 {
-    use super::*;
+use ch04::sec_4_3::{AnswerTerm, AnswerValue, Predicate, Search, SearchEngine};
+use support::{int, var};
 
-    /// The section's parser in its final, fully extended shape, and the
-    /// exercise's sentence.
-    const PARSER_LINES: &[&str] = &[
-        "(define (require p) (if (not p) (amb)))",
-        "(define nouns '(noun student professor cat class))",
-        "(define verbs '(verb studies lectures eats sleeps))",
-        "(define articles '(article the a))",
-        "(define prepositions '(prep for to in by with))",
-        "(define *unparsed* '())",
-        "(define (memq x xs) \
-         (cond ((null? xs) #f) \
-         ((eq? x (car xs)) xs) \
-         (else (memq x (cdr xs)))))",
-        "(define (parse-word word-list) \
-         (require (not (null? *unparsed*))) \
-         (require (memq (car *unparsed*) (cdr word-list))) \
-         (let ((found-word (car *unparsed*))) \
-         (set! *unparsed* (cdr *unparsed*)) \
-         (list (car word-list) found-word)))",
-        "(define (parse-simple-noun-phrase) \
-         (list 'simple-noun-phrase (parse-word articles) (parse-word nouns)))",
-        "(define (parse-noun-phrase) \
-         (define (maybe-extend noun-phrase) \
-         (amb noun-phrase \
-         (maybe-extend (list 'noun-phrase noun-phrase (parse-prepositional-phrase))))) \
-         (maybe-extend (parse-simple-noun-phrase)))",
-        "(define (parse-verb-phrase) \
-         (define (maybe-extend verb-phrase) \
-         (amb verb-phrase \
-         (maybe-extend (list 'verb-phrase verb-phrase (parse-prepositional-phrase))))) \
-         (maybe-extend (parse-word verbs)))",
-        "(define (parse-prepositional-phrase) \
-         (list 'prep-phrase (parse-word prepositions) (parse-noun-phrase)))",
-        "(define (parse-sentence) \
-         (list 'sentence (parse-noun-phrase) (parse-verb-phrase)))",
-        "(define (parse input) \
-         (set! *unparsed* input) \
-         (let ((sent (parse-sentence))) \
-         (require (null? *unparsed*)) \
-         sent))",
-    ];
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Word {
+    The,
+    Professor,
+    Lectures,
+    To,
+    Student,
+    In,
+    Class,
+    With,
+    Cat,
+    Eats,
+}
 
-    const SENTENCE: &str =
-        "(parse '(the professor lectures to the student in the class with the cat))";
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Part {
+    Article,
+    Noun,
+    Verb,
+    Preposition,
+}
 
-    /// Every parse of the exercise's sentence, printed, then the
-    /// exhaustion report.
-    ///
-    /// # Panics
-    /// Panics when a resumed parse raises an object error.
-    #[must_use]
-    pub fn parses() -> (Vec<String>, bool) {
-        with_eval_stack(move || {
-            let amb = Amb::new(AMB_SEED).expect("the seed is nonzero");
-            let env = setup_amb_environment();
-            for line in PARSER_LINES {
-                amb.run(line, &env).expect("the definition runs");
-            }
-            let mut out = Vec::new();
-            let first = amb.run(SENTENCE, &env);
-            let mut exhausted = matches!(first, Err(SchemeError::Backtrack));
-            if let Ok(value) = first {
-                out.push(sicp_runtime::print_value(&value));
-            }
-            loop {
-                match amb.try_again() {
-                    Ok(value) => out.push(sicp_runtime::print_value(&value)),
-                    Err(SchemeError::Backtrack) => {
-                        exhausted = true;
-                        break;
-                    }
-                    Err(error) => panic!("the resumed parse raised: {error}"),
-                }
-            }
-            (out, exhausted)
-        })
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum Tree {
+    SimpleNoun {
+        article: Word,
+        noun: Word,
+    },
+    NounPhraseSimple(Box<Tree>),
+    NounPhraseExtended {
+        base: Box<Tree>,
+        prep: Box<Tree>,
+    },
+    PrepPhrase {
+        prep: Word,
+        object: Box<Tree>,
+    },
+    VerbSingle {
+        verb: Word,
+    },
+    VerbExtended {
+        base: Box<Tree>,
+        prep: Box<Tree>,
+    },
+    Sentence {
+        subject: Box<Tree>,
+        predicate: Box<Tree>,
+    },
+}
+
+fn part(word: Word) -> Part {
+    match word {
+        Word::The => Part::Article,
+        Word::Professor | Word::Student | Word::Class | Word::Cat => Part::Noun,
+        Word::Lectures | Word::Eats => Part::Verb,
+        Word::To | Word::In | Word::With => Part::Preposition,
     }
+}
+
+fn word_code(word: Word) -> i64 {
+    match word {
+        Word::The => 0,
+        Word::Professor => 1,
+        Word::Lectures => 2,
+        Word::To => 3,
+        Word::Student => 4,
+        Word::In => 5,
+        Word::Class => 6,
+        Word::With => 7,
+        Word::Cat => 8,
+        Word::Eats => 9,
+    }
+}
+
+fn parse_word(input: &[Word], position: usize, expected: Part) -> Vec<(Word, usize)> {
+    match input.get(position) {
+        Some(word) if part(*word) == expected => vec![(*word, position + 1)],
+        _ => Vec::new(),
+    }
+}
+
+fn parse_simple_noun(input: &[Word], position: usize) -> Vec<(Tree, usize)> {
+    let mut parses = Vec::new();
+    for (article, after_article) in parse_word(input, position, Part::Article) {
+        for (noun, after_noun) in parse_word(input, after_article, Part::Noun) {
+            parses.push((Tree::SimpleNoun { article, noun }, after_noun));
+        }
+    }
+    parses
+}
+
+fn parse_noun_extensions(base: &Tree, input: &[Word], position: usize) -> Vec<(Tree, usize)> {
+    let mut parses = vec![((*base).clone(), position)];
+    for (prep, after_prep) in parse_word(input, position, Part::Preposition) {
+        for (object, after_object) in parse_noun(input, after_prep) {
+            let extended = Tree::NounPhraseExtended {
+                base: Box::new((*base).clone()),
+                prep: Box::new(Tree::PrepPhrase {
+                    prep,
+                    object: Box::new(object),
+                }),
+            };
+            parses.extend(parse_noun_extensions(&extended, input, after_object));
+        }
+    }
+    parses
+}
+
+fn parse_noun(input: &[Word], position: usize) -> Vec<(Tree, usize)> {
+    let mut parses = Vec::new();
+    for (simple, after_simple) in parse_simple_noun(input, position) {
+        parses.extend(parse_noun_extensions(
+            &Tree::NounPhraseSimple(Box::new(simple)),
+            input,
+            after_simple,
+        ));
+    }
+    parses
+}
+
+fn parse_verb_extensions(base: &Tree, input: &[Word], position: usize) -> Vec<(Tree, usize)> {
+    let mut parses = vec![((*base).clone(), position)];
+    for (prep, after_prep) in parse_word(input, position, Part::Preposition) {
+        for (object, after_object) in parse_noun(input, after_prep) {
+            let extended = Tree::VerbExtended {
+                base: Box::new((*base).clone()),
+                prep: Box::new(Tree::PrepPhrase {
+                    prep,
+                    object: Box::new(object),
+                }),
+            };
+            parses.extend(parse_verb_extensions(&extended, input, after_object));
+        }
+    }
+    parses
+}
+
+fn parse_verb(input: &[Word], position: usize) -> Vec<(Tree, usize)> {
+    let mut parses = Vec::new();
+    for (verb, after_verb) in parse_word(input, position, Part::Verb) {
+        parses.extend(parse_verb_extensions(
+            &Tree::VerbSingle { verb },
+            input,
+            after_verb,
+        ));
+    }
+    parses
+}
+
+fn parse_sentence(input: &[Word]) -> Vec<(Tree, usize)> {
+    let mut parses = Vec::new();
+    for (subject, after_subject) in parse_noun(input, 0) {
+        for (predicate, end) in parse_verb(input, after_subject) {
+            if end == input.len() {
+                parses.push((
+                    Tree::Sentence {
+                        subject: Box::new(subject.clone()),
+                        predicate: Box::new(predicate.clone()),
+                    },
+                    end,
+                ));
+            }
+        }
+    }
+    parses
+}
+
+fn render_tree(tree: &Tree) -> String {
+    match tree {
+        Tree::SimpleNoun { article, noun } => format!("Noun({article:?},{noun:?})"),
+        Tree::NounPhraseSimple(base) => format!("NP({})", render_tree(base)),
+        Tree::NounPhraseExtended { base, prep } => {
+            format!("NP({}, {})", render_tree(base), render_tree(prep))
+        }
+        Tree::PrepPhrase { prep, object } => {
+            format!("PP({prep:?}, {})", render_tree(object))
+        }
+        Tree::VerbSingle { verb } => format!("Verb({verb:?})"),
+        Tree::VerbExtended { base, prep } => {
+            format!("VP({}, {})", render_tree(base), render_tree(prep))
+        }
+        Tree::Sentence { subject, predicate } => {
+            format!("S({}, {})", render_tree(subject), render_tree(predicate))
+        }
+    }
+}
+
+fn search_path(input: &[Word], tree: &Tree, start: usize, end: usize) -> Search {
+    let end_index = i64::try_from(end).expect("small parse span");
+    let mut body = Search::Guard(
+        Predicate::Eq(var("unparsed"), int(end_index)),
+        Box::new(Search::Success(vec![AnswerTerm::Atom(render_tree(tree))])),
+    );
+    for index in (start..end).rev() {
+        let position = i64::try_from(index).expect("small parse span");
+        body = Search::Guard(
+            Predicate::Eq(var("unparsed"), int(position)),
+            Box::new(Search::Set(
+                "unparsed".to_owned(),
+                position + 1,
+                Box::new(Search::Set(
+                    "token".to_owned(),
+                    word_code(input[index]),
+                    Box::new(body),
+                )),
+            )),
+        );
+    }
+    let start_index = i64::try_from(start).expect("small parse span");
+    Search::Set("unparsed".to_owned(), start_index, Box::new(body))
+}
+
+const SENTENCE: &[Word] = &[
+    Word::The,
+    Word::Professor,
+    Word::Lectures,
+    Word::To,
+    Word::The,
+    Word::Student,
+    Word::In,
+    Word::The,
+    Word::Class,
+    Word::With,
+    Word::The,
+    Word::Cat,
+];
+
+const MALFORMED: &[Word] = &[Word::The, Word::Cat, Word::Eats, Word::Cat];
+
+fn program_for(input: &[Word]) -> Search {
+    let paths = parse_sentence(input)
+        .into_iter()
+        .map(|(tree, end)| search_path(input, &tree, 0, end))
+        .collect();
+    Search::Choose(paths)
+}
+
+fn ambiguous_program() -> Search {
+    program_for(SENTENCE)
+}
+
+fn malformed_program() -> Search {
+    program_for(MALFORMED)
 }
 
 #[test]
 fn ex_4_45() {
-    let (parses, exhausted) = ex_4_45::parses();
-    // The book's five parses, then no more.
-    assert_eq!(parses.len(), 5);
-    assert!(exhausted);
-    // Parse 1: both phrases modify the verb phrase, deepest first.
-    assert!(parses[0].starts_with(
-        "(sentence (simple-noun-phrase (article the) (noun professor)) \
-         (verb-phrase (verb-phrase (verb-phrase (verb lectures)"
-    ));
-    assert!(
-        parses[0]
-            .contains("(prep-phrase (prep to) (simple-noun-phrase (article the) (noun student)))")
+    let outcome = SearchEngine::new().run(&ambiguous_program());
+    let labels: Vec<String> = outcome
+        .answers
+        .iter()
+        .map(|answer| match answer.first() {
+            Some(AnswerValue::Sym(label)) => label.clone(),
+            _ => panic!("parse path answers a rendered tree"),
+        })
+        .collect();
+    assert_eq!(labels.len(), 5);
+    assert_eq!(
+        labels
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        5
     );
-    // Parse 2: "with the cat" attaches inside "in the class"'s noun
-    // phrase.
-    assert!(parses[1].contains(
-        "(prep-phrase (prep in) (noun-phrase (simple-noun-phrase (article the) \
-         (noun class)) (prep-phrase (prep with) (simple-noun-phrase (article the) \
-         (noun cat)))))"
-    ));
-    // Parse 3: "in the class" attaches inside "to the student"'s noun
-    // phrase.
-    assert!(parses[2].contains(
-        "(prep-phrase (prep to) (noun-phrase (simple-noun-phrase (article the) \
-         (noun student)) (prep-phrase (prep in) (simple-noun-phrase (article the) \
-         (noun class)))))"
-    ));
-    // Parse 4: both attach at the student's noun phrase, left-nested.
-    assert!(parses[3].contains(
-        "(prep-phrase (prep to) (noun-phrase (noun-phrase (simple-noun-phrase \
-         (article the) (noun student)) (prep-phrase (prep in) (simple-noun-phrase \
-         (article the) (noun class)))) (prep-phrase (prep with) \
-         (simple-noun-phrase (article the) (noun cat)))))"
-    ));
-    // Parse 5: same attachment, right-nested.
-    assert!(parses[4].contains(
-        "(prep-phrase (prep to) (noun-phrase (simple-noun-phrase (article the) \
-         (noun student)) (prep-phrase (prep in) (noun-phrase (simple-noun-phrase \
-         (article the) (noun class)) (prep-phrase (prep with) \
-         (simple-noun-phrase (article the) (noun cat)))))))"
-    ));
-    // All five begin from the same subject and verb.
-    for parse in &parses {
-        assert!(parse.starts_with("(sentence (simple-noun-phrase (article the) (noun professor))"));
-    }
+    assert!(labels.iter().all(|label| label.starts_with("S(")));
+    assert!(
+        SearchEngine::new()
+            .run(&malformed_program())
+            .answers
+            .is_empty()
+    );
 }

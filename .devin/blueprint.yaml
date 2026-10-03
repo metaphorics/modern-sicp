@@ -1,0 +1,27 @@
+# https://docs.devin.ai/onboard-devin/environment-yaml
+maintenance: |
+  pnpm -C typescript install
+knowledge:
+  - name: test
+    contents: |
+      # Rust: cargo test --workspace (or -p ch04 -p ch05 -p sicp-runtime)
+      # TypeScript: pnpm vitest run packages/ch4 packages/ch5
+      # Conformance: uv run --project tools host_conformance_check.py --edition <lang> (uv is NOT installed locally; run via CI or install astral.sh/uv)
+      # OCaml/kotlin full gates are not runnable locally (no ocamlc/dune/opam; gradle dep resolution 429s on Maven Central)
+  - name: lint
+    contents: |
+      # cargo clippy --workspace; cargo fmt --check
+      # pnpm exec tsc -b packages/ch4 packages/ch5 (typecheck, emits .tsbuildinfo - do not commit)
+  - name: kotlin-fallback-verifier
+    contents: |
+      # Frontend-only Kotlin check when gradle can't resolve deps (Maven Central 429s):
+      # 1) fetch deps via https://cache-redirector.jetbrains.com/maven-central/... (arrow-core-jvm-2.2.3, kotlinx-collections-immutable-jvm-0.5.2)
+      # 2) L=$HOME/.gradle/wrapper/dists/gradle-9.7.0-bin/*/gradle-9.7.0/lib
+      #    java -cp "$L/kotlin-compiler-embeddable-2.4.0.jar:$L/kotlin-stdlib-2.4.0.jar:$L/kotlin-reflect-2.4.0.jar:$L/kotlinx-coroutines-core-jvm-1.10.2.jar" \
+      #      org.jetbrains.kotlin.cli.jvm.K2JVMCompiler -classpath "$L/kotlin-stdlib-2.4.0.jar:<deps>" -d /tmp/kout \
+      #      $(find runtime ch0 ch1 ch2 ch3 ch4 ch5 -path '*/src/main/*' -name '*.kt')
+      # Frontend diagnostics are real verification; codegen on the embeddable jar hits a pre-existing stub crash - full build is CI-only.
+  - name: notes
+    contents: |
+      # Node 24.21.0 pinned via mise (typescript/justfile); run TS through --experimental-transform-types or the pinned mise PATH.
+      # .outline/ artifacts are audit state - safe to ignore in diffs.

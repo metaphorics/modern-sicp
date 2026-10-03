@@ -125,18 +125,30 @@ export const makeProductN = (...terms: ReadonlyArray<ExprN>): ExprN => {
   return rest.length === 0 ? first : { _tag: "ProdN", terms: all };
 };
 
-/** Renders an expression in the book's printed form, n-ary. */
-export const showExprN = (e: ExprN): string => {
-  switch (e._tag) {
-    case "Var":
-      return e.name;
-    case "Num":
-      return String(e.n);
-    case "SumN":
-      return `(+ ${e.terms.map(showExprN).join(" ")})`;
-    case "ProdN":
-      return `(* ${e.terms.map(showExprN).join(" ")})`;
-  }
+/** Renders an n-ary expression with minimal-precedence infix notation. */
+export const showExprN = (e: ExprN): string => renderExprN(e, 0, "root");
+
+type NSide = "root" | "left" | "right";
+
+const precedenceN = (e: ExprN): number => (e._tag === "SumN" ? 1 : e._tag === "ProdN" ? 2 : 3);
+
+const renderExprN = (e: ExprN, parentPrecedence: number, side: NSide): string => {
+  const precedence = precedenceN(e);
+  const text = (() => {
+    switch (e._tag) {
+      case "Var":
+        return e.name;
+      case "Num":
+        return String(e.n);
+      case "SumN":
+        return e.terms.map((term) => renderExprN(term, 1, "left")).join(" + ");
+      case "ProdN":
+        return e.terms.map((term) => renderExprN(term, 2, "left")).join(" * ");
+    }
+  })();
+  return precedence < parentPrecedence || (side === "right" && precedence === parentPrecedence)
+    ? `(${text})`
+    : text;
 };
 
 /** The differentiation switch, unchanged in shape: sums differentiate

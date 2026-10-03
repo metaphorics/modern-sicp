@@ -4,8 +4,7 @@
 @noindent
 A function defined inside another captures the bindings visible where it is
 defined, not where it is later called, and keeps them alive for as long as
-the function itself exists. This is a @newterm{closure}, and it is the same
-lexical scoping rule Scheme uses for its own inner @code{lambda}s:
+the function itself exists. This is a @newterm{closure}:
 
 @example
 # let make_adder n = fun x -> x + n;;
@@ -20,7 +19,8 @@ val add_five : int -> int = <fun>
 @code{make_adder 5} returns a function that still remembers @code{n = 5}
 long after @code{make_adder} itself has returned; @code{add_five} is that
 function, and every call to it sees the same captured @code{5}. Nothing
-about @code{n} is passed to @code{add_five} at call time: it is baked into the function value itself, the way a Scheme closure over @code{n} would be.
+about @code{n} is passed to @code{add_five} at call time: it is baked into
+the function value itself.
 
 @subsubheading Functions as values
 
@@ -76,7 +76,8 @@ val w : int -> int option = <fun>
 @end example
 
 @noindent
-This is this book's translation of the original @code{make-withdraw}: each
+This is the same @code{make_withdraw} example the original book builds in
+its chapter 3: each
 call to @code{make_withdraw} allocates its own private @code{balance} cell,
 and the returned function is a closure over that one cell. The first
 withdrawal of @code{60} succeeds, leaving @code{40}; the second, from the

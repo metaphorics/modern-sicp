@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.64 (parts a and b): `listToTree` converts an ordered list to
  * a balanced binary tree via the helper `partialTree`, which takes a list
@@ -19,8 +17,8 @@ import sicp.runtime.PendingSolution
 public fun partialTree(
     elts: List<Long>,
     n: Int,
-): Pair<SetTree, List<Long>> = throw PendingSolution()
+): Pair<SetTree, List<Long>> = throw PendingExercise()
 
-public fun listToTree(elements: List<Long>): SetTree = throw PendingSolution()
+public fun listToTree(elements: List<Long>): SetTree = throw PendingExercise()
 
-public fun ex_2_64(): SetTree = throw PendingSolution()
+public fun ex_2_64(): SetTree = throw PendingExercise()

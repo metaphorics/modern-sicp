@@ -27,6 +27,6 @@ mod ex_4_20 {
 #[ignore = "pending solution"]
 fn ex_4_20() {
     let (mutual, premature) = ex_4_20::ex_4_20().expect("solved");
-    assert_eq!(mutual, "#t");
-    assert!(premature.contains("before its define runs"));
+    assert_eq!(mutual, "true");
+    assert!(premature.contains("definition"));
 }

@@ -12,6 +12,6 @@ public class E5_47Test :
         test("Exercise 5.47: the compound branch is shown and the book's session answers").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            compoundCallRuns() shouldBe emptyList()
+            compoundCallRuns().last() shouldBe "one seam applies both procedure kinds: true"
         }
     })

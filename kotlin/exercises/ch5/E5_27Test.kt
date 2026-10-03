@@ -12,6 +12,10 @@ public class E5_27Test :
         test("Exercise 5.27: the recursive factorial's stack table and the two formulas").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            recursiveFactorialMeasurements() shouldBe emptyList()
+            recursiveFactorialMeasurements().takeLast(2) shouldBe
+                listOf(
+                    "maximum depth linear in n: true",
+                    "total pushes linear in n: true",
+                )
         }
     })

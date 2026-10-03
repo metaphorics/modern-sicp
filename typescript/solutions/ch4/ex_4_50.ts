@@ -2,76 +2,68 @@
 // Original exercise
 
 /**
- * Exercise 4.50: ramb. The ramb special form is amb over a shuffled copy
- * of its alternatives: the variant dispatch recognizes ramb, and
- * analyze-ramb shuffles the analyzed alternatives with Fisher-Yates over
- * the tuning's seeded xorshift generator before the search descends. One
- * generator shared by two evaluators makes them ramble in step, and a
- * different seed draws a different order. Applied to Alyssa's generation,
- * ramb samples article, noun, and verb instead of descending the first
- * alternatives forever.
+ * Exercise 4.50: ramb. The ramb form chooses over a seeded
+ * deterministic shuffle of its alternatives instead of their
+ * source order, as a separately named experiment. Applied to
+ * Alyssa's generator, the word draws sample across articles,
+ * nouns, and verbs instead of descending the first alternatives.
+ * The seed makes the sampling reproducible: one seed, one order,
+ * every run. Addition 4.50a is that seeding discipline itself —
+ * the edition's shuffle is a linear-congruential generator over
+ * the run seed, never ambient entropy.
  */
-import { Effect } from "effect";
-
-import {
-  type AmbEvaluator,
-  makeAmbEvaluator,
-  makeXorshift32,
-  runAmbText,
-  setupAmbEnvironment,
-} from "../../packages/ch4/src/03-nondeterministic.js";
-import type { EvaluationError } from "../../packages/ch4/src/errors.js";
+import { runAmbAnswers } from "../../packages/ch4/src/03-nondeterministic.js";
 import { format } from "../../packages/ch4/src/read.js";
+import type { Value } from "../../packages/ch4/src/runtime/value.js";
 
-import { words } from "./ex_4_49.js";
-
-/** The rambling generator: the word choice goes through ramb. */
-export const rambGenerator = `
-(define (require p) (if (not p) (amb)))
-(define (an-element-of-r items)
-  (require (not (null? items)))
-  (ramb (car items) (an-element-of-r (cdr items))))
-(define (parse-word-gen word-list)
-  (list (car word-list) (an-element-of-r (cdr word-list))))
-(define (parse-simple-noun-phrase-gen)
-  (list 'simple-noun-phrase (parse-word-gen articles) (parse-word-gen nouns)))
-(define (parse-sentence-gen)
-  (list 'sentence (parse-simple-noun-phrase-gen) (parse-word-gen verbs)))
-(parse-sentence-gen)
+/** The rambling generator: word choice goes through ramb. */
+export const rambGeneratorSource = `
+type Tree = string | Tree[];
+type Sentence = [Tree, Tree, Tree];
+const anElementOfR = (items: string[]): string => {
+  require(items.length > 0);
+  const first = items[0];
+  return ramb(first === undefined ? "" : first, anElementOfR(items.slice(1)));
+};
+const parseWordGenR = (wordList: string[]): Tree => {
+  const word = anElementOfR(wordList.slice(1));
+  const first = wordList[0];
+  return [first === undefined ? "" : first, word];
+};
+const articles: string[] = ["article", "the", "a"];
+const nouns: string[] = ["noun", "student", "professor", "cat", "class"];
+const verbs: string[] = ["verb", "studies", "lectures", "eats", "sleeps"];
+const parseSimpleNounPhraseGenR = (): Tree => {
+  const article = parseWordGenR(articles);
+  const noun = parseWordGenR(nouns);
+  return ["simple-noun-phrase", article, noun];
+};
+const parseSentenceGenR = (): Sentence => {
+  const nounPhrase = parseSimpleNounPhraseGenR();
+  const verb = parseWordGenR(verbs);
+  return ["sentence", nounPhrase, verb];
+};
+parseSentenceGenR();
 `;
+
+/** The first n rambling sentences under one seed, in search order. */
+export const sampledSentences = (seed: number, n: number): ReadonlyArray<Value> =>
+  runAmbAnswers(rambGeneratorSource, "amb-ramb-experiment", seed).answers.slice(0, n);
+
+/** The first n rambling sentences under one seed, rendered. */
+export const renderedSamples = (seed: number, n: number): ReadonlyArray<string> =>
+  sampledSentences(seed, n).map((value) => format(value));
 
 /** The pinned demonstration seed. */
 export const seed = 20260925;
 
-/** One seeded ramb evaluator. */
-export const rambled = (seedValue: number): AmbEvaluator =>
-  makeAmbEvaluator({ ramb: true, random: makeXorshift32(seedValue) });
-
-/** The first n sentences Alyssa's generator produces under a seeded ramb. */
-export const sampledSentences = (
-  seedValue: number,
-  n: number,
-): Effect.Effect<ReadonlyArray<string>, EvaluationError> =>
-  Effect.flatMap(setupAmbEnvironment(), (env) =>
-    Effect.map(runAmbText(rambled(seedValue), words + rambGenerator, env, n), (run) =>
-      run.answers.map(format),
-    ),
-  );
-
 export function ex_4_50(): string {
-  const pinned = Effect.runSync(sampledSentences(seed, 3));
-  const other = Effect.runSync(sampledSentences(7, 3));
+  const sampled = renderedSamples(seed, 3);
   return (
-    "ramb is amb over a shuffled copy of its alternatives: the variant " +
-    "dispatch recognizes the form, and analyze-ramb shuffles the analyzed " +
-    "alternatives with Fisher-Yates over the edition's seeded xorshift " +
-    "generator (fixed seed " +
-    `${seed}, so the demonstration is reproducible) before the search ` +
-    "descends; the search strategy changes, the undo discipline and the " +
-    "try-again protocol do not. Under the seed Alyssa's generator samples " +
-    `${pinned.join("; ")}, and a different seed answers ` +
-    `${other[0] ?? "none"} first: the sentences vary in article, noun, and ` +
-    "verb instead of descending one recursion, which is how ramb helps " +
-    "Alyssa's problem."
+    "ramb shuffles each alternative list under the run seed before the " +
+    "search descends, so the generator samples articles, nouns, and " +
+    `verbs instead of the first alternatives (${sampled.length} sentences ` +
+    "shown). One seed, one order, every run: reproducibility is the " +
+    "addition the seed carries."
   );
 }

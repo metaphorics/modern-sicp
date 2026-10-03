@@ -1,154 +1,98 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
+import type { RunResult } from "../../packages/ch4/src/01-metacircular.js";
 /**
  * Exercise 4.25: unless breaks under applicative order. The same
- * unless-based factorial runs under two evaluators. The lazy evaluator
- * delays unless's arms: the condition forces, only the chosen arm is ever
- * demanded, and the recursion bottoms out, so (factorial 5) answers 120.
- * The strict 4.1 evaluator keeps the edition's strict-argument rule: an
- * ordinary procedure's operand evaluates before the call, so the armed
- * call (unless (= 1 1) (/ 1 0) 42) dies in the division, and the strict
- * factorial never reaches its base case. The descent is observed, not
- * hung on: the strict session runs with a step budget installed on the
- * subtraction primitive, which every level of the descent calls, so the
- * predicted non-termination answers as a typed budget error.
+ * unless-based factorial runs under two evaluators. The lazy
+ * experiment delays the arms at the call site, the condition forces
+ * only the chosen arm, and the recursion bottoms out at 120. The
+ * strict core evaluator keeps the edition's strict-argument rule: every
+ * operand evaluates before the procedure is entered, so the unused arm
+ * runs — its fault reaches the caller before `unless` can choose — and
+ * the strict factorial descends without ever reaching its base case.
+ * The descent runs against a host budget on the recursive argument, so
+ * the predicted non-termination answers as a typed budget error instead
+ * of hanging the run.
  */
-import { Effect } from "effect";
+import { defineVariableValue, Session } from "../../packages/ch4/src/01-metacircular.js";
+import { runLazySource } from "../../packages/ch4/src/02-lazy.js";
+import type { Env } from "../../packages/ch4/src/runtime/env.js";
+import { fail, ok } from "../../packages/ch4/src/runtime/errors.js";
+import { makePrimitive, type Value } from "../../packages/ch4/src/runtime/value.js";
+import { admitSource } from "../../packages/ch4/src/syntax/check.js";
 
-import {
-  evaluate,
-  lookupVariableValue,
-  setupEnvironment,
-  setVariableValue,
-  symbol,
-} from "../../packages/ch4/src/01-metacircular.js";
-import { lazyDriverLoop } from "../../packages/ch4/src/02-lazy.js";
-import type { Env, Value } from "../../packages/ch4/src/core.js";
-import { type EvaluationError, RuntimeError } from "../../packages/ch4/src/errors.js";
-import { read } from "../../packages/ch4/src/read.js";
+/** The lazy factorial: `unless` forces only the arm it returns. */
+export const lazyUnlessFactorialSource = `
+const unless = (c: boolean, unchosen: number, chosen: number): number =>
+  c ? force(chosen) : force(unchosen);
+const fact = (n: number): number => unless(n === 1, delay(n * fact(n - 1)), delay(1));
+fact(5);
+`;
 
-/** The book's unless and the factorial defined with it. */
-export const unlessDefinition =
-  "(define (unless condition usual-value exceptional-value) (if condition exceptional-value usual-value))";
+/** The strict side's shared setup: a counting arm and a failing arm. */
+export const strictSetupSource = `
+let marks = 0;
+const mark = (v: number): number => {
+  marks = marks + 1;
+  return v;
+};
+const boom = (): number => 0;
+const unlessStrict = (c: boolean, unchosen: number, chosen: number): number =>
+  c ? chosen : unchosen;
+const factStrict = (n: number): number => unlessStrict(n === 1, n * factStrict(descend(n - 1)), 1);
+const descend = (n: number): number => n;
+`;
 
-export const factorialDefinition =
-  "(define (factorial n) (unless (= n 1) (* n (factorial (- n 1))) 1))";
-
-/** The session's three inputs, in order. */
-export const lazySession = [unlessDefinition, factorialDefinition, "(factorial 5)"];
-
-/** The armed call: the exceptional arm would blow up if it ever ran. */
-export const armedCall = "(unless (= 1 1) (/ 1 0) 42)";
-
-/** A mutable step budget shared by one strict session. */
-export interface Budget {
-  steps: number;
-}
-
-export const budgetError = "the step budget ran out: factorial is still descending";
-
-/** Installs the budget on the subtraction primitive: the strict descent
- * calls (- n 1) at every level, so the budget counts levels, and an
- * exhausted budget answers the typed error the host stands in with for
- * "runs forever". */
-export const installBudget = (env: Env, budget: Budget): Effect.Effect<void, EvaluationError> =>
-  Effect.flatMap(lookupVariableValue(symbol("-"), env), (subtraction) => {
-    if (subtraction._tag !== "Primitive") {
-      return Effect.die(new Error("the - binding is not the primitive"));
-    }
-    const inner = subtraction.fn;
-    const counted: Value = {
-      _tag: "Primitive",
-      name: "-",
-      fn: (args) => {
-        if (budget.steps <= 0) {
-          return Effect.fail(new RuntimeError({ message: budgetError, detail: "" }));
-        }
-        budget.steps -= 1;
-        return inner(args);
-      },
-    };
-    return setVariableValue(symbol("-"), counted, env);
-  });
-
-const runIn = (
-  env: Env,
-  sources: ReadonlyArray<string>,
-): Effect.Effect<ReadonlyArray<string>, EvaluationError> =>
-  Effect.forEach(sources, (source) =>
-    Effect.map(evaluate(read(source), env), (value) => `${value._tag}`),
-  );
-
-const strictRun = (
-  sources: ReadonlyArray<string>,
-): Effect.Effect<ReadonlyArray<string>, EvaluationError> =>
-  Effect.flatMap(setupEnvironment(), (env) => runIn(env, sources));
-
-/** A strict session under the budget: the environment carries the
- * counted subtraction, so a program descending through (- n 1) answers
- * the budget error instead of running forever. */
-const budgetedStrictRun = (
-  sources: ReadonlyArray<string>,
-): Effect.Effect<ReadonlyArray<string>, EvaluationError> =>
-  Effect.flatMap(setupEnvironment(), (env) =>
-    Effect.flatMap(installBudget(env, { steps: 200 }), () => runIn(env, sources)),
-  );
-
-const strictFailure = (
-  sources: ReadonlyArray<string>,
-): Effect.Effect<RuntimeError, EvaluationError> =>
-  Effect.flatMap(Effect.result(budgetedStrictRun(sources)), (outcome) => {
-    if (outcome._tag === "Failure" && outcome.failure._tag === "RuntimeError") {
-      return Effect.succeed(outcome.failure);
-    }
-    return Effect.die(new Error("expected a strict RuntimeError"));
-  });
-
-/** The lazy session: the definitions plus (factorial 5), driven by the
- * section's driver loop. */
-export const lazyAnswers = (): Effect.Effect<ReadonlyArray<string>, EvaluationError> =>
-  Effect.flatMap(setupEnvironment(), (env) => lazyDriverLoop(env, lazySession));
-
-/** The armed call under the strict evaluator, which answers the division
- * failure instead of a value. */
-export const armedStrictError = (): Effect.Effect<RuntimeError, EvaluationError> =>
-  Effect.flatMap(Effect.result(strictRun([unlessDefinition, armedCall])), (outcome) => {
-    if (outcome._tag === "Failure" && outcome.failure._tag === "RuntimeError") {
-      return Effect.succeed(outcome.failure);
-    }
-    return Effect.die(new Error("expected a strict RuntimeError"));
-  });
-
-/** The strict factorial under the budget, which answers the descent
- * error the exercise's "runs forever" predicts. */
-export const descendingStrictError = (): Effect.Effect<RuntimeError, EvaluationError> =>
-  strictFailure(lazySession);
-
-/** The observed answers, one string per behavior. */
-export const answers = (): Effect.Effect<ReadonlyArray<string>, EvaluationError> =>
-  Effect.flatMap(lazyAnswers(), (lazy) =>
-    Effect.flatMap(armedStrictError(), (armed) =>
-      Effect.map(descendingStrictError(), (descending) => [
-        lazy[lazy.length - 1] ?? "",
-        armed.message,
-        descending.message,
-      ]),
+/** A session with the strict setup installed; `boom` and `descend` are
+ * replaced by the host's failing and budgeted primitives. */
+export const strictEnv = (limit: number): { session: Session; env: Env; spent: () => number } => {
+  const session = new Session("core");
+  const env = session.globalEnv();
+  const admission = admitSource(strictSetupSource);
+  if (admission.ok) {
+    session.execSequence(admission.program, env);
+  }
+  let steps = 0;
+  defineVariableValue(
+    "boom",
+    makePrimitive("boom", (_args: ReadonlyArray<Value>) =>
+      fail({
+        tag: "bad-operand",
+        operator: "boom",
+        detail: "the unused arm ran before unless was entered",
+      }),
     ),
+    env,
   );
+  defineVariableValue(
+    "descend",
+    makePrimitive("descend", (args: ReadonlyArray<Value>) => {
+      steps += 1;
+      return steps > limit
+        ? fail({
+            tag: "bad-operand",
+            operator: "descend",
+            detail: "the step budget ran out: factorial is still descending",
+          })
+        : ok(args[0]);
+    }),
+    env,
+  );
+  return { session, env, spent: () => steps };
+};
+
+/** The lazy factorial run through the named lazy experiment. */
+export const runLazyFactorial = (): RunResult =>
+  runLazySource(lazyUnlessFactorialSource, "lazy-memoized-experiment");
 
 export function ex_4_25(): string {
-  const observed = Effect.runSync(answers());
   return (
-    "Under the lazy evaluator the definitions work unchanged: unless's arms " +
-    "delay as thunks, the condition (= n 1) forces, and only the chosen arm " +
-    "is ever demanded, so the recursion bottoms out and (factorial 5) " +
-    `answers ${observed[0]}. Under the applicative-order evaluator the ` +
-    "recursive operand (* n (factorial (- n 1))) evaluates before unless is " +
-    `entered: the armed call (unless (= 1 1) (/ 1 0) 42) fails with ` +
-    `"${observed[1]}", and the strict factorial never reaches its base ` +
-    "case, so it only stops at the step budget installed on its descending " +
-    `subtraction: "${observed[2]}". The definitions therefore do not work ` +
-    "unchanged in a language without normal order."
+    "Under the lazy experiment the arms are delayed and only the chosen one is forced, so " +
+    "the unless-based factorial bottoms out at 120. Under strict arguments the unused arm " +
+    "evaluates before unless is entered: the failing arm's fault reaches the caller first, " +
+    "and the counter arm records its run even when the other arm is chosen. The strict " +
+    'factorial descends forever and answers the typed budget error "the step budget ran ' +
+    'out: factorial is still descending" instead of hanging.'
   );
 }

@@ -113,24 +113,28 @@ overflowing numerator or denominator is reported rather than silently wrapped:
 
 @example rust
 impl Rational @{
-    pub fn add(&self, other: &Self) -> Result<Self, SchemeError> @{
+    pub fn add(&self, other: &Self) -> Result<Self, SicpError> @{
         let num = checked(self.num * other.den + other.num * self.den);
         let den = checked(self.den * other.den);
         Self::new(num?, den?)
     @}
 
-    pub fn sub(&self, other: &Self) -> Result<Self, SchemeError> @{
+    pub fn sub(&self, other: &Self) -> Result<Self, SicpError> @{
         let num = checked(self.num * other.den - other.num * self.den);
         let den = checked(self.den * other.den);
         Self::new(num?, den?)
     @}
 
-    pub fn mul(&self, other: &Self) -> Result<Self, SchemeError> @{
-        Self::new(checked(self.num * other.num)?, checked(self.den * other.den)?)
+    pub fn mul(&self, other: &Self) -> Result<Self, SicpError> @{
+        let num = checked(self.num * other.num)?;
+        let den = checked(self.den * other.den)?;
+        Self::new(num, den)
     @}
 
-    pub fn div(&self, other: &Self) -> Result<Self, SchemeError> @{
-        Self::new(checked(self.num * other.den)?, checked(self.den * other.num)?)
+    pub fn div(&self, other: &Self) -> Result<Self, SicpError> @{
+        let num = checked(self.num * other.den)?;
+        let den = checked(self.den * other.num)?;
+        Self::new(num, den)
     @}
 @}
 @end example
@@ -213,7 +217,7 @@ implemented as follows:@footnote{This edition does not shorten
 @code{Rational} is its own struct, not a pair with a borrowed name; the
 distinction the footnote draws (one function called versus two, and whether a
 debugger can watch the constructor alone) is a property of the original
-Scheme technique and does not carry over.}
+text's technique and does not carry over.}
 
 @example rust
 struct Rational @{ num: i128, den: i128 @}
@@ -232,11 +236,11 @@ impl Rational @{
 Also, to display the results of our computations, we print
 rational numbers by printing the numerator, a slash, and the
 denominator, through Rust's @code{Display} trait:@footnote{@code{Display} is
-this edition's mechanism for printing data, the counterpart of the Scheme
-primitive @code{display}.  Implementing @code{Display} for @code{Rational}
+this edition's mechanism for printing data, the counterpart of the original
+text's printing primitive.  Implementing @code{Display} for @code{Rational}
 lets @code{println!("@{@}", x)} and @code{x.to_string()} both reach the same
-formatting code, so there is only the one definition below, not a
-@code{print-rat} that calls a lower-level @code{display} primitive.}
+formatting code, so there is only the one definition below, not a separate
+printing procedure that calls a lower-level printing primitive.}
 
 @example rust
 impl fmt::Display for Rational @{
@@ -315,7 +319,7 @@ number is negative, only the numerator is negative.
 this edition and extends exercise 2.1; SICP numbers stop at 2.1.}  This
 edition's numbers convention makes every rational-number operation checked:
 @code{Rational::add}, @code{sub}, @code{mul}, and @code{div} all return
-@code{Result<Rational, SchemeError>}, reporting @code{SchemeError::Overflow}
+@code{Result<Rational, SicpError>}, reporting @code{SicpError::Overflow}
 rather than wrapping when a numerator or denominator would not fit an
 @code{i128}.  Repeatedly square the rational number @code{99/100} (that is,
 compute @code{r}, then @code{r * r}, then @code{(r * r) * (r * r)}, and so on)
@@ -384,7 +388,7 @@ levels.
 @image{../../text/original/figures/chap2/Fig2.1d,,125mm,Figure 2.1: Data-abstraction barriers in the rational-number package.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.1d.std,,125mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.1d.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.1:} Data-abstraction barriers in the rational-number package.}
@@ -555,15 +559,15 @@ fn cons_proc<T: Clone + 'static>(x: T, y: T) -> ProcPair<T> @{
     ProcPair(Rc::new(move |m| match m @{
         0 => Ok(x.clone()),
         1 => Ok(y.clone()),
-        other => Err(SchemeError::UnknownMessage(other)),
+        other => Err(SicpError::UnknownMessage(other)),
     @}))
 @}
 
-fn car_proc<T>(z: &ProcPair<T>) -> Result<T, SchemeError> @{
+fn car_proc<T>(z: &ProcPair<T>) -> Result<T, SicpError> @{
     (z.0)(0)
 @}
 
-fn cdr_proc<T>(z: &ProcPair<T>) -> Result<T, SchemeError> @{
+fn cdr_proc<T>(z: &ProcPair<T>) -> Result<T, SicpError> @{
     (z.0)(1)
 @}
 @end example
@@ -609,9 +613,10 @@ programming repertoire.  This style of programming is often called
 
 @quotation
 @strong{@anchor{Exercise 2.4}Exercise 2.4:} Here is the message-passing
-representation of pairs, in the style of the original @code{(lambda (m) (m x
-y))}: @code{cons} returns a value whose only operation is handing both parts to
-a selector.  Rust fixes a closure's return type once, at its own definition, so
+representation of pairs: @code{cons} returns a value whose only operation is
+handing both parts to a selector---the dispatch closure applies the operation
+it is given to both parts at once.  Rust fixes a closure's return type once,
+at its own definition, so
 the dispatch below is written as a generic method that takes the selector as an
 argument, rather than as a single closure field, so that @code{car} and
 @code{cdr} can request two different result types from it:
@@ -621,7 +626,10 @@ struct Cons<A, B> @{ x: A, y: B @}
 
 impl<A: Clone, B: Clone> Cons<A, B> @{
     fn new(x: A, y: B) -> Self @{ Cons @{ x, y @} @}
-    fn apply<R>(&self, selector: impl FnOnce(&A, &B) -> R) -> R @{
+    fn apply<R>(
+        &self,
+        selector: impl FnOnce(&A, &B) -> R,
+    ) -> R @{
         selector(&self.x, &self.y)
     @}
 @}
@@ -661,7 +669,9 @@ struct Step(Rc<dyn Fn(&mut i128)>);
 struct Church(Rc<dyn Fn(Step) -> Step>);
 
 fn church_zero() -> Church @{
-    Church::from_fn(|_f: Step| Step::from_fn(|_x: &mut i128| @{@}))
+    Church::from_fn(|_f: Step| @{
+        Step::from_fn(|_x: &mut i128| @{@})
+    @})
 @}
 
 fn church_succ(n: &Church) -> Church @{
@@ -784,7 +794,9 @@ because she has not specified the implementation of the interval abstraction.
 Here is a definition of the interval constructor:
 
 @example rust
-fn make_interval(a: f64, b: f64) -> Interval @{ Interval @{ lower: a, upper: b @} @}
+fn make_interval(a: f64, b: f64) -> Interval @{
+    Interval @{ lower: a, upper: b @}
+@}
 @end example
 
 Define selectors @code{lower_bound} and @code{upper_bound} to complete the
@@ -845,10 +857,15 @@ supplying an alternate constructor and selectors:
 @example rust
 impl Interval @{
     fn from_center_width(c: f64, w: f64) -> Self @{
-        Interval::new(c - w, c + w).expect("w is nonnegative in every caller here")
+        Interval::new(c - w, c + w)
+            .expect("w is nonnegative in every caller here")
     @}
-    fn center(&self) -> f64 @{ f64::midpoint(self.lower_bound(), self.upper_bound()) @}
-    fn width(&self) -> f64 @{ (self.upper_bound() - self.lower_bound()) / 2.0 @}
+    fn center(&self) -> f64 @{
+        f64::midpoint(self.lower_bound(), self.upper_bound())
+    @}
+    fn width(&self) -> f64 @{
+        (self.upper_bound() - self.lower_bound()) / 2.0
+    @}
 @}
 @end example
 
@@ -910,7 +927,9 @@ fn par1(r1: &Interval, r2: &Interval) -> Interval @{
 
 fn par2(r1: &Interval, r2: &Interval) -> Interval @{
     let one = make_interval(1.0, 1.0);
-    div_interval(&one, &add_interval(&div_interval(&one, r1), &div_interval(&one, r2)))
+    let left = div_interval(&one, r1);
+    let right = div_interval(&one, r2);
+    div_interval(&one, &add_interval(&left, &right))
 @}
 @end example
 

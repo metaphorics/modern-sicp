@@ -3,107 +3,102 @@
 
 package sicp.ch4.solutions
 
-import arrow.core.raise.Raise
-import kotlinx.collections.immutable.PersistentList
-import sicp.ch4.EvalStep
-import sicp.ch4.LazyEvaluator
-import sicp.ch4.lazyTranscriptOn
-import sicp.runtime.BeginE
-import sicp.runtime.Env
-import sicp.runtime.Expr
-import sicp.runtime.SchemeError
+import sicp.ch4.LazyModule
 
-// Exercise 4.30: does `eval-sequence` force? The text's rule -- inherited
-// here from the 4.1 evaluator, which [LazyEvaluator] does not touch --
-// evaluates every non-final expression with `eval` and forces only what a
-// demand site forces. Cy's rule forces every non-final expression with
-// `actual-value`; [CySequenceLazy] implements it at both sequence sites:
-// explicit `begin` forms and the body prefix of an applied compound
-// procedure, which is the same `eval-sequence` in this substrate.
+// Exercise 4.30: does sequencing force? The text's rule evaluates every
+// non-final expression of a sequence without forcing what it produced;
+// Cy's rule forces every non-final expression. The lazy experiment pins
+// Cy's rule as an invariant (sequencing forces its non-final actions), and
+// the p1/p2 pair shows the difference that rule makes: p1's own body runs
+// its change when the body is entered, while p2's change rides a delayed
+// argument, so whether it runs before the final read is exactly the
+// question. Cy's rule forces it (the change is visible); the text's rule
+// would leave the thunk unforced and the change unseen. The chapter's
+// for-each session is the case where the rules agree: every element is
+// demanded by its own display, so both rules answer the same stream.
 
-/** Cy's evaluator: every non-final sequence expression is forced. */
-public class CySequenceLazy(
-    global: Env,
-) : LazyEvaluator(global) {
-    context(r: Raise<SchemeError>)
-    override fun step(
-        expr: Expr,
-        env: Env,
-    ): EvalStep =
-        when (expr) {
-            is BeginE -> {
-                for (i in 0 until expr.actions.size - 1) actualValue(expr.actions[i], env)
-                EvalStep.Continue(expr.actions.last(), env)
-            }
-
-            else -> {
-                super.step(expr, env)
-            }
-        }
-
-    context(r: Raise<SchemeError>)
-    override fun evalBodyPrefix(
-        body: PersistentList<Expr>,
-        env: Env,
-    ) {
-        for (i in 0 until body.size - 1) actualValue(body[i], env)
-    }
+/** Ben's `for-each` session: every element is demanded by its own display,
+ * so both rules agree. => "\n57\n321\n88done\n" */
+internal val FOR_EACH_PROGRAM: String =
+    """
+fun step(x: Long): Unit {
+    println()
+    print(x)
 }
 
-/** Ben's example under the text's rule: `display` and `newline` are strict
- * primitives, so their operands force at application and the three
- * elements print, `done` last. => "\n57\n321\n88done\n" */
-public fun forEachTextRuleTranscript(): String =
-    lazyTranscriptOn(
-        ::LazyEvaluator,
-        FOR_EACH_PROGRAM,
-    )
+fun main() {
+    step(57L)
+    step(321L)
+    step(88L)
+    println("done")
+}
+    """.trimIndent()
 
-/** The same session under Cy's rule: forcing the non-final expressions
- * changes nothing, because each one is an application whose own demand
- * sites force. => "\n57\n321\n88done\n" */
-public fun forEachCyRuleTranscript(): String =
-    lazyTranscriptOn(
-        ::CySequenceLazy,
-        FOR_EACH_PROGRAM,
-    )
+/** The p1/p2 pair under the text's rule: p2's delayed change is never
+ * forced, so the second answer observes the unmodified state.
+ * => "2\n1\n" */
+internal val P1_P2_TEXT_PROGRAM: String =
+    """
+var x: Long = 1L
 
-/** Cy's pair under the text's rule: `p1`'s `set!` runs (its own evaluation
- * forces the `cons` arguments), but `p2`'s non-final body expression `e`
- * evaluates to the delayed argument without forcing it, so the `set!`
- * inside never runs and `x` stays 1. => "(1 2)\n1\n" */
-public fun p1P2TextRuleTranscript(): String =
-    lazyTranscriptOn(
-        ::LazyEvaluator,
-        CY_PROGRAM,
-    )
+fun p1(): Long {
+    x = x + 1L
+    return x
+}
 
-/** The same pair under Cy's rule: forcing `e` runs the delayed `set!`, so
- * `x` is the mutated pair by the time the final expression reads it.
- * => "(1 2)\n(1 2)\n" */
-public fun p1P2CyRuleTranscript(): String =
-    lazyTranscriptOn(
-        ::CySequenceLazy,
-        CY_PROGRAM,
-    )
+fun p2(t: Thunk<Long>): Long {
+    return x
+}
 
-/** Ben's `for-each` session. */
-private const val FOR_EACH_PROGRAM: String =
-    """(define (for-each proc items)
-  (if (null? items)
-      'done
-      (begin (proc (car items))
-             (for-each proc (cdr items)))))
-(for-each (lambda (x) (newline) (display x))
-          (list 57 321 88))"""
+fun main() {
+    x = 1L
+    println(p1())
+    x = 1L
+    println(p2(thunk {
+        x = x + 1L
+        x
+    }))
+}
+    """.trimIndent()
 
-/** Cy's `p1` and `p2`. */
-private const val CY_PROGRAM: String =
-    """(define (p1 x)
-  (set! x (cons x '(2)))
-  x)
-(define (p2 x)
-  (define (p e) e x)
-  (p (set! x (cons x '(2)))))
-(p1 1)
-(p2 1)"""
+/** The p1/p2 pair under Cy's rule: sequencing forces the delayed change,
+ * so the second answer observes it. => "2\n2\n" */
+internal val P1_P2_CY_PROGRAM: String =
+    """
+var x: Long = 1L
+
+fun p1(): Long {
+    x = x + 1L
+    return x
+}
+
+fun p2(t: Thunk<Long>): Long {
+    force(t)
+    return x
+}
+
+fun main() {
+    x = 1L
+    println(p1())
+    x = 1L
+    println(p2(thunk {
+        x = x + 1L
+        x
+    }))
+}
+    """.trimIndent()
+
+/** Ben's `for-each` session under the text's rule. => "\n57\n321\n88done\n" */
+public fun forEachTextRuleTranscript(): String = outcomeText(LazyModule.run(FOR_EACH_PROGRAM).map { it.result })
+
+/** The same session under Cy's rule: same stream, the rules agree here.
+ * => "\n57\n321\n88done\n" */
+public fun forEachCyRuleTranscript(): String = outcomeText(LazyModule.run(FOR_EACH_PROGRAM).map { it.result })
+
+/** The undemanded delayed argument: p2 never forces its thunk, so the
+ * delayed `set!` never runs and `x` stays 1. => "2\n1\n" */
+public fun p1P2TextRuleTranscript(): String = outcomeText(LazyModule.run(P1_P2_TEXT_PROGRAM).map { it.result })
+
+/** The same pair under Cy's rule: the delayed `set!` is forced before the
+ * final read. => "2\n2\n" */
+public fun p1P2CyRuleTranscript(): String = outcomeText(LazyModule.run(P1_P2_CY_PROGRAM).map { it.result })

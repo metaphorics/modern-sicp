@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.52: make changes to the square limit of `wave` shown in
  * Figure 2.9 by working at each of the levels described above. (a) Add
@@ -18,4 +16,4 @@ import sicp.runtime.PendingSolution
  * The scaffold returns the segment count of
  * `squareLimitModified(waveWithSmile, 1)` painted into `unitSquare`.
  */
-public fun ex_2_52(): Int = throw PendingSolution()
+public fun ex_2_52(): Int = throw PendingExercise()

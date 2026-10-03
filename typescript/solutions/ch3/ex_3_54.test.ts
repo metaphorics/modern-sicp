@@ -7,7 +7,7 @@ import { integers, streamRef, streamTake } from "../../packages/ch3/src/05-strea
 
 import { factorials, mulStreams } from "./ex_3_54.js";
 
-describe("exercise 3.54: mul-streams and the factorials", () => {
+describe("exercise 3.54: mulStreams and the factorials", () => {
   it("multiplies two streams element-wise", () => {
     expect(streamTake(mulStreams(integers, integers), 5)).toEqual([1, 4, 9, 16, 25]);
   });

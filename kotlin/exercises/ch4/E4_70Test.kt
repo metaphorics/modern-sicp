@@ -12,6 +12,14 @@ public class E4_70Test :
         test("Exercise 4.70: the let-binding discipline").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            letPurposeDemo() shouldBe listOf("MEASURE")
+            letPurposeDemo() shouldBe
+                listOf(
+                    "?x = a",
+                    "?x = b",
+                    "?x = a",
+                    "?x = b",
+                    "?x = c",
+                    "snapshot unchanged: true",
+                )
         }
     })

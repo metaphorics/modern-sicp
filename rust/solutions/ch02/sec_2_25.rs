@@ -5,7 +5,7 @@
 
 mod ex_2_25 {
     use ch02::sec_2_2::{Nest, leaf, sub};
-    use sicp_runtime::SchemeError;
+    use sicp_runtime::SicpError;
     use std::rc::Rc;
 
     /// The `car` of a tree in the book's sense: the first element of a
@@ -14,39 +14,39 @@ mod ex_2_25 {
     /// values the chain must carry.
     ///
     /// # Errors
-    /// [`SchemeError::TypeMismatch`] on a leaf or on the empty branch.
-    fn car(tree: &Nest<i128>) -> Result<Nest<i128>, SchemeError> {
+    /// [`SicpError::TypeMismatch`] on a leaf or on the empty branch.
+    fn car(tree: &Nest<i128>) -> Result<Nest<i128>, SicpError> {
         match tree {
             Nest::Sub(items) => match items.car() {
                 Some(first) => Ok(first.clone()),
-                None => Err(SchemeError::TypeMismatch("car of ()".into())),
+                None => Err(SicpError::TypeMismatch("car of ()".into())),
             },
-            Nest::Leaf(_) => Err(SchemeError::TypeMismatch("car of a leaf".into())),
+            Nest::Leaf(_) => Err(SicpError::TypeMismatch("car of a leaf".into())),
         }
     }
 
     /// The `cdr` of a tree: the rest of its branch, again as a branch.
     ///
     /// # Errors
-    /// [`SchemeError::TypeMismatch`] on a leaf or on the empty branch.
-    fn cdr(tree: &Nest<i128>) -> Result<Nest<i128>, SchemeError> {
+    /// [`SicpError::TypeMismatch`] on a leaf or on the empty branch.
+    fn cdr(tree: &Nest<i128>) -> Result<Nest<i128>, SicpError> {
         match tree {
             Nest::Sub(items) => match items.cdr() {
                 Some(rest) => Ok(Nest::Sub(Rc::new(rest.clone()))),
-                None => Err(SchemeError::TypeMismatch("cdr of ()".into())),
+                None => Err(SicpError::TypeMismatch("cdr of ()".into())),
             },
-            Nest::Leaf(_) => Err(SchemeError::TypeMismatch("cdr of a leaf".into())),
+            Nest::Leaf(_) => Err(SicpError::TypeMismatch("cdr of a leaf".into())),
         }
     }
 
     /// The `i128` under a leaf, so a chain can end in a number.
     ///
     /// # Errors
-    /// [`SchemeError::TypeMismatch`] on a branch.
-    fn as_leaf(tree: &Nest<i128>) -> Result<i128, SchemeError> {
+    /// [`SicpError::TypeMismatch`] on a branch.
+    fn as_leaf(tree: &Nest<i128>) -> Result<i128, SicpError> {
         match tree {
             Nest::Leaf(x) => Ok(*x),
-            Nest::Sub(_) => Err(SchemeError::TypeMismatch("expected a leaf".into())),
+            Nest::Sub(_) => Err(SicpError::TypeMismatch("expected a leaf".into())),
         }
     }
 
@@ -63,9 +63,9 @@ mod ex_2_25 {
     /// names.
     ///
     /// # Errors
-    /// [`SchemeError::TypeMismatch`] when a chain walks off a leaf or
+    /// [`SicpError::TypeMismatch`] when a chain walks off a leaf or
     /// an empty branch, which the three chains here never do.
-    pub fn ex_2_25() -> Result<[i128; 3], SchemeError> {
+    pub fn ex_2_25() -> Result<[i128; 3], SicpError> {
         let first = sub(&[leaf(1), leaf(3), sub(&[leaf(5), leaf(7)]), leaf(9)]);
         let second = sub(&[sub(&[leaf(7)])]);
         let third = sub(&[

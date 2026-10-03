@@ -9,10 +9,10 @@ import io.kotest.matchers.shouldBe
 public class E4_35aTest :
     FunSpec({
         test("Exercise 4.35a: the choice totals at the six triples between 1 and 20") {
-            choicesTakenWithin20() shouldBe listOf(1386L, 2705L, 2965L, 3870L, 4064L, 4765L)
+            choicesTakenWithin20() shouldBe listOf(925L, 1805L, 1979L, 2583L, 2713L, 3181L)
         }
 
-        test("Exercise 4.35a: the single triple between 1 and 9 takes 330 choices") {
-            choicesTakenWithin9() shouldBe listOf(330L)
+        test("Exercise 4.35a: the single triple between 1 and 9 takes 221 choices") {
+            choicesTakenWithin9() shouldBe listOf(221L)
         }
     })

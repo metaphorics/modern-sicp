@@ -14,8 +14,8 @@ import {
   gcdInteger,
   makePoly,
   makePolynomial,
-  makeSchemeNumber,
   makeTerm,
+  makeTsNumber,
   mulTerms,
   op,
   orderOf,
@@ -34,13 +34,13 @@ import { contentOf, divideCoefficientsBy, gcdTerms96, integerizingFactorTo } fro
 
 /**
  * Exercise 2.97: reducing rational functions to lowest terms.
- * reduce-terms computes the GCD of 2.96, scales numerator and
+ * reduceTerms computes the GCD of 2.96, scales numerator and
  * denominator by the same integerizing factor --- the GCD's leading
  * coefficient to the 1 + O1 - O2 of the larger degree --- divides both
  * by the GCD, and finally divides every coefficient of both by the
  * greatest common divisor of all the coefficients together.
- * reduce-poly is reduce-terms behind the same-variable check, the
- * integer version is the original make-rat's gcd, and the generic
+ * reducePoly is reduceTerms behind the same-indeterminate check, the
+ * integer version is the original makeRat's gcd, and the generic
  * reduce dispatches to either, answering the reduced pair under the
  * section's rational tag, numer and denom.
  */
@@ -64,7 +64,7 @@ const combinedContent = (nn: TermList, dd: TermList): Result<ArithDatum | undefi
     }),
   );
 
-/** The book's reduce-terms: two term lists in, their lowest terms out,
+/** The book's reduceTerms: two term lists in, their lowest terms out,
  * numerator first. */
 export const reduceTerms = (
   n: TermList,
@@ -117,14 +117,14 @@ export const reduceTerms = (
   return ok([nn.value, dd.value] as const);
 };
 
-/** The book's reduce-poly, on the model of add-poly: the two polys
+/** The book's reducePoly, on the model of addPoly: the two polys
  * must share their indeterminate; the reduced term lists carry it
  * again. */
 export const reducePoly = (p1: Poly, p2: Poly): Result<readonly [Poly, Poly], GenError> => {
   if (!sameVariableQ(variableOf(p1), variableOf(p2))) {
     return err({
       _tag: "NotSameVar",
-      proc: "REDUCE-POLY",
+      proc: "reducePoly",
       left: showArithDatum(attachTag("polynomial", p1)),
       right: showArithDatum(attachTag("polynomial", p2)),
     });
@@ -134,7 +134,7 @@ export const reducePoly = (p1: Poly, p2: Poly): Result<readonly [Poly, Poly], Ge
   );
 };
 
-/** The book's reduce-integers: what the original make-rat did. */
+/** The statement's reduceIntegers: what the original makeRat did. */
 export const reduceIntegers = (n: bigint, d: bigint): readonly [bigint, bigint] => {
   const g = gcdInteger(n, d);
   return [n / g, d / g];
@@ -153,17 +153,17 @@ const isRatFn = (d: ArithDatum): d is RationalFunction =>
   "numer" in d.contents;
 
 /** Installs the reduce entries of this exercise: integers through the
- * gcd of 1.2.5, polynomials through reduce-poly, both answering the
+ * gcd of 1.2.5, polynomials through reducePoly, both answering the
  * reduced pair under the rational tag. Idempotent. */
 export const installReduce = (): void => {
   put(
     "reduce",
-    ["scheme-number", "scheme-number"],
+    ["ts-number", "ts-number"],
     op((args) => {
       const n = args[0];
       const d = args[1];
       if (typeof n !== "bigint" || typeof d !== "bigint") {
-        return miss97(["scheme-number", "scheme-number"]);
+        return miss97(["ts-number", "ts-number"]);
       }
       const [nn, dd] = reduceIntegers(n, d);
       return ok(attachTag("rational", { numer: nn, denom: dd }));
@@ -187,8 +187,9 @@ export const installReduce = (): void => {
   );
 };
 
-/** The book's generic reduce: apply-generic dispatches to reduce-poly
- * for polynomial arguments and to reduce-integers for scheme numbers. */
+/** The statement's generic reduce: applyGeneric dispatches to
+ * reducePoly for polynomial arguments and to reduceIntegers for
+ * ts-number values. */
 export const reduce = (n: ArithDatum, d: ArithDatum): Result<RationalFunction, GenError> => {
   const r = applyGeneric("reduce", n, d);
   if (r._tag === "Error") {
@@ -197,16 +198,16 @@ export const reduce = (n: ArithDatum, d: ArithDatum): Result<RationalFunction, G
   return isRatFn(r.value) ? ok(r.value) : miss97([typeTagOf(n), typeTagOf(d)]);
 };
 
-/** The book's make-rat after 2.97: reduce before combining, so a
+/** The book's makeRat after 2.97: reduce before combining, so a
  * rational function is stored in lowest terms from birth. */
 export const makeRat97 = (n: ArithDatum, d: ArithDatum): Result<RationalFunction, GenError> =>
   reduce(n, d);
 
-/** Builds a polynomial datum with scheme-number coefficients. */
+/** Builds a polynomial datum with ts-number coefficients. */
 export const poly97 = (terms: ReadonlyArray<readonly [bigint, bigint]>): Polynomial =>
   makePolynomial(
     "x",
-    terms.map(([o, c]) => [o, makeSchemeNumber(c)] as const),
+    terms.map(([o, c]) => [o, makeTsNumber(c)] as const),
   );
 
 /** Adds two rational functions, constructing through reduce: the sum

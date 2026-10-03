@@ -12,6 +12,12 @@ public class E4_59Test :
         test("Exercise 4.59: the meeting queries").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            meetingQueries() shouldBe listOf("MEASURE")
+            meetingQueries() shouldBe
+                listOf(
+                    "?division = administration",
+                    "?time = 1pm",
+                    "?time = 4pm",
+                    "?time = 3pm",
+                )
         }
     })

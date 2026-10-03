@@ -9,7 +9,7 @@
 use std::fmt::{self, Display, Formatter};
 use std::rc::Rc;
 
-use crate::error::SchemeError;
+use crate::error::SicpError;
 use crate::value::Value;
 
 /// A table key: the shapes `equal?` compares in 2.4's dispatch table,
@@ -56,12 +56,12 @@ impl Key {
 }
 
 impl TryFrom<&Value> for Key {
-    type Error = SchemeError;
+    type Error = SicpError;
 
     /// Projects a `Value` onto its hashable key shape.
     ///
     /// # Errors
-    /// [`SchemeError::TypeMismatch`] when the value is not a symbol,
+    /// [`SicpError::TypeMismatch`] when the value is not a symbol,
     /// integer, string, or (recursively) a pair of keyable values: reals,
     /// booleans, `Nil`, and procedure objects are not keys.
     fn try_from(value: &Value) -> Result<Self, Self::Error> {
@@ -81,9 +81,7 @@ impl TryFrom<&Value> for Key {
                     Box::new(Key::try_from(&cdr)?),
                 ))
             }
-            other => Err(SchemeError::TypeMismatch(format!(
-                "not a table key: {other}"
-            ))),
+            other => Err(SicpError::TypeMismatch(format!("not a table key: {other}"))),
         }
     }
 }
@@ -105,7 +103,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::Key;
-    use crate::error::SchemeError;
+    use crate::error::SicpError;
     use crate::value::Value;
 
     #[test]
@@ -134,11 +132,11 @@ mod tests {
     fn non_keyable_values_are_rejected() {
         assert!(matches!(
             Key::try_from(&Value::real(1.5)),
-            Err(SchemeError::TypeMismatch(_))
+            Err(SicpError::TypeMismatch(_))
         ));
         assert!(matches!(
             Key::try_from(&Value::Bool(true)),
-            Err(SchemeError::TypeMismatch(_))
+            Err(SicpError::TypeMismatch(_))
         ));
     }
 

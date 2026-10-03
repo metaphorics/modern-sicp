@@ -12,6 +12,10 @@ public class E5_46Test :
         test("Exercise 5.46: the measured fib ratios are tabulated").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            fibStackRatioTable() shouldBe emptyList()
+            fibStackRatioTable().takeLast(2) shouldBe
+                listOf(
+                    "the compiled machine uses less stack than the evaluator: true",
+                    "the special-purpose machine uses less stack than the evaluator: true",
+                )
         }
     })

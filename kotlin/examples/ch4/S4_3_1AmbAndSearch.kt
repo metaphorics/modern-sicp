@@ -1,122 +1,124 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 4, section 4.3.1, amb and search: the driver-loop interaction
-// the section opens with, the six values of a pair of choices, and the
-// unbounded `an-integer-starting-from` generator.
+// Adapted from the Scheme programs in SICP section 4.3
+// Chapter 4, section 4.3.1, amb and search: choice commits left to right,
+// a failed demand resumes the most recent untried alternative, and one run
+// explores to exhaustion -- so every attempt's effect lands in the answer
+// stream in search order and the first success is the run's value. The
+// unbounded `anIntegerStartingFrom` generator of the section cannot be
+// observed through the published run (it explores to exhaustion and has
+// no incremental or bounded answer view), so the example keeps the finite
+// search coverage and the report names the missing contract.
 
 package sicp.ch4.examples
 
-import arrow.core.raise.either
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.ch4.AmbEvaluator
-import sicp.ch4.ambDriver
-import sicp.ch4.printValue
+import sicp.ch4.SearchModule
+import sicp.ch4.SearchRun
+import sicp.guest.GValue
 
-private val PRELUDE =
+private val PAIR_CHOICES: String =
     """
-    (define (require p) (if (not p) (amb)))
-    (define (an-element-of items)
-      (require (not (null? items)))
-      (amb (car items) (an-element-of (cdr items))))
-    (define (an-integer-between low high)
-      (require (<= low high))
-      (amb low (an-integer-between (+ low 1) high)))
-    (define (an-integer-starting-from n)
-      (amb n (an-integer-starting-from (+ n 1))))
-    (define (divides? a b) (= (remainder b a) 0))
-    (define (find-divisor n test)
-      (cond ((> (* test test) n) n)
-            ((divides? test n) test)
-            (else (find-divisor n (+ test 1)))))
-    (define (smallest-divisor n) (find-divisor n 2))
-    (define (prime? n) (= n (smallest-divisor n)))
-    (define (prime-sum-pair list1 list2)
-      (let ((a (an-element-of list1))
-            (b (an-element-of list2)))
-        (require (prime? (+ a b)))
-        (list a b)))
+    fun main() {
+        val a = choose(1L, 2L, 3L)
+        val b = choose("a", "b")
+        println("[${'$'}{a}, ${'$'}{b}]")
+    }
     """.trimIndent()
 
-private fun newDriver() = ambDriver(::AmbEvaluator, PRELUDE)
-
-/** Collects the first [count] answers of [query] as printed strings. */
-private fun firstAnswers(
-    query: String,
-    count: Int,
-): List<String> =
-    either {
-        val driver = newDriver()
-        val answers = mutableListOf<String>()
-        var next = driver.solve(query)
-        while (next != null && answers.size < count) {
-            answers.add(printValue(next))
-            next = driver.tryAgain()
+private val PRIME_SUM_PAIR: String =
+    """
+    fun isPrime(n: Long): Boolean {
+        if (n < 2L) return false
+        var d = 2L
+        while (d * d <= n) {
+            if (n % d == 0L) return false
+            d = d + 1L
         }
-        answers
-    }.fold(
-        { e -> throw AssertionError(e.toString()) },
+        return true
+    }
+
+    fun main() {
+        val a = choose(1L, 3L, 5L, 8L)
+        val b = choose(20L, 35L, 110L)
+        demand(isPrime(a + b))
+        println("[${'$'}{a}, ${'$'}{b}]")
+    }
+    """.trimIndent()
+
+private val FIRST_SUCCESS: String =
+    """
+    fun main() {
+        val x = choose(1L, 2L, 3L)
+        demand(x > 1L)
+        println(x)
+    }
+    """.trimIndent()
+
+private fun searchRun(source: String): SearchRun =
+    SearchModule.run(source).fold(
+        { e -> throw AssertionError("admission rejected the unit: ${e.category}: ${e.message}") },
         { it },
     )
 
 public class S4_3_1AmbAndSearchTest :
     FunSpec({
-        test("the driver loop answers (3 20) first, then (3 110), then (8 35)") {
-            val driver = newDriver()
-            driver.input("(prime-sum-pair '(1 3 5 8) '(20 35 110))") shouldBe
-                """
-                ;;; Amb-Eval input:
-                (prime-sum-pair '(1 3 5 8) '(20 35 110))
-                ;;; Starting a new problem
-                ;;; Amb-Eval value:
-                (3 20)
-                """.trimIndent() + "\n"
-            driver.input("try-again") shouldBe
-                """
-                ;;; Amb-Eval input:
-                try-again
-                ;;; Amb-Eval value:
-                (3 110)
-                """.trimIndent() + "\n"
-            driver.input("try-again") shouldBe
-                """
-                ;;; Amb-Eval input:
-                try-again
-                ;;; Amb-Eval value:
-                (8 35)
-                """.trimIndent() + "\n"
-        }
-
-        test("exhaustion reports the problem, and a new one starts over") {
-            val driver = newDriver()
-            driver.input("(prime-sum-pair '(1 3 5 8) '(20 35 110))")
-            repeat(3) { driver.input("try-again") }
-            driver.input("try-again") shouldBe
-                """
-                ;;; Amb-Eval input:
-                try-again
-                ;;; There is no current problem
-                """.trimIndent() + "\n"
-            driver.input("(prime-sum-pair '(19 27 30) '(11 36 58))") shouldBe
-                """
-                ;;; Amb-Eval input:
-                (prime-sum-pair '(19 27 30) '(11 36 58))
-                ;;; Starting a new problem
-                ;;; Amb-Eval value:
-                (30 11)
-                """.trimIndent() + "\n"
-        }
-
-        test("a fresh try-again finds no current problem") {
-            ambDriver(::AmbEvaluator, "(define (ignored) 1)\n").tryAgainRound() shouldBe
-                ";;; There is no current problem\n"
-        }
-
         test("a pair of choices has six possible values") {
-            firstAnswers("(list (amb 1 2 3) (amb 'a 'b))", 6) shouldBe
-                listOf("(1 a)", "(1 b)", "(2 a)", "(2 b)", "(3 a)", "(3 b)")
+            val run = searchRun(PAIR_CHOICES)
+            run.result.output shouldBe "[1, a]\n[1, b]\n[2, a]\n[2, b]\n[3, a]\n[3, b]\n"
+            run.result.error shouldBe null
+            // three alternatives at the first choice, two at each of their
+            // continuations
+            run.choices shouldBe 9L
         }
 
-        test("an unbounded generator keeps delivering the next integer") {
-            firstAnswers("(an-integer-starting-from 5)", 3) shouldBe listOf("5", "6", "7")
+        test("the prime-sum-pair answers [3, 20], then [3, 110], then [8, 35]") {
+            val run = searchRun(PRIME_SUM_PAIR)
+            run.result.output shouldBe "[3, 20]\n[3, 110]\n[8, 35]\n"
+            run.result.error shouldBe null
+        }
+
+        test("the run reports its first success and counts each entered alternative") {
+            val run = searchRun(FIRST_SUCCESS)
+            run.result.output shouldBe "2\n3\n"
+            run.result.mainValue shouldBe GValue.VUnit
+            // all three alternatives entered; the first success remains 2
+            run.choices shouldBe 3L
+        }
+
+        test("bounded consumption does not enter the recursive alternative") {
+            val source =
+                """
+                fun natural(n: Long): Long = choose(n, natural(n + 1L))
+                fun main() {
+                    println(natural(1L))
+                }
+                """.trimIndent()
+            val run =
+                SearchModule.run(source, maxAnswers = 1).fold(
+                    { e -> throw AssertionError("admission rejected ${e.category}: ${e.message}") },
+                    { it },
+                )
+            run.result.output shouldBe "1\n"
+            run.result.error shouldBe null
+            run.choices shouldBe 1L
+        }
+
+        test("choice horizon stops before entering the next alternative") {
+            val source =
+                """
+                fun main() {
+                    val x = choose(1L, 2L, 3L)
+                    println(x)
+                }
+                """.trimIndent()
+            val run =
+                SearchModule.run(source, maxAnswers = 3, maxChoices = 2).fold(
+                    { e -> throw AssertionError("admission rejected ${e.category}: ${e.message}") },
+                    { it },
+                )
+            run.result.output shouldBe "1\n2\n"
+            run.result.error shouldBe null
+            run.choices shouldBe 2L
         }
     })

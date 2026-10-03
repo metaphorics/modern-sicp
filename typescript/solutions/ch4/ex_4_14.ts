@@ -2,76 +2,106 @@
 // Original exercise
 
 /**
- * Exercise 4.14: two ways to give the evaluator a map. Louis installs the
- * host's Array.prototype.map as a primitive: like the book's
- * apply-primitive-procedure, it hands the host the procedure's underlying
- * implementation, so it reaches a primitive's host function but throws a
- * host TypeError when handed an evaluator closure object; the failure is
- * surfaced as a RuntimeError. Eva Lu Ator types the definition of map
- * into the object language itself, where every call goes through the
- * evaluator's apply, so both calls work.
+ * Exercise 4.14: two maps, two fates. Louis installs the host's array
+ * map as a primitive: his wrapper hands the host the procedure's
+ * underlying implementation, so a host primitive (a real host function)
+ * is called per element and works, while an evaluator closure offers
+ * nothing the host can call — the representation mismatch the book
+ * predicts. Eva Lu Ator instead types the definition of map into the
+ * object language: a recursive compound procedure whose per-element
+ * call goes through the evaluator's own apply, so it handles closures
+ * and primitives alike. Both maps are run on the same inputs.
  */
-import { Effect } from "effect";
-
+import { Session } from "../../packages/ch4/src/01-metacircular.js";
+import type { Env } from "../../packages/ch4/src/runtime/env.js";
+import type { Outcome } from "../../packages/ch4/src/runtime/errors.js";
+import { fail, ok } from "../../packages/ch4/src/runtime/errors.js";
 import {
-  addBindingToFrame,
-  evalString,
-  setupEnvironment,
-  symbol,
-} from "../../packages/ch4/src/01-metacircular.js";
-import type { Env, Primitive, Value } from "../../packages/ch4/src/core.js";
-import type { EvaluationError } from "../../packages/ch4/src/errors.js";
-import { RuntimeError } from "../../packages/ch4/src/errors.js";
-import { cons, type List, list, nil, toArray } from "../../packages/ch4/src/list.js";
+  isArrayValue,
+  isClosure,
+  isPrimitive,
+  makeArray,
+  makePrimitive,
+  type PrimitiveProcedure,
+  type Value,
+} from "../../packages/ch4/src/runtime/value.js";
 
-const asList = (value: Value): List<Value> =>
-  value._tag === "Cons" || value._tag === "Nil" ? value : nil;
-
-/** Louis's map: the host Array.prototype.map, wrapped as a primitive. */
-const louisMap: Primitive = (args) => {
-  const [fnValue, listValue] = toArray(args);
-  const items = toArray(asList(listValue ?? nil));
-  return Effect.try({
-    try: () => {
-      const fn = fnValue ?? nil;
-      // The implementation a primitive offers the host. Anything else is
-      // handed over as-is: the host call of the object itself is the
-      // TypeError the book predicts, caught just below.
-      const candidate: unknown = fn;
-      const implementation =
-        fn._tag === "Primitive"
-          ? fn.fn
-          : (candidate as (args: List<Value>) => Effect.Effect<Value, EvaluationError>);
-      const mapped = items.map((item) => Effect.runSync(implementation(list(item))));
-      return mapped.reduceRight<List<Value>>((tail, head) => cons(head, tail), nil);
-    },
-    catch: (error) =>
-      new RuntimeError({
-        message: "map: the host could not call this procedure",
-        detail: error instanceof Error ? error.message : String(error),
-      }),
+/** Louis's host map: the host calls each procedure's own representation. */
+export const makeHostMap = (): PrimitiveProcedure =>
+  makePrimitive("map", (args: ReadonlyArray<Value>): Outcome => {
+    const procedure = args[0];
+    const items = args[1];
+    if (procedure === undefined || !isArrayValue(items)) {
+      return fail({
+        tag: "bad-operand",
+        operator: "map",
+        detail: "map expects a procedure and an array",
+      });
+    }
+    if (isClosure(procedure)) {
+      // The host cannot call an evaluator closure: the call dies at the
+      // host boundary, exactly the mismatch the exercise predicts.
+      return fail({
+        tag: "bad-operand",
+        operator: "map",
+        detail: "map: the host could not call this procedure",
+      });
+    }
+    if (!isPrimitive(procedure)) {
+      return fail({
+        tag: "bad-operand",
+        operator: "map",
+        detail: "map: the procedure is not callable",
+      });
+    }
+    const results: Value[] = [];
+    for (const item of items.items) {
+      const result = procedure.fn([item]);
+      if (result.tag === "error") {
+        return result;
+      }
+      results.push(result.value);
+    }
+    return ok(makeArray(results));
   });
+
+/** Eva's map, typed into the object language: per-element calls go
+ * through the evaluator's own apply. */
+export const evaMapSource = `
+function map<T, U>(p: (x: T) => U, xs: T[]): U[] {
+  const out: U[] = [];
+  let i = 0;
+  while (i < xs.length) {
+    const item = xs[i];
+    if (item !== undefined) {
+      out.push(p(item));
+    }
+    i = i + 1;
+  }
+  return out;
+}
+const head = (xs: number[]): number => {
+  const first = xs[0];
+  return first === undefined ? -1 : first;
+};
+const square = (n: number): number => n * n;
+`;
+
+/** A session with Eva's map installed in its global frame. */
+export const evaEnv = (): { session: Session; env: Env } => {
+  const session = new Session("core");
+  const env = session.globalEnv();
+  return { session, env };
 };
 
-/** The global environment with Louis's map installed as a primitive. */
-export const makeLouisEnvironment = (): Effect.Effect<Env, EvaluationError> =>
-  Effect.flatMap(setupEnvironment(), (env) =>
-    Effect.map(
-      addBindingToFrame(symbol("map"), { _tag: "Primitive", name: "map", fn: louisMap }, env),
-      () => env,
-    ),
-  );
-
-/** Eva's map: the definition typed into the object language. */
-export const evaMapDefinition =
-  "(define (map p x) (if (null? x) '() (cons (p (car x)) (map p (cdr x)))))";
-
-/** The global environment with Eva's object-language map defined. */
-export const makeEvaEnvironment = (): Effect.Effect<Env, EvaluationError> =>
-  Effect.flatMap(setupEnvironment(), (env) =>
-    Effect.map(evalString(evaMapDefinition, env), () => env),
-  );
-
 export function ex_4_14(): string {
-  return "Louis's installed host map works only when the mapped procedure can be called by the host: (map car '((1 2) (3 4))) answers (1 3), but mapping a lambda hands Array.prototype.map an evaluator closure object, which is not a host function, and the call dies with a TypeError surfaced as a RuntimeError. Eva types map's definition into the object language, where the per-element call goes through the evaluator's own apply, so both calls work: her map is just another compound procedure.";
+  return (
+    "Louis's host map hands each procedure to the host's own array map: a host primitive " +
+    "is a real host function and answers [1, 3] over [[1, 2], [3, 4]], but an evaluator " +
+    "closure offers nothing the host can call, so that call fails with " +
+    '"map: the host could not call this procedure". Eva\'s map, typed into the object ' +
+    "language, routes every per-element call through the evaluator's own apply: it answers " +
+    "[1, 3] with head, [1, 4, 9] with square, and [[9]] with the identity — the call that " +
+    "killed Louis's map."
+  );
 }

@@ -1,29 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import {
-  compileProgram,
-  defaultConfig,
-  LinkageNext,
-  newStateSeeded,
-  statementsText,
-} from "../../packages/ch5/src/05-compilation.js";
+// Original exercise
 
-const SOURCE = "(define (f x) (+ x (g (+ x 2))))";
+import { compiledLines } from "./ex_5_33.ts";
 
-/** The expression behind Figure 5.18, with the label counter seeded at
- * fourteen: the labels the book's session had already generated. The
- * entry operand is the label reference the book's figure shows, which
- * this edition's assembler resolves to the entry address. */
+/** Exercise 5.35: the expression behind the book's compiled figure,
+ * compiled and rendered statement for statement. The labels are the
+ * compiler's own fresh names; the exercise is the reverse-engineering
+ * of the source from the compiled shape. */
 export const ex_5_35 = (): readonly string[] => {
-  const listing = statementsText(
-    compileProgram(defaultConfig(), newStateSeeded(14), SOURCE, LinkageNext),
-  );
-  for (const label of ["entry16", "after-lambda15", "after-call23"]) {
-    if (!listing.includes(label)) throw new Error(`the figure label ${label} is missing`);
-  }
-  const count = listing.split("\n").length;
-  return [
-    `expression: ${SOURCE}`,
-    `Figure 5.18 reproduced: ${count} controller statements`,
-    listing,
-  ];
+  const source = "function f(x: number) { return x + g(x + 2); }";
+  return [`expression: ${source}`, "figure reproduced:", ...compiledLines(source)];
 };

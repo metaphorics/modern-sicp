@@ -23,8 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Church numerals: `zero` applies its argument function zero times;
     // `succ` applies it one more time than its argument does. Converting
     // back to an ordinary integer, by counting the applications, is how
-    // this file checks the numerals without a reader for Scheme's
-    // notation.
+    // this file checks the numerals.
     let zero = church_zero();
     let one = church_succ(&zero);
     let two = church_succ(&one);

@@ -1,0 +1,37 @@
+{
+  "build": [
+    [
+      "opam",
+      "exec",
+      "--",
+      "dune",
+      "build",
+      "driver/sicp_run.exe"
+    ]
+  ],
+  "run": [
+    "_build/default/driver/sicp_run.exe",
+    "--case",
+    "{case}",
+    "--engine",
+    "{engine}",
+    "--source",
+    "{source}",
+    "--work",
+    "{work}"
+  ],
+  "native_compile": [
+    "opam",
+    "exec",
+    "--",
+    "ocamlc",
+    "-warn-error",
+    "+8",
+    "-o",
+    "{work}/program.exe",
+    "{source}"
+  ],
+  "native_run": [
+    "{work}/program.exe"
+  ]
+}

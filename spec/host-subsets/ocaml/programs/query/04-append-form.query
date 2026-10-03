@@ -1,0 +1,8 @@
+(* Append as rules (lesson: rule-defined relations over lists). *)
+[ Rule (List [ Atom "append-to-form"; List []; Var "y"; Var "y" ], Always_true)
+; Rule
+    ( List [ Atom "append-to-form"; Dotted ([ Var "u" ], Var "v"); Var "y"; Dotted ([ Var "u" ], Var "z") ]
+    , Pattern (List [ Atom "append-to-form"; Var "v"; Var "y"; Var "z" ]) )
+; Query (Pattern (List [ Atom "append-to-form"; List [ Atom "a"; Atom "b" ]; List [ Atom "c"; Atom "d" ]; Var "z" ]))
+; Query (Pattern (List [ Atom "append-to-form"; Var "x"; Var "y"; List [ Atom "a"; Atom "b" ] ]))
+]

@@ -9,9 +9,17 @@ import io.kotest.matchers.shouldBe
 
 public class E4_73Test :
     FunSpec({
-        test("Exercise 4.73: the flatten-stream delay").config(
+        test("Exercise 4.73: the delayed flatten delivers a prefix beside an infinite branch").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            flattenDelayDebate() shouldBe listOf("MEASURE")
+            flattenDelayDebate() shouldBe
+                listOf(
+                    "?who = [Hacker, Alyssa, P]",
+                    "?who = Minnie",
+                    "?who = [Fect, Cy, D]",
+                    "?who = Minnie",
+                    "?who = [Tweakit, Lem, E]",
+                    "?who = Minnie",
+                )
         }
     })

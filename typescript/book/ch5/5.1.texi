@@ -81,7 +81,7 @@ represented in a data-path diagram by a triangle containing the constant).
 @image{../../text/original/figures/chap5/Fig5.1a,,105mm,Figure 5.1: Data paths for a GCD machine.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap5/Fig5.1a.std,,105mm,,.pdf}
+@image{../../text/original/figures/pdf/chap5/Fig5.1a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 5.1:} Data paths for a @abbr{GCD} machine.}
@@ -172,10 +172,16 @@ compute factorials using the iterative algorithm specified by the following
 procedure.  Draw data-path and controller diagrams for this machine.
 
 @example typescript
-import @{ factorialIterative, runMachine @} from "@sicp-ts{}/ch5/01-register-machines";
-
-const result = runMachine(factorialIterative, @{ n: 5 @});
-result.ok ? result.value.registers["product"] : result.error;
+const factorialIterative = (n: number): number => @{
+  const iter = (
+    product: number,
+    counter: number,
+  ): number =>
+    counter > n
+      ? product
+      : iter(product * counter, counter + 1);
+  return iter(1, 1);
+@};
 @end example
 @end quotation
 
@@ -192,7 +198,7 @@ result.ok ? result.value.registers["product"] : result.error;
 
 Data-path and controller diagrams are adequate for representing simple machines
 such as @abbr{GCD}, but they are unwieldy for describing large machines such
-as a Lisp interpreter.  To make it possible to deal with complex machines, we
+as a guest interpreter.  To make it possible to deal with complex machines, we
 will create a language that presents, in textual form, all the information
 given by the data-path and controller diagrams.  We will start with a notation
 that directly mirrors the diagrams.
@@ -248,37 +254,37 @@ and each button and test is used only once in the controller.
 @strong{@anchor{Figure 5.3}Figure 5.3:} @math{\downarrow} A specification of the @abbr{GCD}
 machine.
 
-@example register-machine
-(data-paths
- (registers
-  ((name a)
-   (buttons ((name a<-b) 
-             (source (register b)))))
-  ((name b)
-   (buttons ((name b<-t)
-             (source (register t)))))
-  ((name t)
-   (buttons ((name t<-r)
-             (source (operation rem))))))
- (operations
-  ((name rem)
-   (inputs (register a) (register b)))
-  ((name =)
-   (inputs (register b) (constant 0)))))
+@example typescript
+// Figure 5.3's split specification as typed machine data.
+// The data paths name the registers, the buttons that move
+// values into them, and the operations; the controller refers
+// to those names.
+const gcdSpecification = @{
+  dataPaths: @{
+    registers: ["a", "b", "t"],
+    buttons: [
+      @{ name: "a<-b", source: register("b") @},
+      @{ name: "b<-t", source: register("t") @},
+      @{ name: "t<-r", source: op("rem") @},
+    ],
+    operations: [
+      @{ name: "rem", inputs: [register("a"), register("b")] @},
+      @{ name: "=", inputs: [register("b"), constant(0)] @},
+    ],
+  @},
+  controller: [
+    @{ tag: "label", name: "test-b" @}, // label
+    @{ tag: "test", operation: "=" @}, // test
+    branch("gcd-done"), // conditional branch
+    @{ tag: "button", name: "t<-r" @}, // button push
+    @{ tag: "button", name: "a<-b" @}, // button push
+    @{ tag: "button", name: "b<-t" @}, // button push
+    gotoLabel("test-b"), // unconditional branch
+    @{ tag: "label", name: "gcd-done" @}, // label
+  ],
+@};
 
-(controller
- test-b                @r{; label}
-   (test =)            @r{; test}
-   (branch 
-    (label gcd-done))  @r{; conditional branch}
-   (t<-r)              @r{; button push}
-   (a<-b)              @r{; button push}
-   (b<-t)              @r{; button push}
-   (goto 
-    (label test-b))    @r{; unconditional branch}
- gcd-done)             @r{; label}
 @end example
-
 @end quotation
 
 Unfortunately, it is difficult to read such a description.  In order to
@@ -303,16 +309,17 @@ contents of register @code{b} and the constant 0,'' we will say ``Perform the
 will omit the data-path description, leaving only the controller sequence.
 Thus, the @abbr{GCD} machine is described as follows:
 
-@example register-machine
-(controller
- test-b
-   (test (op =) (reg b) (const 0))
-   (branch (label gcd-done))
-   (assign t (op rem) (reg a) (reg b))
-   (assign a (reg b))
-   (assign b (reg t))
-   (goto (label test-b))
- gcd-done)
+@example typescript
+const controller: Instruction[] = [
+  @{ tag: "label", name: "test-b" @},
+  test("=", register("b"), constant(0)),
+  branch("gcd-done"),
+  assign("t", op("rem", register("a"), register("b"))),
+  assign("a", register("b")),
+  assign("b", register("t")),
+  gotoLabel("test-b"),
+  @{ tag: "label", name: "gcd-done" @},
+];
 @end example
 
 @noindent
@@ -331,8 +338,9 @@ the machine; it is not obvious for a large machine how many registers,
 operations, and buttons there are and how they are interconnected.
 
 @item
-Because the controller instructions in a machine definition look like Lisp
-expressions, it is easy to forget that they are not arbitrary Lisp expressions.
+Because the controller instructions in a machine definition are ordinary typed constructor calls,
+it is easy to forget that they are data describing a machine, not arbitrary
+expressions to execute.
 They can notate only legal machine operations.  For example, operations can
 operate directly only on constants and the contents of registers, not on the
 results of other operations.
@@ -356,10 +364,10 @@ to describe the iterative factorial machine of @ref{Exercise 5.1}.
 Let us modify the @abbr{GCD} machine so that we can type in the numbers
 whose @abbr{GCD} we want and get the answer printed at our terminal.  We
 will not discuss how to make a machine that can read and print, but will assume
-(as we do when we use @code{read} and @code{display} in Scheme) that they are
+(as we do when we use the reader and the transcript output in the guest language) that they are
 available as primitive operations.@footnote{This assumption glosses over a
 great deal of complexity.  Usually a large portion of the implementation of a
-Lisp system is dedicated to making reading and printing work.}
+language runtime is dedicated to making reading and printing work.}
 
 @code{Read} is like the operations we have been using in that it produces a
 value that can be stored in a register.  But @code{read} does not take inputs
@@ -381,8 +389,10 @@ we use a new kind of instruction called @code{perform}.  Thus, the action of
 printing the contents of register @code{a} is represented in a controller
 sequence by the instruction
 
-@example register-machine
-(perform (op print) (reg a))
+@example typescript
+const controller: Instruction[] = [
+  perform("print", register("a")),
+];
 @end example
 
 @noindent
@@ -426,21 +436,22 @@ loops we used in the interpreters of @ref{Chapter 4}.
                      +-----+
 @end example
 
-@example register-machine
- (controller
-  gcd-loop
-    (assign a (op read))
-    (assign b (op read))
-  test-b
-    (test (op =) (reg b) (const 0))
-    (branch (label gcd-done))
-    (assign t (op rem) (reg a) (reg b))
-    (assign a (reg b))
-    (assign b (reg t))
-    (goto (label test-b))
-  gcd-done
-    (perform (op print) (reg a))
-    (goto (label gcd-loop)))
+@example typescript
+const controller: Instruction[] = [
+  @{ tag: "label", name: "gcd-loop" @},
+  assign("a", op("read")),
+  assign("b", op("read")),
+  @{ tag: "label", name: "test-b" @},
+  test("=", register("b"), constant(0)),
+  branch("gcd-done"),
+  assign("t", op("rem", register("a"), register("b"))),
+  assign("a", register("b")),
+  assign("b", register("t")),
+  gotoLabel("test-b"),
+  @{ tag: "label", name: "gcd-done" @},
+  perform("print", register("a")),
+  gotoLabel("gcd-loop"),
+];
 @end example
 
 @end ifinfo
@@ -459,7 +470,7 @@ loops we used in the interpreters of @ref{Chapter 4}.
 
 We will often define a machine to include ``primitive'' operations that are
 actually very complex.  For example, in @ref{5.4} and @ref{5.5} we
-will treat Scheme's environment manipulations as primitive.  Such abstraction
+will treat the guest evaluator's environment manipulations as primitive.  Such abstraction
 is valuable because it allows us to ignore the details of parts of a machine so
 that we can concentrate on other aspects of the design.  The fact that we have
 swept a lot of complexity under the rug, however, does not mean that a machine
@@ -472,7 +483,7 @@ computes the remainder of the contents of registers @code{a} and @code{b} and
 assigns the result to register @code{t}.  If we want to construct the
 @abbr{GCD} machine without using a primitive remainder operation, we must
 specify how to compute remainders in terms of simpler operations, such as
-subtraction.  Indeed, we can write a Scheme procedure that finds remainders in
+subtraction.  Indeed, we can write a guest procedure that finds remainders in
 this way:
 
 @example typescript
@@ -485,8 +496,10 @@ paths with a subtraction operation and a comparison test.  @ref{Figure 5.5}
 shows the data paths and controller for the elaborated machine.  The
 instruction
 
-@example register-machine
-(assign t (op rem) (reg a) (reg b))
+@example typescript
+const controller: Instruction[] = [
+  assign("t", op("rem", register("a"), register("b"))),
+];
 @end example
 
 @noindent
@@ -558,22 +571,23 @@ instructions that contains a loop, as shown in @ref{Figure 5.6}.
 @strong{@anchor{Figure 5.6}Figure 5.6:} @math{\downarrow} Controller instruction sequence for the
 @abbr{GCD} machine in @ref{Figure 5.5}.
 
-@example register-machine
-(controller
- test-b
-   (test (op =) (reg b) (const 0))
-   (branch (label gcd-done))
-   (assign t (reg a))
- rem-loop
-   (test (op <) (reg t) (reg b))
-   (branch (label rem-done))
-   (assign t (op -) (reg t) (reg b))
-   (goto (label rem-loop))
- rem-done
-   (assign a (reg b))
-   (assign b (reg t))
-   (goto (label test-b))
- gcd-done)
+@example typescript
+const controller: Instruction[] = [
+  @{ tag: "label", name: "test-b" @},
+  test("=", register("b"), constant(0)),
+  branch("gcd-done"),
+  assign("t", register("a")),
+  @{ tag: "label", name: "rem-loop" @},
+  test("<", register("t"), register("b")),
+  branch("rem-done"),
+  assign("t", op("-", register("t"), register("b"))),
+  gotoLabel("rem-loop"),
+  @{ tag: "label", name: "rem-done" @},
+  assign("a", register("b")),
+  assign("b", register("t")),
+  gotoLabel("test-b"),
+  @{ tag: "label", name: "gcd-done" @},
+];
 @end example
 
 @end quotation
@@ -583,10 +597,10 @@ instructions that contains a loop, as shown in @ref{Figure 5.6}.
 roots using Newton's method, as described in @ref{Sec.1.1.7,,1.1.7}:
 
 @example typescript
-import @{ runMachine, sqrtExpanded @} from "@sicp-ts{}/ch5/01-register-machines";
-
-const result = runMachine(sqrtExpanded, @{ x: 2 @});
-result.ok ? result.value.registers["guess"] : result.error;
+const sqrtIter = (guess: number, x: number): number =>
+  goodEnough(guess, x)
+    ? guess
+    : sqrtIter(improve(guess, x), x);
 @end example
 
 Begin by assuming that @code{good-enough?} and @code{improve} operations are
@@ -636,24 +650,26 @@ corresponding portions of the machine's controller sequence.
        +-----+                             +-----+                   
 @end example
 
-@example register-machine
-gcd-1
- (test (op =) (reg b) (const 0))
- (branch (label after-gcd-1))
- (assign t (op rem) (reg a) (reg b))
- (assign a (reg b))
- (assign b (reg t))
- (goto (label gcd-1))
-after-gcd-1
-  @r{…}
-gcd-2
- (test (op =) (reg d) (const 0))
- (branch (label after-gcd-2))
- (assign s (op rem) (reg c) (reg d))
- (assign c (reg d))
- (assign d (reg s))
- (goto (label gcd-2))
-after-gcd-2
+@example typescript
+const controller: Instruction[] = [
+  @{ tag: "label", name: "gcd-1" @},
+  test("=", register("b"), constant(0)),
+  branch("after-gcd-1"),
+  assign("t", op("rem", register("a"), register("b"))),
+  assign("a", register("b")),
+  assign("b", register("t")),
+  gotoLabel("gcd-1"),
+  // …
+  @{ tag: "label", name: "after-gcd-1" @},
+  @{ tag: "label", name: "gcd-2" @},
+  test("=", register("d"), constant(0)),
+  branch("after-gcd-2"),
+  assign("s", op("rem", register("c"), register("d"))),
+  assign("c", register("d")),
+  assign("d", register("s")),
+  gotoLabel("gcd-2"),
+  @{ tag: "label", name: "after-gcd-2" @},
+];
 @end example
 
 @end ifinfo
@@ -685,24 +701,26 @@ as the first.  If we do this, we obtain the controller sequence shown in
 a machine that uses the same data-path components for two different
 @abbr{GCD} computations.
 
-@example register-machine
-gcd-1
- (test (op =) (reg b) (const 0))
- (branch (label after-gcd-1))
- (assign t (op rem) (reg a) (reg b))
- (assign a (reg b))
- (assign b (reg t))
- (goto (label gcd-1))
-after-gcd-1
-  @r{…}
-gcd-2
- (test (op =) (reg b) (const 0))
- (branch (label after-gcd-2))
- (assign t (op rem) (reg a) (reg b))
- (assign a (reg b))
- (assign b (reg t))
- (goto (label gcd-2))
-after-gcd-2
+@example typescript
+const controller: Instruction[] = [
+  @{ tag: "label", name: "gcd-1" @},
+  test("=", register("b"), constant(0)),
+  branch("after-gcd-1"),
+  assign("t", op("rem", register("a"), register("b"))),
+  assign("a", register("b")),
+  assign("b", register("t")),
+  gotoLabel("gcd-1"),
+  // …
+  @{ tag: "label", name: "after-gcd-1" @},
+  @{ tag: "label", name: "gcd-2" @},
+  test("=", register("b"), constant(0)),
+  branch("after-gcd-2"),
+  assign("t", op("rem", register("a"), register("b"))),
+  assign("a", register("b")),
+  assign("b", register("t")),
+  gotoLabel("gcd-2"),
+  @{ tag: "label", name: "after-gcd-2" @},
+];
 @end example
 
 @end quotation
@@ -725,31 +743,33 @@ of the @code{gcd} instructions.
 @strong{@anchor{Figure 5.9}Figure 5.9:} @math{\downarrow} Using a @code{continue} register to
 avoid the duplicate controller sequence in @ref{Figure 5.8}.
 
-@example register-machine
-gcd
- (test (op =) (reg b) (const 0))
- (branch (label gcd-done))
- (assign t (op rem) (reg a) (reg b))
- (assign a (reg b))
- (assign b (reg t))
- (goto (label gcd))
-gcd-done
- (test (op =) (reg continue) (const 0))
- (branch (label after-gcd-1))
- (goto (label after-gcd-2))
-  @r{…}
-@r{;; Before branching to @code{gcd} from}
-@r{;; the first place where it is needed,}
-@r{;; we place 0 in the @code{continue} register}
- (assign continue (const 0))
- (goto (label gcd))
-after-gcd-1
-  @r{…}
-@r{;; Before the second use of @code{gcd},} 
-@r{;; we place 1 in the @code{continue} register}
- (assign continue (const 1))
- (goto (label gcd))
-after-gcd-2
+@example typescript
+const controller: Instruction[] = [
+  @{ tag: "label", name: "gcd" @},
+  test("=", register("b"), constant(0)),
+  branch("gcd-done"),
+  assign("t", op("rem", register("a"), register("b"))),
+  assign("a", register("b")),
+  assign("b", register("t")),
+  gotoLabel("gcd"),
+  @{ tag: "label", name: "gcd-done" @},
+  test("=", register("continue"), constant(0)),
+  branch("after-gcd-1"),
+  gotoLabel("after-gcd-2"),
+  // …
+  // ;; Before branching to gcd from
+  // ;; the first place where it is needed,
+  // ;; we place 0 in the continue register
+  assign("continue", constant(0)),
+  gotoLabel("gcd"),
+  // …
+  // ;; Before the second use of gcd,
+  // ;; we place 1 in the continue register
+  @{ tag: "label", name: "after-gcd-1" @},
+  assign("continue", constant(1)),
+  gotoLabel("gcd"),
+  @{ tag: "label", name: "after-gcd-2" @},
+];
 @end example
 
 @end quotation
@@ -783,29 +803,31 @@ terminate the @code{gcd} subroutine with a branch to the location stored in the
 @code{continue} register simplifies and generalizes the strategy shown in
 @ref{Figure 5.9}.
 
-@example register-machine
-gcd
- (test (op =) (reg b) (const 0))
- (branch (label gcd-done))
- (assign t (op rem) (reg a) (reg b))
- (assign a (reg b))
- (assign b (reg t))
- (goto (label gcd))
-gcd-done
- (goto (reg continue))
-  @r{…}
-@r{;; Before calling @code{gcd},} 
-@r{;; we assign to @code{continue} the label}
-@r{;; to which @code{gcd} should return.}
- (assign continue (label after-gcd-1))
- (goto (label gcd))
-after-gcd-1
-  @r{…}
-@r{;; Here is the second call to @code{gcd},}
-@r{;; with a different continuation.}
- (assign continue (label after-gcd-2))
- (goto (label gcd))
-after-gcd-2
+@example typescript
+const controller: Instruction[] = [
+  @{ tag: "label", name: "gcd" @},
+  test("=", register("b"), constant(0)),
+  branch("gcd-done"),
+  assign("t", op("rem", register("a"), register("b"))),
+  assign("a", register("b")),
+  assign("b", register("t")),
+  gotoLabel("gcd"),
+  @{ tag: "label", name: "gcd-done" @},
+  gotoRegister("continue"),
+  // …
+  // ;; Before calling gcd,
+  // ;; we assign to continue the label
+  // ;; to which gcd should return.
+  assign("continue", labelRef("after-gcd-1")),
+  gotoLabel("gcd"),
+  // …
+  // ;; Here is the second call to gcd,
+  // ;; with a different continuation.
+  @{ tag: "label", name: "after-gcd-1" @},
+  assign("continue", labelRef("after-gcd-2")),
+  gotoLabel("gcd"),
+  @{ tag: "label", name: "after-gcd-2" @},
+];
 @end example
 
 @end quotation
@@ -989,29 +1011,38 @@ subcomputation, is needed.
              /_1_\                  fact  /___\  /___\ done
 @end example
 
-@example register-machine
-(controller
-   (assign continue (label fact-done))     @r{; set up final return address}
- fact-loop
-   (test (op =) (reg n) (const 1))
-   (branch (label base-case))
-   @r{;; Set up for the recursive call by saving @code{n} and @code{continue}.}
-   @r{;; Set up @code{continue} so that the computation will continue}
-   @r{;; at @code{after-fact} when the subroutine returns.}
-   (save continue)
-   (save n)
-   (assign n (op -) (reg n) (const 1))
-   (assign continue (label after-fact))
-   (goto (label fact-loop))
- after-fact
-   (restore n)
-   (restore continue)
-   (assign val (op *) (reg n) (reg val))   @r{; @code{val} now contains @emph{n}(@emph{n} − 1)!}
-   (goto (reg continue))                   @r{; return to caller}
- base-case
-   (assign val (const 1))                  @r{; base case: }1! = 1
-   (goto (reg continue))                   @r{; return to caller}
- fact-done)
+@example typescript
+const controller: Instruction[] = [
+  assign("continue", labelRef("fact-done")),
+  // ; set up final return address
+  @{ tag: "label", name: "fact-loop" @},
+  test("=", register("n"), constant(1)),
+  branch("base-case"),
+  // ;; Set up for the recursive call by saving n and continue.
+  save("continue"),
+  // ;; Set up continue so that the computation will continue
+  // ;; at after-fact when the subroutine returns.
+  save("n"),
+  assign("n", op("-", register("n"), constant(1))),
+  assign("continue", labelRef("after-fact")),
+  gotoLabel("fact-loop"),
+  @{ tag: "label", name: "after-fact" @},
+  restore("n"),
+  restore("continue"),
+  assign("val", op("*", register("n"), register("val"))),
+  gotoRegister("continue"),
+  // ; val now contains n(n − 1)!
+  // ; return to caller
+  @{ tag: "label", name: "base-case" @},
+  assign("val", constant(1)),
+  @{ tag: "label", name: "1!" @},
+  @{ tag: "label", name: "=" @},
+  @{ tag: "label", name: "1" @},
+  gotoRegister("continue"),
+  // ; base case:
+  // ; return to caller
+  @{ tag: "label", name: "fact-done" @},
+];
 @end example
 
 @end ifinfo
@@ -1068,47 +1099,50 @@ shows the controller sequence for this machine.
 @strong{@anchor{Figure 5.12}Figure 5.12:} @math{\downarrow} Controller for a machine to compute
 Fibonacci numbers.
 
-@example register-machine
-(controller
-   (assign continue (label fib-done))
- fib-loop
-   (test (op <) (reg n) (const 2))
-   (branch (label immediate-answer))
-   @r{;; set up to compute Fib(@emph{n} − 1)}
-   (save continue)
-   (assign continue (label afterfib-n-1))
-   (save n)           @r{; save old value of @code{n}}
-   (assign n 
-           (op -)
-           (reg n)
-           (const 1)) @r{; clobber @code{n} to @code{n-1}}
-   (goto 
-    (label fib-loop)) @r{; perform recursive call}
- afterfib-n-1 @r{; upon return, @code{val} contains Fib(@emph{n} − 1)}
-   (restore n)
-   (restore continue)
-   @r{;; set up to compute Fib(@emph{n} − 2)}
-   (assign n (op -) (reg n) (const 2))
-   (save continue)
-   (assign continue (label afterfib-n-2))
-   (save val)         @r{; save Fib(@emph{n} − 1)}
-   (goto (label fib-loop))
- afterfib-n-2 @r{; upon return, @code{val} contains Fib(@emph{n} − 2)}
-   (assign n 
-           (reg val)) @r{; @code{n} now contains Fib(@emph{n} − 2)}
-   (restore val)      @r{; @code{val} now contains Fib(@emph{n} − 1)}
-   (restore continue)
-   (assign val        @r{; Fib(@emph{n} − 1) + Fib(@emph{n} − 2)}
-           (op +) 
-           (reg val)
-           (reg n))
-   (goto              @r{; return to caller,}
-    (reg continue))   @r{; answer is in @code{val}}
- immediate-answer
-   (assign val 
-           (reg n))   @r{; base case: Fib(@emph{n}) = @emph{n}}
-   (goto (reg continue))
- fib-done)
+@example typescript
+const controller: Instruction[] = [
+  assign("continue", labelRef("fib-done")),
+  @{ tag: "label", name: "fib-loop" @},
+  test("<", register("n"), constant(2)),
+  branch("immediate-answer"),
+  save("continue"),
+  // ;; set up to compute Fib(n − 1)
+  assign("continue", labelRef("afterfib-n-1")),
+  save("n"),
+  assign("n", op("-", register("n"), constant(1))),
+  // ; save old value of n
+  gotoLabel("fib-loop"),
+  // ; clobber n to n-1
+  // ; perform recursive call
+  @{ tag: "label", name: "afterfib-n-1" @},
+  restore("n"),
+  // ; upon return, val contains Fib(n − 1)
+  restore("continue"),
+  assign("n", op("-", register("n"), constant(2))),
+  // ;; set up to compute Fib(n − 2)
+  save("continue"),
+  assign("continue", labelRef("afterfib-n-2")),
+  save("val"),
+  gotoLabel("fib-loop"),
+  // ; save Fib(n − 1)
+  @{ tag: "label", name: "afterfib-n-2" @},
+  assign("n", register("val")),
+  // ; upon return, val contains Fib(n − 2)
+  restore("val"),
+  // ; n now contains Fib(n − 2)
+  restore("continue"),
+  // ; val now contains Fib(n − 1)
+  assign("val", op("+", register("val"), register("n"))),
+  // ; Fib(n − 1) + Fib(n − 2)
+  gotoRegister("continue"),
+  // ; return to caller,
+  // ; answer is in val
+  @{ tag: "label", name: "immediate-answer" @},
+  assign("val", register("n")),
+  gotoRegister("continue"),
+  // ; base case: Fib(n) = n
+  @{ tag: "label", name: "fib-done" @},
+];
 @end example
 
 @end quotation
@@ -1124,20 +1158,24 @@ controller instruction sequence and draw a diagram showing the data paths.
 Recursive exponentiation:
 
 @example typescript
-import @{ exponentRecursive, runMachine @} from "@sicp-ts{}/ch5/01-register-machines";
-
-const result = runMachine(exponentRecursive, @{ b: 3, n: 4 @});
-result.ok ? result.value.registers["val"] : result.error;
+const exptRecursive = (b: number, n: number): number =>
+  n === 0 ? 1 : b * exptRecursive(b, n - 1);
 @end example
 
 @item
 Iterative exponentiation:
 
 @example typescript
-import @{ exponentIterative, runMachine @} from "@sicp-ts{}/ch5/01-register-machines";
-
-const result = runMachine(exponentIterative, @{ b: 3, n: 4 @});
-result.ok ? result.value.registers["product"] : result.error;
+const exptIterative = (b: number, n: number): number => @{
+  const iter = (
+    product: number,
+    counter: number,
+  ): number =>
+    counter > n
+      ? product
+      : iter(product * b, counter + 1);
+  return iter(1, 1);
+@};
 @end example
 
 @end enumerate
@@ -1165,39 +1203,42 @@ following forms, where each @math{{⟨\kern0.06em input_i⟩}} is either
 @code{(reg ⟨@var{register-name}⟩)} or @code{(const ⟨@var{constant-value}⟩)}.  
 These instructions were introduced in @ref{5.1.1}:
 
-@example register-machine
-(assign ⟨@var{register-name}⟩ (reg ⟨@var{register-name}⟩))
-(assign ⟨@var{register-name}⟩ 
-        (const ⟨@var{constant-value}⟩))
-(assign ⟨@var{register-name}⟩ 
-        (op ⟨@var{operation-name}⟩) 
-        ⟨@var{input₁}⟩ @r{…} ⟨@var{inputₙ}⟩)
-(perform (op ⟨@var{operation-name}⟩) 
-         ⟨@var{input₁}⟩ 
-         @r{…} 
-         ⟨@var{inputₙ}⟩)
-(test (op ⟨@var{operation-name}⟩) 
-      ⟨@var{input₁}⟩ 
-      @r{…} 
-      ⟨@var{inputₙ}⟩)
-(branch (label ⟨@var{label-name}⟩))
-(goto (label ⟨@var{label-name}⟩))
+@example typescript
+const controller: Instruction[] = [
+  assign("⟨@var{register-name}⟩", register("⟨@var{register-name}⟩")),
+  assign("⟨@var{register-name}⟩", constant("⟨@var{constant-value}⟩")),
+  assign(
+    "⟨@var{register-name}⟩",
+    op("⟨@var{operation-name}⟩", ⟨@var{input₁}⟩, ⟨@var{inputₙ}⟩)
+  ),
+  // …
+  perform("⟨@var{operation-name}⟩", ⟨@var{input₁}⟩, ⟨@var{inputₙ}⟩),
+  // …
+  test("⟨@var{operation-name}⟩", ⟨@var{input₁}⟩, ⟨@var{inputₙ}⟩),
+  // …
+  branch("⟨@var{label-name}⟩"),
+  gotoLabel("⟨@var{label-name}⟩"),
+];
 @end example
 
 @noindent
 The use of registers to hold labels was introduced in @ref{5.1.3}:
 
-@example register-machine
-(assign ⟨@var{register-name}⟩ (label ⟨@var{label-name}⟩))
-(goto (reg ⟨@var{register-name}⟩))
+@example typescript
+const controller: Instruction[] = [
+  assign("⟨@var{register-name}⟩", labelRef("⟨@var{label-name}⟩")),
+  gotoRegister("⟨@var{register-name}⟩"),
+];
 @end example
 
 @noindent
 Instructions to use the stack were introduced in @ref{5.1.4}:
 
-@example register-machine
-(save ⟨@var{register-name}⟩)
-(restore ⟨@var{register-name}⟩)
+@example typescript
+const controller: Instruction[] = [
+  save("⟨@var{register-name}⟩"),
+  restore("⟨@var{register-name}⟩"),
+];
 @end example
 
 @noindent

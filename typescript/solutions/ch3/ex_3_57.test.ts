@@ -10,7 +10,7 @@ import { type AdditionCounter, fibsCounting, fibsPlainCounting } from "./ex_3_57
 const newCounter = (): AdditionCounter => ({ additions: 0 });
 
 describe("exercise 3.57: additions performed computing fibs elements", () => {
-  it("the instrumented add-streams fibs is still the Fibonacci stream", () => {
+  it("the instrumented addStreams fibs is still the Fibonacci stream", () => {
     expect(streamTake(fibsCounting(newCounter()), 10)).toEqual([0, 1, 1, 2, 3, 5, 8, 13, 21, 34]);
     expect(streamRef(fibsPlainCounting(newCounter()), 10)).toBe(55);
   });

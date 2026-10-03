@@ -3,4 +3,4 @@
 
 import { test } from "vitest";
 
-test.todo("Exercise 4.21: recursion without define");
+test.todo("Exercise 4.21: recursion without local declarations");

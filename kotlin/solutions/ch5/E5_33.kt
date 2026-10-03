@@ -1,52 +1,42 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, exercise 5.33: the alternative factorial's compilation.
-// Both compilations are printed by the compiler and both procedures run
-// on the machine. The operand order is the whole story: the book's
-// factorial evaluates `n` into `val` before the recursive call and must
-// save `argl` around the call to cons the answer on, while the
-// alternative evaluates `n` after the call returns (for `(* n ...)`)
-// and must save `env` around the call to reach the frame. Both compile
-// to the same statement count with the same number of saves, so neither
-// version executes faster.
+// Original exercise
+//
+// Chapter 5, exercise 5.33: compare factorial with its multiplication
+// operands reversed. The compiler's Kotlin binary operands evaluate
+// left-to-right, so comparing their typed instruction sequences shows
+// the consequences of which operand makes the recursive call.
 
 package sicp.ch5.solutions
 
-import sicp.ch5.CompilerConfig
+/** Factorial with the recursive call before the multiplication's `n`. */
+public val factorialRecursiveProbe: String = recursiveFactorialSource
 
-private val factorialSource: String =
+/** The alternative puts the recursive call after its other operand. */
+public val factorialAlternativeProbe: String =
     """
-    (define (factorial n)
-      (if (= n 1)
-          1
-          (* (factorial (- n 1)) n)))
+    fun factorial(n: Long): Long {
+        if (n == 1L) {
+            return 1L
+        }
+        return n * factorial(n - 1L)
+    }
     """.trimIndent()
 
-private val factorialAltSource: String =
-    """
-    (define (factorial-alt n)
-      (if (= n 1)
-          1
-          (* n (factorial-alt (- n 1)))))
-    """.trimIndent()
-
-/** The save/restore instructions of a compilation, in order. */
-private fun savesOf(stmts: List<String>): List<String> = stmts.filter { it.startsWith("(save ") || it.startsWith("(restore ") }
-
-/** The comparison: both compilations' saves, both counts, and both
- *  runs answering 120. The define's own `ok` is not a call answer, so
- *  it stays out of the pinned reply. */
-public fun altFactorialComparison(): List<String> {
-    val cfg = CompilerConfig()
-    val plain = compiledStatements(cfg, factorialSource)
-    val alt = compiledStatements(cfg, factorialAltSource)
-    val plainRun = valuesOf(runCompiled(cfg, factorialSource, "(factorial 5)")).filter { it != "ok" }
-    val altRun = valuesOf(runCompiled(cfg, factorialAltSource, "(factorial-alt 5)")).filter { it != "ok" }
+/** The two operand orders beside each other: statements, save pairs,
+ *  and the agreement of their compiled answers. */
+public fun factorialComparison(): List<String> {
+    val originalSource = factorialRecursiveProbe + "\nfun main() { println(factorial(5L)) }\n"
+    val alternativeSource = factorialAlternativeProbe + "\nfun main() { println(factorial(5L)) }\n"
+    val original = compiledStatements(originalSource)
+    val alternative = compiledStatements(alternativeSource)
+    val originalAnswer = outputLines(runCompiled(originalSource))
+    val alternativeAnswer = outputLines(runCompiled(alternativeSource))
+    val originalDepth = compiledStats(originalSource).second
+    val alternativeDepth = compiledStats(alternativeSource).second
     return listOf(
-        "factorial saves: ${savesOf(plain).joinToString("; ")}",
-        "factorial-alt saves: ${savesOf(alt).joinToString("; ")}",
-        "factorial: ${plain.size} statements, answers ${plainRun.joinToString(" ")}",
-        "factorial-alt: ${alt.size} statements, answers ${altRun.joinToString(" ")}",
-        "both compile to ${plain.size} statements with ${savesOf(plain).size} saves/restores; " +
-            "the order swaps the preserved register from argl to env, neither runs faster",
+        "recursive operand first: ${original.size} statements, ${savePairs(original).size} save pairs",
+        "n operand first: ${alternative.size} statements, ${savePairs(alternative).size} save pairs",
+        "the two runs answer alike: ${originalAnswer == listOf("120") && alternativeAnswer == originalAnswer}",
+        "the alternative's pending operand uses deeper stack: ${alternativeDepth > originalDepth}",
     )
 }

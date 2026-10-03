@@ -8,7 +8,7 @@
 use std::rc::Rc;
 
 use ch03::sec_3_2::{define, square};
-use sicp_runtime::{Env, SchemeError, Value};
+use sicp_runtime::{Env, SicpError, Value};
 
 /// Reads one binding for display: the value of a variable is the
 /// binding in the first frame of the chain that has one.
@@ -86,7 +86,7 @@ fn main() {
     // the model reports it as the edition's typed error.
     assert_eq!(
         frame_ii.lookup("w"),
-        Err(SchemeError::UnboundVariable("w".into()))
+        Err(SicpError::UnboundVariable("w".into()))
     );
     let answer = value_of(&frame_ii, "w");
     println!("{answer}");

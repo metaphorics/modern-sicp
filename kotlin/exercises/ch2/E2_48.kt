@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.48: a directed line segment in the plane can be represented
  * as a pair of vectors: the vector running from the origin to the
@@ -17,4 +15,4 @@ import sicp.runtime.PendingSolution
  * The scaffold returns the length of a segment from (0, 0) to (3, 4),
  * which is 5.0.
  */
-public fun ex_2_48(): Double = throw PendingSolution()
+public fun ex_2_48(): Double = throw PendingExercise()

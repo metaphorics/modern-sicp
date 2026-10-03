@@ -9,7 +9,7 @@
 use std::cell::Cell;
 
 use ch03::sec_3_3::MemoTable;
-use sicp_runtime::{Key, SchemeError, Value};
+use sicp_runtime::{Key, SicpError, Value};
 
 mod ex_3_27 {
     use super::{memo_fib_traced, naive_calls};
@@ -40,7 +40,7 @@ pub fn memo_fib_traced(n: u32) -> (i128, u64, u64) {
     (value, computed.get(), table.len() as u64)
 }
 
-fn memo_go(n: u32, table: &MemoTable, computed: &Cell<u64>) -> Result<i128, SchemeError> {
+fn memo_go(n: u32, table: &MemoTable, computed: &Cell<u64>) -> Result<i128, SicpError> {
     let answer = table.lookup_insert(Key::int(i128::from(n)), || {
         computed.set(computed.get() + 1);
         match n {
@@ -49,14 +49,14 @@ fn memo_go(n: u32, table: &MemoTable, computed: &Cell<u64>) -> Result<i128, Sche
             _ => {
                 let smaller = memo_go(n - 1, table, computed)?;
                 let smallest = memo_go(n - 2, table, computed)?;
-                let total = smaller.checked_add(smallest).ok_or(SchemeError::Overflow)?;
+                let total = smaller.checked_add(smallest).ok_or(SicpError::Overflow)?;
                 Ok(Value::int(total))
             }
         }
     })?;
     match answer {
         Value::Int(total) => Ok(total),
-        _ => Err(SchemeError::TypeMismatch(
+        _ => Err(SicpError::TypeMismatch(
             "memo-fib stored a non-number".into(),
         )),
     }

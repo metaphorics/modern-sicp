@@ -82,8 +82,7 @@ const isMListValue = (value: unknown): value is MList<unknown> =>
   "_tag" in value &&
   (value._tag === "MNil" || value._tag === "MCons");
 
-/** Renders a mutable list the way the book prints it: elements
- * between parentheses, nesting preserved. */
+/** Renders a mutable list in bracket-comma notation, nesting preserved. */
 export const showMList = (l: MList<unknown>): string => {
   const render = (value: unknown): string =>
     isMListValue(value) ? showMList(value) : typeof value === "string" ? value : String(value);
@@ -91,7 +90,7 @@ export const showMList = (l: MList<unknown>): string => {
   for (let rest = l; rest._tag === "MCons"; rest = rest.tail) {
     items.push(render(rest.head));
   }
-  return `(${items.join(" ")})`;
+  return `[${items.join(", ")}]`;
 };
 
 // ---------------------------------------------------------------------

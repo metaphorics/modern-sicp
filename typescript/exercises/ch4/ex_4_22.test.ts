@@ -3,4 +3,4 @@
 
 import { test } from "vitest";
 
-test.todo("Exercise 4.22: let in the analyzed evaluator");
+test.todo("Exercise 4.22: local binding in the analyzed evaluator");

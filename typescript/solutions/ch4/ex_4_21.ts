@@ -1,63 +1,71 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
+import type { RunResult } from "../../packages/ch4/src/01-metacircular.js";
 /**
- * Exercise 4.21: recursion without define. The self-application trick passes
- * a procedure to itself as an argument, so the body can recurse without any
- * bound name. Part (a) evaluates the book's factorial expression and a
- * Fibonacci analog; part (b) fills in the missing operands of the mutually
- * recursive even?/odd? procedure: each recursive call passes the two
- * procedure arguments along unchanged.
+ * Exercise 4.21: recursion without define. Everything runs on the
+ * engine, which needs no extension: the programs themselves carry the
+ * recursion. The self-application trick binds a procedure whose first
+ * parameter is the procedure itself, so the body recurses by passing
+ * itself along. The typed guest spells that contract with an interface:
+ * `Step { run(self, k) }` for the single-recursion programs, and the
+ * two-procedure `EvenOdd` template fills the exercise's holes — each
+ * recursive call forwards BOTH procedure arguments it received, the
+ * pair itself plus the decremented count.
  */
-import { Effect } from "effect";
+import { runSource } from "../../packages/ch4/src/01-metacircular.js";
 
-import { evalString, setupEnvironment } from "../../packages/ch4/src/01-metacircular.js";
-import type { Value } from "../../packages/ch4/src/core.js";
-import type { EvaluationError } from "../../packages/ch4/src/errors.js";
+/** The book's factorial, typed through the self-application contract. */
+export const factorialSource = `
+interface Step {
+  run: (self: Step, k: number) => number;
+}
+const fact: Step = {
+  run: (self, k) => (k === 0 ? 1 : k * self.run(self, k - 1)),
+};
+fact.run(fact, 10);
+`;
 
-/** The book's expression: 10 factorial by passing the procedure to itself. */
-export const factorialSource =
-  "((lambda (n) ((lambda (fact) (fact fact n)) (lambda (ft k) (if (= k 1) 1 (* k (ft ft (- k 1))))))) 10)";
+/** The Fibonacci analog written the same way. */
+export const fibonacciSource = `
+interface Step {
+  run: (self: Step, k: number) => number;
+}
+const fib: Step = {
+  run: (self, k) => (k < 2 ? k : self.run(self, k - 1) + self.run(self, k - 2)),
+};
+fib.run(fib, 10);
+`;
 
-/** The analogous expression: fib 10 by the same self-application trick. */
-export const fibonacciSource =
-  "((lambda (n) ((lambda (fib) (fib fib n)) (lambda (fb k) (if (< k 2) k (+ (fb fb (- k 1)) (fb fb (- k 2))))))) 10)";
+/** The filled two-procedure template: every call forwards both
+ * procedures — the ⟨??⟩ holes are `peer.check(peer, self, n - 1)`. */
+export const evenOddSource = `
+interface EvenOdd {
+  check: (self: EvenOdd, peer: EvenOdd, n: number) => boolean;
+}
+const even: EvenOdd = {
+  check: (self, peer, n) => (n === 0 ? true : peer.check(peer, self, n - 1)),
+};
+const odd: EvenOdd = {
+  check: (self, peer, n) => (n === 0 ? false : peer.check(peer, self, n - 1)),
+};
+const f = (n: number): boolean => even.check(even, odd, n);
+f(5);
+`;
 
-/** The completed even?/odd? f: the ?? operands become ev? od? (- n 1). */
-export const evenOddSource =
-  "(define (f x) ((lambda (even? odd?) (even? even? odd? x)) (lambda (ev? od? n) (if (= n 0) true (od? ev? od? (- n 1)))) (lambda (ev? od? n) (if (= n 0) false (ev? ev? od? (- n 1))))))";
+/** The same filled template asked for n = 6. */
+export const evenOddSixSource = `${evenOddSource.replace("f(5);", "f(6);")}`;
 
-const runIn = (sources: ReadonlyArray<string>): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(setupEnvironment(), (env) =>
-    Effect.flatMap(
-      Effect.forEach(sources, (source) => evalString(source, env)),
-      (values) => {
-        const last = values[values.length - 1];
-        return last !== undefined
-          ? Effect.succeed(last)
-          : Effect.die(new Error("no forms evaluated"));
-      },
-    ),
-  );
-
-/** Evaluates the factorial expression with the module's evaluator. */
-export const factorialValue = (): Effect.Effect<Value, EvaluationError> => runIn([factorialSource]);
-
-/** Evaluates the Fibonacci analog. */
-export const fibonacciValue = (): Effect.Effect<Value, EvaluationError> => runIn([fibonacciSource]);
-
-/** Defines the completed f and applies it to n. */
-export const evenOddValue = (n: number): Effect.Effect<Value, EvaluationError> =>
-  runIn([evenOddSource, `(f ${n})`]);
+/** Runs one self-application program through the engine. */
+export const runSelfApplication = (text: string): RunResult => runSource(text);
 
 export function ex_4_21(): string {
   return (
-    "The trick is self-application: the inner binding names a procedure that takes " +
-    "itself as its first argument, so the body can recurse by passing the procedure " +
-    "along to itself, and no define or letrec is ever needed. The factorial expression " +
-    "evaluates to 3628800; the Fibonacci analog evaluates to 55; and in the completed " +
-    "even?/odd? procedure each missing operand list is the pair of procedures plus the " +
-    "decremented count, ev? od? (- n 1), because the only way a nameless lambda can " +
-    "recurse is to receive itself again as an argument."
+    "Recursion without define: the procedure takes itself as its first argument and " +
+    "passes itself along. The typed guest spells the contract with an interface, so the " +
+    "self-application is type-checked: the book's factorial answers 3628800, the " +
+    "Fibonacci analog answers 55, and the filled two-procedure template — each call " +
+    "forwarding both procedures plus the decremented count — answers false for 5 and " +
+    "true for 6."
   );
 }

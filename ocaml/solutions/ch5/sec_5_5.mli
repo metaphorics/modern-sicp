@@ -11,23 +11,21 @@
     branch, and return, then the answer register. *)
 val ex_5_05 : unit -> (string list, Sicp_ch5.Sec_5_1.error) result
 
-(** The recursive factorial machine of Figure 5.11. *)
-val factorial_recursive_controller : string
+(** The recursive factorial machine of Figure 5.11: registers [n],
+    [val], and [continue]. *)
+val factorial_recursive_controller
+  : Sicp_ch5.Sec_5_1.value Sicp_ch5.Sec_5_1.instruction list
 
-(** The Fibonacci machine of Figure 5.12. *)
-val fib_controller : string
+(** The Fibonacci machine of Figure 5.12: registers [n], [val], and
+    [continue]. *)
+val fib_controller : Sicp_ch5.Sec_5_1.value Sicp_ch5.Sec_5_1.instruction list
 
 (** The hand-simulation transcription shared with exercise 5.6's
-    counts. *)
+    counts: its own program counter, flag, registers, and stack over
+    the operation table [Sicp_ch5.Sec_5_1.arith_operations]. *)
 module Handsim : sig
-  (** One significant point of the trace. *)
-  type event =
-    | Saved of string * Sicp_ch5.Sec_5_1.value list
-    | Restored of string * Sicp_ch5.Sec_5_1.value * Sicp_ch5.Sec_5_1.value list
-    | Branch_taken of string
-    | Returned_to of string
-
-  (** One state of the transcription. *)
+  (** One state of the transcription. [steps] counts executed
+      instructions and [saves] counts pushes. *)
   type state =
     { pc : int
     ; flag : bool
@@ -37,12 +35,26 @@ module Handsim : sig
     ; saves : int
     }
 
+  (** One significant point of the trace. A stack is listed top
+      first. *)
+  type event =
+    | Saved of string * Sicp_ch5.Sec_5_1.value list
+    | Restored of string * Sicp_ch5.Sec_5_1.value * Sicp_ch5.Sec_5_1.value list
+    | Branch_taken of string
+    | Returned_to of string
+
+  (** [initial regs] is the state at the first instruction with [regs]
+      loaded, an empty stack, and zero counts. *)
   val initial : (string * Sicp_ch5.Sec_5_1.value) list -> state
 
-  (** [run program state events] steps until the sequence ends. *)
+  (** [run program state events] steps until the sequence ends and is
+      the events in order with the final state. *)
   val run
-    :  Sicp_ch5.Sec_5_1.program
+    :  Sicp_ch5.Sec_5_1.value Sicp_ch5.Sec_5_1.program
     -> state
     -> event list
     -> (event list * state, Sicp_ch5.Sec_5_1.error) result
+
+  (** [render e] is the trace line of [e]. *)
+  val render : event -> string
 end

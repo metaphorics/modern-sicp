@@ -5,20 +5,20 @@
 
 mod ex_2_93 {
     use ch02::sec_2_5::{add, install_generic_arithmetic, install_polynomial_package, mul};
-    use sicp_runtime::{Key, OpTable, SchemeError, Value, cons_cell};
+    use sicp_runtime::{Key, OpTable, SicpError, Value, cons_cell};
     use std::rc::Rc;
 
-    fn car(p: &Value) -> Result<Value, SchemeError> {
+    fn car(p: &Value) -> Result<Value, SicpError> {
         match p {
             Value::Pair(cell) => Ok(cell.car.borrow().clone()),
-            other => Err(SchemeError::TypeMismatch(format!("not a pair: {other}"))),
+            other => Err(SicpError::TypeMismatch(format!("not a pair: {other}"))),
         }
     }
 
-    fn cdr(p: &Value) -> Result<Value, SchemeError> {
+    fn cdr(p: &Value) -> Result<Value, SicpError> {
         match p {
             Value::Pair(cell) => Ok(cell.cdr.borrow().clone()),
-            other => Err(SchemeError::TypeMismatch(format!("not a pair: {other}"))),
+            other => Err(SicpError::TypeMismatch(format!("not a pair: {other}"))),
         }
     }
 
@@ -68,10 +68,10 @@ mod ex_2_93 {
         );
     }
 
-    fn make_rational_function(table: &OpTable, n: Value, d: Value) -> Result<Value, SchemeError> {
+    fn make_rational_function(table: &OpTable, n: Value, d: Value) -> Result<Value, SicpError> {
         let make = table
             .get(&Key::sym("make"), &Key::sym("rational-function"))
-            .ok_or_else(|| SchemeError::TypeMismatch("no rational-function constructor".into()))?;
+            .ok_or_else(|| SicpError::TypeMismatch("no rational-function constructor".into()))?;
         make(&[n, d])
     }
 
@@ -80,7 +80,7 @@ mod ex_2_93 {
     /// polynomial `add`/`mul` for its arithmetic on the way, exactly as
     /// the un-generalized 2.1.1 rational package used `+`/`*` on plain
     /// numbers.
-    pub fn ex_2_93() -> Result<String, SchemeError> {
+    pub fn ex_2_93() -> Result<String, SicpError> {
         let table = Rc::new(OpTable::new());
         install_generic_arithmetic(&table)?;
         install_polynomial_package(&table);

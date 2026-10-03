@@ -5,62 +5,78 @@ package sicp.ch2.examples
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.runtime.VInt
-import sicp.runtime.VNil
-import sicp.runtime.VPair
-import sicp.runtime.VSym
-import sicp.runtime.Value
-import sicp.runtime.vlist
+import sicp.runtime.Datum
+import sicp.runtime.PairCell
+import sicp.runtime.Symbol
+import sicp.runtime.Truth
+import sicp.runtime.Whole
+import sicp.runtime.datumList
+import sicp.runtime.structurallyEqual
 
 /**
- * The book's `memq`: finds `item` in the chain `x` by `eq?`, comparing
- * [VSym]s with `==` since a boxed symbol's `equals` is already structural
- * on its name. Returns [VNil]'s companion value `VBool(false)` when the
- * item is absent, exactly as the book's `cond` does; the search never
- * raises, since a well-formed proper list always terminates in [VNil].
+ * Search a datum sequence with Kotlin equality. Atomic values compare by
+ * content, while mutable pair cells retain identity; a hit returns the
+ * original suffix, and a miss is an explicit native Boolean datum.
  */
-public fun memq(
-    item: Value,
-    x: Value,
-): Value =
-    when {
-        x is VPair && x.car == item -> x
-        x is VPair -> memq(item, x.cdr)
-        else -> sicp.runtime.VBool(false)
+public fun findDatumTail(
+    item: Datum,
+    sequence: Datum,
+): Datum =
+    when (sequence) {
+        is PairCell -> {
+            if (sequence.first == item) {
+                sequence
+            } else {
+                findDatumTail(item, sequence.second)
+            }
+        }
+
+        else -> {
+            Truth(false)
+        }
     }
 
 public class S2_3_1QuotationTest :
     FunSpec({
-        test("vlist(a, b) builds a list of the two numbers' values") {
-            val a = VInt(1L)
-            val b = VInt(2L)
-            vlist(a, b).toString() shouldBe "(1 2)"
+        test("datumList retains numbers in a native pair chain") {
+            val sequence = datumList(Whole(1L), Whole(2L))
+            val first = sequence as PairCell
+            first.first shouldBe Whole(1L)
+            (first.second as PairCell).first shouldBe Whole(2L)
         }
-        test("vlist(VSym(...)) builds a list of the two symbols themselves") {
-            vlist(VSym("a"), VSym("b")).toString() shouldBe "(a b)"
+        test("native rendering names symbols and pair fields explicitly") {
+            datumList(Symbol("a"), Symbol("b")).toString() shouldBe
+                "PairCell(first=Symbol(name=\"a\"), second=PairCell(first=Symbol(name=\"b\"), second=Empty))"
         }
-        test("vlist can mix a symbol with a number's value") {
-            val b = VInt(2L)
-            vlist(VSym("a"), b).toString() shouldBe "(a 2)"
+        test("symbol values can be nested as ordinary data") {
+            val nested = datumList(Symbol("outer"), datumList(Symbol("inner"), Whole(3L)))
+            val first = nested as PairCell
+            first.first shouldBe Symbol("outer")
+            structurallyEqual(first.second, datumList(datumList(Symbol("inner"), Whole(3L)))) shouldBe true
         }
-        test("car and cdr read the parts of a Value list back out") {
-            val abc = vlist(VSym("a"), VSym("b"), VSym("c"))
-            (abc as VPair).car shouldBe VSym("a")
-            abc.cdr.toString() shouldBe "(b c)"
+        test("the membership search returns an explicit false datum when absent") {
+            val sequence = datumList(Symbol("pear"), Symbol("banana"), Symbol("prune"))
+            findDatumTail(Symbol("apple"), sequence) shouldBe Truth(false)
         }
-        test("memq('apple', ...) is false when apple is absent") {
-            val set = vlist(VSym("pear"), VSym("banana"), VSym("prune"))
-            memq(VSym("apple"), set).toString() shouldBe "#f"
-        }
-        test("memq('apple', ...) returns the sublist starting at the first match") {
-            val xs =
-                vlist(
-                    VSym("x"),
-                    vlist(VSym("apple"), VSym("sauce")),
-                    VSym("y"),
-                    VSym("apple"),
-                    VSym("pear"),
+        test("the membership search returns the original suffix at the first top-level match") {
+            val sequence =
+                datumList(
+                    Symbol("x"),
+                    datumList(Symbol("apple"), Symbol("sauce")),
+                    Symbol("y"),
+                    Symbol("apple"),
+                    Symbol("pear"),
                 )
-            memq(VSym("apple"), xs).toString() shouldBe "(apple pear)"
+            val afterX = (sequence as PairCell).second as PairCell
+            val afterNested = afterX.second as PairCell
+            val afterY = afterNested.second as PairCell
+            val expectedSuffix = afterY
+            (findDatumTail(Symbol("apple"), sequence) === expectedSuffix) shouldBe true
+        }
+        test("membership compares mutable pair values by identity") {
+            val pair = datumList(Symbol("apple"), Symbol("sauce"))
+            val sequence = datumList(pair)
+            (findDatumTail(pair, sequence) === sequence) shouldBe true
+            findDatumTail(datumList(Symbol("apple"), Symbol("sauce")), sequence) shouldBe Truth(false)
         }
     })

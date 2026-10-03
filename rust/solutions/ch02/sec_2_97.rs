@@ -7,12 +7,12 @@ mod term_lists {
     //! Exercise 2.96's pseudodivision-based `gcd_terms`, plus 2.97's
     //! `reduce_terms` built on top of it.
     use ch02::sec_2_5::{Term, coeff, make_term, order};
-    use sicp_runtime::{SchemeError, Value};
+    use sicp_runtime::{SicpError, Value};
 
-    fn coeff_int(t: &Term) -> Result<i128, SchemeError> {
+    fn coeff_int(t: &Term) -> Result<i128, SicpError> {
         match coeff(t) {
             Value::Int(n) => Ok(*n),
-            other => Err(SchemeError::TypeMismatch(format!(
+            other => Err(SicpError::TypeMismatch(format!(
                 "only integer coefficients are supported here: {other}"
             ))),
         }
@@ -28,7 +28,7 @@ mod term_lists {
         out
     }
 
-    pub fn add_terms(l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    pub fn add_terms(l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SicpError> {
         match (l1.first(), l2.first()) {
             (None, _) => Ok(l2.to_vec()),
             (_, None) => Ok(l1.to_vec()),
@@ -43,18 +43,18 @@ mod term_lists {
         }
     }
 
-    fn negate(terms: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    fn negate(terms: &[Term]) -> Result<Vec<Term>, SicpError> {
         terms
             .iter()
             .map(|t| Ok(make_term(order(t), Value::Int(-coeff_int(t)?))))
             .collect()
     }
 
-    fn sub_terms(l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    fn sub_terms(l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SicpError> {
         add_terms(l1, &negate(l2)?)
     }
 
-    fn mul_term_by_all_terms(t: &Term, terms: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    fn mul_term_by_all_terms(t: &Term, terms: &[Term]) -> Result<Vec<Term>, SicpError> {
         terms
             .iter()
             .map(|u| {
@@ -68,7 +68,7 @@ mod term_lists {
 
     /// Full term-list multiplication, needed here to build the sum of
     /// two rational functions: `n1 d2 + n2 d1` over `d1 d2`.
-    pub fn mul_terms(l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    pub fn mul_terms(l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SicpError> {
         match l1.first() {
             None => Ok(Vec::new()),
             Some(t1) => {
@@ -78,22 +78,19 @@ mod term_lists {
         }
     }
 
-    fn scale_terms(terms: &[Term], factor: i128) -> Result<Vec<Term>, SchemeError> {
+    fn scale_terms(terms: &[Term], factor: i128) -> Result<Vec<Term>, SicpError> {
         terms
             .iter()
             .map(|t| Ok(make_term(order(t), Value::Int(coeff_int(t)? * factor))))
             .collect()
     }
 
-    fn div_terms(
-        dividend: &[Term],
-        divisor: &[Term],
-    ) -> Result<(Vec<Term>, Vec<Term>), SchemeError> {
+    fn div_terms(dividend: &[Term], divisor: &[Term]) -> Result<(Vec<Term>, Vec<Term>), SicpError> {
         if dividend.is_empty() {
             return Ok((Vec::new(), Vec::new()));
         }
         let Some(dvsr) = divisor.first() else {
-            return Err(SchemeError::DivisionByZero);
+            return Err(SicpError::DivisionByZero);
         };
         let dend = &dividend[0];
         if order(dend) < order(dvsr) {
@@ -101,10 +98,10 @@ mod term_lists {
         }
         let (nc, dc) = (coeff_int(dend)?, coeff_int(dvsr)?);
         if dc == 0 {
-            return Err(SchemeError::DivisionByZero);
+            return Err(SicpError::DivisionByZero);
         }
         if nc % dc != 0 {
-            return Err(SchemeError::TypeMismatch(format!(
+            return Err(SicpError::TypeMismatch(format!(
                 "div_terms: {nc} does not divide evenly by {dc}"
             )));
         }
@@ -114,7 +111,7 @@ mod term_lists {
         Ok((adjoin(t, rest_q), rem))
     }
 
-    fn integerizing_factor(p: &[Term], q: &[Term]) -> Result<Option<i128>, SchemeError> {
+    fn integerizing_factor(p: &[Term], q: &[Term]) -> Result<Option<i128>, SicpError> {
         let (Some(pt), Some(qt)) = (p.first(), q.first()) else {
             return Ok(None);
         };
@@ -122,12 +119,12 @@ mod term_lists {
             return Ok(None);
         }
         let exp = 1 + i64::from(order(pt)) - i64::from(order(qt));
-        let exp = u32::try_from(exp).map_err(|_| SchemeError::Overflow)?;
+        let exp = u32::try_from(exp).map_err(|_| SicpError::Overflow)?;
         let c = coeff_int(qt)?;
-        Ok(Some(c.checked_pow(exp).ok_or(SchemeError::Overflow)?))
+        Ok(Some(c.checked_pow(exp).ok_or(SicpError::Overflow)?))
     }
 
-    fn pseudoremainder_terms(p: &[Term], q: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    fn pseudoremainder_terms(p: &[Term], q: &[Term]) -> Result<Vec<Term>, SicpError> {
         let Some(factor) = integerizing_factor(p, q)? else {
             return Ok(p.to_vec());
         };
@@ -136,7 +133,7 @@ mod term_lists {
         Ok(rem)
     }
 
-    fn gcd_terms_raw(a: &[Term], b: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    fn gcd_terms_raw(a: &[Term], b: &[Term]) -> Result<Vec<Term>, SicpError> {
         if b.is_empty() {
             return Ok(a.to_vec());
         }
@@ -154,7 +151,7 @@ mod term_lists {
         i128::try_from(a).unwrap_or(i128::MAX)
     }
 
-    fn content(terms: &[Term]) -> Result<i128, SchemeError> {
+    fn content(terms: &[Term]) -> Result<i128, SicpError> {
         let g = terms
             .iter()
             .try_fold(0i128, |g, t| Ok(gcd_i128(g, coeff_int(t)?)))?;
@@ -167,7 +164,7 @@ mod term_lists {
     /// pinned to a positive leading coefficient -- without this the
     /// integerizing factor of `reduce_terms` can inherit a minus sign
     /// and flip both reduced parts.
-    fn gcd_terms(a: &[Term], b: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    fn gcd_terms(a: &[Term], b: &[Term]) -> Result<Vec<Term>, SicpError> {
         let raw = gcd_terms_raw(a, b)?;
         let c = content(&raw)?;
         let mut gcd: Vec<Term> = raw
@@ -191,26 +188,26 @@ mod term_lists {
     /// the numerator and denominator together.
     ///
     /// # Errors
-    /// [`SchemeError::TypeMismatch`] when `n` and `d` are both empty (no
+    /// [`SicpError::TypeMismatch`] when `n` and `d` are both empty (no
     /// order to reduce by); whatever the term-list arithmetic raises.
-    pub fn reduce_terms(n: &[Term], d: &[Term]) -> Result<(Vec<Term>, Vec<Term>), SchemeError> {
+    pub fn reduce_terms(n: &[Term], d: &[Term]) -> Result<(Vec<Term>, Vec<Term>), SicpError> {
         let gcd = gcd_terms(n, d)?;
         let Some(leading) = gcd.first() else {
-            return Err(SchemeError::TypeMismatch(
+            return Err(SicpError::TypeMismatch(
                 "reduce_terms: n and d have no nonzero common divisor".into(),
             ));
         };
         let o1 = std::cmp::max(n.first().map_or(0, order), d.first().map_or(0, order));
         let o2 = order(leading);
         let exp =
-            u32::try_from(1 + i64::from(o1) - i64::from(o2)).map_err(|_| SchemeError::Overflow)?;
+            u32::try_from(1 + i64::from(o1) - i64::from(o2)).map_err(|_| SicpError::Overflow)?;
         let factor = coeff_int(leading)?
             .checked_pow(exp)
-            .ok_or(SchemeError::Overflow)?;
+            .ok_or(SicpError::Overflow)?;
         let (nn, _) = div_terms(&scale_terms(n, factor)?, &gcd)?;
         let (dd, _) = div_terms(&scale_terms(d, factor)?, &gcd)?;
         let redundant = content(&nn.iter().chain(&dd).cloned().collect::<Vec<_>>())?;
-        let shrink = |terms: &[Term]| -> Result<Vec<Term>, SchemeError> {
+        let shrink = |terms: &[Term]| -> Result<Vec<Term>, SicpError> {
             terms
                 .iter()
                 .map(|t| Ok(make_term(order(t), Value::Int(coeff_int(t)? / redundant))))
@@ -219,7 +216,7 @@ mod term_lists {
         Ok((shrink(&nn)?, shrink(&dd)?))
     }
 
-    pub fn as_pairs(terms: &[Term]) -> Result<Vec<(u32, i128)>, SchemeError> {
+    pub fn as_pairs(terms: &[Term]) -> Result<Vec<(u32, i128)>, SicpError> {
         terms
             .iter()
             .map(|t| Ok((order(t), coeff_int(t)?)))
@@ -230,7 +227,7 @@ mod term_lists {
 mod ex_2_97 {
     use super::term_lists::{add_terms, as_pairs, gcd_i128, mul_terms, reduce_terms};
     use ch02::sec_2_5::{Term, make_term};
-    use sicp_runtime::{SchemeError, Value};
+    use sicp_runtime::{SicpError, Value};
 
     /// A polynomial in one variable, the shape `reduce_poly` works over:
     /// stripped of its variable, `reduce_terms` does the arithmetic, and
@@ -242,9 +239,9 @@ mod ex_2_97 {
 
     /// Exercise 2.97(a)'s `reduce_poly`: analogous to `add_poly`, checks
     /// the two polys share a variable, then defers to `reduce_terms`.
-    fn reduce_poly(p: &Poly, q: &Poly) -> Result<(Poly, Poly), SchemeError> {
+    fn reduce_poly(p: &Poly, q: &Poly) -> Result<(Poly, Poly), SicpError> {
         if p.var != q.var {
-            return Err(SchemeError::TypeMismatch(format!(
+            return Err(SicpError::TypeMismatch(format!(
                 "reduce_poly: polys not in the same variable: {} {}",
                 p.var, q.var
             )));
@@ -264,16 +261,16 @@ mod ex_2_97 {
 
     /// Exercise 2.97(b)'s `reduce_integers`, the texi's own snippet
     /// verbatim, with this file's `gcd_i128` playing the book's `gcd`.
-    fn reduce_integers(n: i128, d: i128) -> Result<(i128, i128), SchemeError> {
+    fn reduce_integers(n: i128, d: i128) -> Result<(i128, i128), SicpError> {
         if d == 0 {
-            return Err(SchemeError::DivisionByZero);
+            return Err(SicpError::DivisionByZero);
         }
         let g = gcd_i128(n, d);
         Ok((n / g, d / g))
     }
 
     /// Either side `reduce` can dispatch on: a plain integer or a
-    /// polynomial, standing in for the book's `scheme-number` and
+    /// polynomial, standing in for the `integer` and
     /// `polynomial` tags.
     enum Numeric {
         Int(i128),
@@ -282,7 +279,7 @@ mod ex_2_97 {
 
     fn numeric_tag(n: &Numeric) -> &'static str {
         match n {
-            Numeric::Int(_) => "scheme-number",
+            Numeric::Int(_) => "integer",
             Numeric::Poly(_) => "polynomial",
         }
     }
@@ -295,10 +292,10 @@ mod ex_2_97 {
     /// exhaustively at compile time instead of looked up at run time.
     ///
     /// # Errors
-    /// [`SchemeError::TypeMismatch`] naming both operands' tags when `n`
+    /// [`SicpError::TypeMismatch`] naming both operands' tags when `n`
     /// and `d` are not the same shape; whatever `reduce_poly` or
     /// `reduce_integers` raises.
-    fn reduce(n: Numeric, d: Numeric) -> Result<(Numeric, Numeric), SchemeError> {
+    fn reduce(n: Numeric, d: Numeric) -> Result<(Numeric, Numeric), SicpError> {
         match (n, d) {
             (Numeric::Int(n), Numeric::Int(d)) => {
                 let (nn, dd) = reduce_integers(n, d)?;
@@ -308,7 +305,7 @@ mod ex_2_97 {
                 let (nn, dd) = reduce_poly(&n, &d)?;
                 Ok((Numeric::Poly(nn), Numeric::Poly(dd)))
             }
-            (n, d) => Err(SchemeError::TypeMismatch(format!(
+            (n, d) => Err(SicpError::TypeMismatch(format!(
                 "reduce: no method for these types: ({} {})",
                 numeric_tag(&n),
                 numeric_tag(&d)
@@ -319,10 +316,10 @@ mod ex_2_97 {
     /// What the original `make_rat` did for integers, generalized: calls
     /// `reduce` before the numerator and denominator are combined into a
     /// rational function.
-    fn make_rational_fn(n: Poly, d: Poly) -> Result<(Poly, Poly), SchemeError> {
+    fn make_rational_fn(n: Poly, d: Poly) -> Result<(Poly, Poly), SicpError> {
         match reduce(Numeric::Poly(n), Numeric::Poly(d))? {
             (Numeric::Poly(nn), Numeric::Poly(dd)) => Ok((nn, dd)),
-            _ => Err(SchemeError::TypeMismatch(
+            _ => Err(SicpError::TypeMismatch(
                 "reduce: expected polynomials back".into(),
             )),
         }
@@ -331,7 +328,7 @@ mod ex_2_97 {
     /// `n1/d1 + n2/d2 = (n1 d2 + n2 d1) / (d1 d2)`, reduced through
     /// `make_rational_fn` the way the section's rational package always
     /// reduced integer fractions.
-    fn add_rational_fns(a: (Poly, Poly), b: (Poly, Poly)) -> Result<(Poly, Poly), SchemeError> {
+    fn add_rational_fns(a: (Poly, Poly), b: (Poly, Poly)) -> Result<(Poly, Poly), SicpError> {
         let (n1, d1) = a;
         let (n2, d2) = b;
         let numer = Poly {
@@ -355,11 +352,11 @@ mod ex_2_97 {
     /// `reduce(6, 8)` through the generic dispatcher, and the extended
     /// exercise's own example: `(x+1)/(x^3-1) + x/(x^2-1)`, which should
     /// come out reduced to lowest terms.
-    pub fn ex_2_97() -> Result<Answer, SchemeError> {
+    pub fn ex_2_97() -> Result<Answer, SicpError> {
         let integers = match reduce(Numeric::Int(6), Numeric::Int(8))? {
             (Numeric::Int(n), Numeric::Int(d)) => (n, d),
             _ => {
-                return Err(SchemeError::TypeMismatch(
+                return Err(SicpError::TypeMismatch(
                     "reduce: expected integers back".into(),
                 ));
             }

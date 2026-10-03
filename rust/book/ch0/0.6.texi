@@ -2,7 +2,7 @@
 @section Closures and trait objects
 
 A @newterm{closure} is an anonymous function that can capture bindings from
-the scope around it, Rust's equivalent of the book's @code{lambda}. Closures
+the scope around it, Rust's equivalent of the source book's @code{lambda}.  Closures
 are first-class from section 1.3 on, the same way procedures are in the book.
 
 @example rust

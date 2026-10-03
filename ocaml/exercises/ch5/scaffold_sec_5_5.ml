@@ -9,6 +9,8 @@
 let () =
   ignore (Sicp_ch5_exercises.Sec_5_31.ex_5_31 ());
   ignore (Sicp_ch5_exercises.Sec_5_32.ex_5_32 ());
+  ignore (Sicp_ch5_exercises.Sec_5_33.ex_5_33 ());
+  ignore (Sicp_ch5_exercises.Sec_5_33.ex_5_33a ());
   ignore (Sicp_ch5_exercises.Sec_5_34.ex_5_34 ());
   ignore (Sicp_ch5_exercises.Sec_5_35.ex_5_35 ());
   ignore (Sicp_ch5_exercises.Sec_5_36.ex_5_36 ());

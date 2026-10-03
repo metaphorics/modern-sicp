@@ -9,10 +9,10 @@ mod ex_2_88 {
         install_polynomial_package, make_polynomial, make_term, order, poly_term_list,
         poly_variable,
     };
-    use sicp_runtime::{OpTable, SchemeError, Value};
+    use sicp_runtime::{OpTable, SicpError, Value};
     use std::rc::Rc;
 
-    fn table() -> Result<Rc<OpTable>, SchemeError> {
+    fn table() -> Result<Rc<OpTable>, SicpError> {
         let t = Rc::new(OpTable::new());
         install_generic_arithmetic(&t)?;
         install_polynomial_package(&t);
@@ -27,9 +27,9 @@ mod ex_2_88 {
     /// directly; a polynomial coefficient negates by recursing into its
     /// own term list, so a polynomial whose coefficients are themselves
     /// polynomials negates all the way down for free.
-    fn negate(table: &OpTable, v: &Value) -> Result<Value, SchemeError> {
+    fn negate(table: &OpTable, v: &Value) -> Result<Value, SicpError> {
         match v {
-            Value::Int(n) => n.checked_neg().map(Value::Int).ok_or(SchemeError::Overflow),
+            Value::Int(n) => n.checked_neg().map(Value::Int).ok_or(SicpError::Overflow),
             Value::Real(x) => Ok(Value::Real(-x)),
             Value::Tagged { tag, .. } if tag.as_ref() == "polynomial" => {
                 let bare = contents(v)?;
@@ -37,13 +37,13 @@ mod ex_2_88 {
                 let negated_terms = negate_terms(table, &poly_term_list(&bare)?)?;
                 make_polynomial(table, var.as_ref(), &negated_terms)
             }
-            other => Err(SchemeError::TypeMismatch(format!(
+            other => Err(SicpError::TypeMismatch(format!(
                 "negate: unsupported coefficient {other}"
             ))),
         }
     }
 
-    fn negate_terms(table: &OpTable, terms: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    fn negate_terms(table: &OpTable, terms: &[Term]) -> Result<Vec<Term>, SicpError> {
         terms
             .iter()
             .map(|t| Ok(make_term(order(t), negate(table, coeff(t))?)))
@@ -52,7 +52,7 @@ mod ex_2_88 {
 
     /// `sub_poly`: add the negation, exactly like the book's
     /// `sub-poly` hint.
-    fn sub_poly(table: &OpTable, p1: &Value, p2: &Value) -> Result<Value, SchemeError> {
+    fn sub_poly(table: &OpTable, p1: &Value, p2: &Value) -> Result<Value, SicpError> {
         add(table, p1, &negate(table, p2)?)
     }
 
@@ -61,7 +61,7 @@ mod ex_2_88 {
     /// subtracting a polynomial coefficient of a polynomial recurses
     /// through the generic `sub` the same way addition recurses through
     /// generic `add`.
-    pub fn ex_2_88() -> Result<(String, String, String), SchemeError> {
+    pub fn ex_2_88() -> Result<(String, String, String), SicpError> {
         let table = table()?;
 
         let p1 = make_polynomial(

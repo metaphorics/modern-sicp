@@ -12,6 +12,6 @@ public class E4_79Test :
         test("Exercise 4.79: scoped versus renaming").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            scopedVersusRenaming() shouldBe listOf("MEASURE")
+            scopedVersusRenaming() shouldBe listOf("Hacker", "programmer", "Fect", "programmer")
         }
     })

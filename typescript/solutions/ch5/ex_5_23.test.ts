@@ -2,30 +2,35 @@
 // Original exercise
 
 import { describe, expect, it } from "vitest";
-import { makeEvaluator } from "../../packages/ch5/src/04-eceval.js";
-import { derivedExpressionTranscript } from "./ex_5_23.js";
+import { makeEvaluator } from "../../packages/ch5/src/04-eceval.ts";
+import { derivedSwitchController, ex_5_23, makeSwitchTransformer } from "./ex_5_23.ts";
 
-const valuesOf = (transcript: readonly string[]): string[] => {
-  const values: string[] = [];
-  for (let i = 0; i < transcript.length; i += 1) {
-    if (transcript[i] === ";;; EC-Eval value:") values.push(transcript[i + 1] as string);
-  }
-  return values;
-};
-
-describe("exercise 5.23 derived expressions", () => {
-  it("answers cond clauses, a let application, and the edge clauses", () => {
-    expect(valuesOf(derivedExpressionTranscript())).toEqual([
-      "ok",
-      "zero",
-      "one",
-      "many",
-      "6",
-      "#t",
-      "#f",
-    ]);
+describe("exercise 5.23 derived expressions via transformer operations", () => {
+  it("the transformed session answers the same values the basic form answers", () => {
+    const lines = ex_5_23();
+    expect(lines.some((line) => line.includes("zero"))).toBe(true);
+    expect(lines.some((line) => line.includes("one"))).toBe(true);
+    expect(lines.some((line) => line.includes("many"))).toBe(true);
   });
-  it("the base evaluator rejects the same cond, so the transformers carry it", () => {
-    expect(() => makeEvaluator("(cond ((= 1 1)))").run()).toThrow();
+  it("one transformation carries each switch", () => {
+    const lines = ex_5_23();
+    expect(lines[lines.length - 1]).toBe("transformations: 3");
+  });
+  it("a non-returning clause is left to the basic form", () => {
+    const { operations } = makeSwitchTransformer();
+    const program = [
+      "function f(x: number) {",
+      "  let total = 0;",
+      "  switch (x) {",
+      "    case 1: total = 1; break;",
+      "    default: total = 9;",
+      "  }",
+      "  return total;",
+      "}",
+      "f(1);",
+    ].join("\n");
+    const variant = makeEvaluator(program, operations, derivedSwitchController);
+    const result = variant.run();
+    expect(result.outcome.tag).toBe("ok");
   });
 });

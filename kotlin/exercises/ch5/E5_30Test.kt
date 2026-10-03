@@ -12,6 +12,13 @@ public class E5_30Test :
         test("Exercise 5.30: the caught failures and the clean factorial").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            errorSignalingRuns() shouldBe emptyList()
+            errorSignalingRuns() shouldBe
+                listOf(
+                    "unbound variable rejected before effects: true",
+                    "arity mismatch rejected before effects: true",
+                    "non-Boolean condition rejected before effects: true",
+                    "operation failed: DivisionByZero",
+                    "clean factorial: 120",
+                )
         }
     })

@@ -9,11 +9,8 @@ divisor (@abbr{GCD}) of two integers.  As we saw in @ref{1.2.5},
 Euclid's Algorithm can be carried out by an iterative process, as specified by
 the following procedure:
 
-@example
-(define (gcd a b)
-  (if (= b 0)
-      a
-      (gcd b (remainder a b))))
+@example ocaml
+let rec gcd a b = if b = 0 then a else gcd b (a mod b)
 @end example
 
 @noindent
@@ -82,7 +79,7 @@ represented in a data-path diagram by a triangle containing the constant).
 @image{../../text/original/figures/chap5/Fig5.1a,,105mm,Figure 5.1: Data paths for a GCD machine.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap5/Fig5.1a.std,,105mm,,.pdf}
+@image{../../text/original/figures/pdf/chap5/Fig5.1a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 5.1:} Data paths for a @abbr{GCD} machine.}
@@ -172,14 +169,13 @@ reaches @code{done}, we will find the value of the @abbr{GCD} in register
 compute factorials using the iterative algorithm specified by the following
 procedure.  Draw data-path and controller diagrams for this machine.
 
-@example
-(define (factorial n)
-  (define (iter product counter)
-    (if (> counter n)
-        product
-        (iter (* counter product)
-              (+ counter 1))))
-  (iter 1 1))
+@example ocaml
+let rec factorial n =
+  let rec iter product counter =
+    if counter > n then product
+    else iter (counter * product) (counter + 1)
+  in
+  iter 1 1
 @end example
 @end quotation
 
@@ -187,13 +183,12 @@ procedure.  Draw data-path and controller diagrams for this machine.
 @emph{Exercise 5.1a is added by this edition and extends exercise
 5.1; SICP numbers stop at 5.1.} @strong{@anchor{Exercise 5.1a}Exercise 5.1a:} Turn the factorial
 machine of Exercise 5.1 into a driver-loop machine in the style of
-@ref{5.1.1}: the controller reads a number with the @code{read}
-operation, computes its factorial with the iterative algorithm, prints
-the result with @code{perform} and @code{print}, and starts over. The
-loop stops only when the input is the symbol @code{end}, compared
-against the constant written @code{(const end)}. Write the controller
-definition in the register-machine language, and give the transcript
-of two consecutive runs.
+@ref{5.1.1}: the controller reads a number with the @code{read} operation over
+a queued input list, computes its factorial with the iterative algorithm,
+prints the result with @code{Perform} and @code{print}, and starts over.  The
+loop stops only when the input is the @code{Str "end"} word, tested by
+@code{Test ("end?", [Reg "n"])}.  Write the controller as a typed instruction
+list, and give the transcript of two consecutive runs.
 @end quotation
 
 @menu
@@ -209,43 +204,51 @@ of two consecutive runs.
 
 Data-path and controller diagrams are adequate for representing simple machines
 such as @abbr{GCD}, but they are unwieldy for describing large machines such
-as a Lisp interpreter.  To make it possible to deal with complex machines, we
+as an evaluator.  To make it possible to deal with complex machines, we
 will create a language that presents, in textual form, all the information
-given by the data-path and controller diagrams.  We will start with a notation
-that directly mirrors the diagrams.
+given by the data-path and controller diagrams.  In this edition the language
+is typed OCaml data: a controller is a list of @code{instruction} values, and
+the simulator assembles it.
 
-We define the data paths of a machine by describing the registers and the
-operations.  To describe a register, we give it a name and specify the buttons
-that control assignment to it.  We give each of these buttons a name and
-specify the source of the data that enters the register under the button's
-control.  (The source is a register, a constant, or an operation.)  To describe
-an operation, we give it a name and specify its inputs (registers or
-constants).
-
-We define the controller of a machine as a sequence of @newterm{instructions}
-together with @newterm{labels} that identify @newterm{entry points} in the
-sequence. An instruction is one of the following:
+We define the data paths of a machine by declaring the registers and the
+operations.  A register is named; an operation is named and computes a word
+from its inputs, which are registers or constants.  Labels identify entry
+points in the controller.  An instruction is one of the following, each a
+constructor of @code{Sec_5_1.instruction}:
 
 @itemize @bullet
 
 @item
-The name of a data-path button to push to assign a value to a register.  (This
-corresponds to a box in the controller diagram.)
+@code{Assign (register, source)} pushes a data-path button to assign a value
+to a register.  The source is @code{Const word}, @code{Reg register}, or
+@code{Label_ref label}.  (This corresponds to a box in the controller
+diagram.)
 
 @item
-A @code{test} instruction, that performs a specified test.
+@code{Assign_op (register, operation, inputs)} assigns the value of an
+operation on its inputs.
 
 @item
-A conditional branch (@code{branch} instruction) to a location indicated by a
+A @code{Test (operation, inputs)}, that performs a specified test.
+
+@item
+A conditional branch (@code{Branch label}) to a location indicated by a
 controller label, based on the result of the previous test.  (The test and
 branch together correspond to a diamond in the controller diagram.)  If the
-test is false, the controller should continue with the next instruction in the
-sequence.  Otherwise, the controller should continue with the instruction after
+test is false, the controller continues with the next instruction in the
+sequence.  Otherwise, the controller continues with the instruction after
 the label.
 
 @item
-An unconditional branch (@code{goto} instruction) naming a controller label at
-which to continue execution.
+An unconditional branch (@code{Goto label}) naming a controller label at
+which to continue execution, or @code{Goto_reg register} continuing at the
+label the register holds.
+
+@item
+@code{Save register} and @code{Restore register} push and pop the stack.
+
+@item
+@code{Perform (operation, inputs)} runs an action for its effect.
 
 @end itemize
 
@@ -258,172 +261,75 @@ they are listed.
 @noindent
 @ref{Figure 5.3} shows the @abbr{GCD} machine described in this way.  This
 example only hints at the generality of these descriptions, since the
-@abbr{GCD} machine is a very simple case: Each register has only one button,
-and each button and test is used only once in the controller.
+@abbr{GCD} machine is a very simple case.
 
 @quotation
 @strong{@anchor{Figure 5.3}Figure 5.3:} @math{\downarrow} A specification of the @abbr{GCD}
 machine.
 
 @example ocaml
-(* The data-paths half of the figure: three registers and the two
-   operations the controller names. The buttons of the book's diagram
-   are the assigns of the controller half below. *)
-let gcd_machine =
-  Machine.make_machine
-    ~registers:[ "a"; "b"; "t" ]
-    ~operations:
-      [ ( "rem"
-        , Machine.Value_op (function
-            | [ Machine.Int a; Machine.Int b ] ->
-              Ok (Machine.Int (a mod b))
-            | _ -> Error (Machine.Arity "rem needs two integers")) )
-      ; ( "="
-        , Machine.Value_op (function
-            | [ x; y ] -> Ok (Machine.Bool (Machine.equal_value x y))
-            | _ -> Error (Machine.Arity "= needs two arguments")) ) ]
-    @{|(controller
- test-b
-   (test (op =) (reg b) (const 0))
-   (branch (label gcd-done))
-   (assign t (op rem) (reg a) (reg b))
-   (assign a (reg b))
-   (assign b (reg t))
-   (goto (label test-b))
- gcd-done)|@}
+let gcd_controller =
+  [ Label "test-b"
+  ; Test ("=", [ Reg "b"; Const (Int 0) ])
+  ; Branch "gcd-done"
+  ; Assign_op ("t", "rem", [ Reg "a"; Reg "b" ])
+  ; Assign ("a", Reg "b")
+  ; Assign ("b", Reg "t")
+  ; Goto "test-b"
+  ; Label "gcd-done"
+  ]
 ;;
-(* run on a = 12 and b = 8, the machine stops with a = 4 *)
+
+let gcd controller a b =
+  run
+    ~registers:[ "a"; "b"; "t" ]
+    ~operations:arith_operations
+    ~inputs:[ "a", Int a; "b", Int b ]
+    ~controller
+    "a"
+;;
+(* gcd gcd_controller 206 40 answers 2 *)
 @end example
 
 @end quotation
 
-Unfortunately, it is difficult to read such a description.  In order to
-understand the controller instructions we must constantly refer back to the
-definitions of the button names and the operation names, and to understand what
-the buttons do we may have to refer to the definitions of the operation names.
-We will thus transform our notation to combine the information from the
-data-path and controller descriptions so that we see it all together.
-
-To obtain this form of description, we will replace the arbitrary button and
-operation names by the definitions of their behavior.  That is, instead of
-saying (in the controller) ``Push button @code{t<-r}'' and separately saying
-(in the data paths) ``Button @code{t<-r} assigns the value of the @code{rem}
-operation to register @code{t}'' and ``The @code{rem} operation's inputs are
-the contents of registers @code{a} and @code{b},'' we will say (in the
-controller) ``Push the button that assigns to register @code{t} the value of
-the @code{rem} operation on the contents of registers @code{a} and @code{b}.''
-Similarly, instead of saying (in the controller) ``Perform the @code{=} test''
-and separately saying (in the data paths) ``The @code{=} test operates on the
-contents of register @code{b} and the constant 0,'' we will say ``Perform the
-@code{=} test on the contents of register @code{b} and the constant 0.''  We
-will omit the data-path description, leaving only the controller
-sequence; the operations come from the section's shared arithmetic
-table. Thus, the @abbr{GCD} machine is described as follows:
-
-@example ocaml
-let gcd_machine =
-  Machine.make_machine
-    ~registers:[ "a"; "b"; "t" ]
-    ~operations:Machine.arith_operations
-    @{|(controller
- test-b
-   (test (op =) (reg b) (const 0))
-   (branch (label gcd-done))
-   (assign t (op rem) (reg a) (reg b))
-   (assign a (reg b))
-   (assign b (reg t))
-   (goto (label test-b))
- gcd-done)|@}
-;;
-(* run on a = 12 and b = 8, the machine answers 4; on 48 and 36, 12;
-   on 17 and 5, 1 *)
-@end example
-
 @noindent
-This form of description is easier to read than the kind illustrated in
-@ref{Figure 5.3}, but it also has disadvantages:
-
-@itemize @bullet
-
-@item
-It is more verbose for large machines, because complete descriptions of the
-data-path elements are repeated whenever the elements are mentioned in the
-controller instruction sequence.  (This is not a problem in the @abbr{GCD}
-example, because each operation and button is used only once.)  Moreover,
-repeating the data-path descriptions obscures the actual data-path structure of
-the machine; it is not obvious for a large machine how many registers,
-operations, and buttons there are and how they are interconnected.
-
-@item
-Because the controller instructions in a machine definition look like Lisp
-expressions, it is easy to forget that they are not arbitrary Lisp expressions.
-They can notate only legal machine operations.  For example, operations can
-operate directly only on constants and the contents of registers, not on the
-results of other operations.
-
-@end itemize
-
-@noindent
-In spite of these disadvantages, we will use this register-machine language
-throughout this chapter, because we will be more concerned with understanding
-controllers than with understanding the elements and connections in data paths.
-We should keep in mind, however, that data-path design is essential in designing
-real machines.
+The operations come from the section's shared arithmetic table.  To make the
+controller easier to read we name it, but it is an ordinary list: labels mark
+positions and execute nothing, and @code{assemble} turns it into an
+instruction array with a label table, rejecting a label defined twice.
 
 @quotation
 @strong{@anchor{Exercise 5.2}Exercise 5.2:} Use the register-machine language
-to describe the iterative factorial machine of @ref{Exercise 5.1}.
+to describe the iterative factorial machine of @ref{Exercise 5.1}, as a typed
+instruction list over the arithmetic operations.
 @end quotation
 
 @subsubheading Actions
 
-Let us modify the @abbr{GCD} machine so that we can type in the numbers
-whose @abbr{GCD} we want and get the answer printed at our terminal.  We
-will not discuss how to make a machine that can read and print, but will assume
-(as we do when we use @code{read} and @code{display} in Scheme) that they are
-available as primitive operations.@footnote{This assumption glosses over a
-great deal of complexity.  Usually a large portion of the implementation of a
-Lisp system is dedicated to making reading and printing work.}
-In this edition @code{read} consumes the machine's queued inputs and
-@code{print} appends the rendered register to the transcript; a
-@code{read} on an exhausted queue fails, which is what stops a
-driver-loop machine in a pinned run.
-
-@code{Read} is like the operations we have been using in that it produces a
-value that can be stored in a register.  But @code{read} does not take inputs
-from any registers; its value depends on something that happens outside the
-parts of the machine we are designing.  We will allow our machine's operations
-to have such behavior, and thus will draw and notate the use of @code{read}
-just as we do any other operation that computes a value.
-
-@code{Print}, on the other hand, differs from the operations we have been using
-in a fundamental way: It does not produce an output value to be stored in a
-register.  Though it has an effect, this effect is not on a part of the machine
+Let us modify the @abbr{GCD} machine so that we can supply the numbers
+whose @abbr{GCD} we want and get the answer printed.  A printing operation
+writes its rendered operand and a newline through the machine's emit
+sink.@footnote{This assumption glosses over a great deal of complexity.
+Usually a large portion of the implementation of a real system is dedicated
+to making reading and printing work.}
+It does not produce an output value to be stored in a register.  Though it
+has an effect, this effect is not on a part of the machine
 we are designing.  We will refer to this kind of operation as an
-@newterm{action}.  We will represent an action in a data-path diagram just as
-we represent an operation that computes a value---as a trapezoid that contains
-the name of the action.  Arrows point to the action box from any inputs
-(registers or constants).  We also associate a button with the action.  Pushing
-the button makes the action happen.  To make a controller push an action button
-we use a new kind of instruction called @code{perform}.  Thus, the action of
-printing the contents of register @code{a} is represented in a controller
-sequence by the instruction
+@newterm{action}.  To run an action from the controller we use
+@code{Perform}.  Thus, the action of printing the contents of register
+@code{t} is the instruction
 
 @example ocaml
-match Machine.parse_program @{|(controller (perform (op print) (reg a)))|@} with
-| Ok p -> Machine.instruction_to_string p.code.(0)
-| Error e -> Machine.error_to_string e
-;;
-(* = "(perform (op print) (reg a))" -- the instruction is data, and the
-   notation round-trips *)
+Perform ("print", [ Reg "t" ])
 @end example
 
 @noindent
 @ref{Figure 5.4} shows the data paths and controller for the new @abbr{GCD}
-machine.  Instead of having the machine stop after printing the answer, we have
-made it start over, so that it repeatedly reads a pair of numbers, computes
-their @abbr{GCD}, and prints the result.  This structure is like the driver
-loops we used in the interpreters of @ref{Chapter 4}.
+machine.  Instead of having the machine stop after printing the answer, we
+have made it start over, so that it repeatedly takes a pair of numbers,
+computes their @abbr{GCD}, and prints the result.  This structure is like the
+driver loops we used in the interpreters of @ref{Chapter 4}.
 
 @float
 @anchor{Figure 5.4}
@@ -460,28 +366,20 @@ loops we used in the interpreters of @ref{Chapter 4}.
 @end example
 
 @example ocaml
-let gcd_driver inputs output =
-  Machine.make_machine
-    ~registers:[ "a"; "b"; "t" ]
-    ~operations:(Machine.read_print ~inputs ~output @ Machine.arith_operations)
-    @{|(controller
- gcd-loop
-   (assign a (op read))
-   (assign b (op read))
- test-b
-   (test (op =) (reg b) (const 0))
-   (branch (label gcd-done))
-   (assign t (op rem) (reg a) (reg b))
-   (assign a (reg b))
-   (assign b (reg t))
-   (goto (label test-b))
- gcd-done
-   (perform (op print) (reg a))
-   (goto (label gcd-loop)))|@}
+let gcd_print_controller =
+  [ Assign_op ("t", "rem", [ Reg "a"; Reg "b" ])
+  ; Perform ("print", [ Reg "t" ])
+  ; Label "loop"
+  ; Test ("=", [ Reg "b"; Const (Int 0) ])
+  ; Branch "done"
+  ; Assign_op ("t", "rem", [ Reg "a"; Reg "b" ])
+  ; Assign ("a", Reg "b")
+  ; Assign ("b", Reg "t")
+  ; Goto "loop"
+  ; Label "done"
+  ]
 ;;
-(* with the inputs 12, 8, 20, 14 queued, the transcript is "4" then
-   "2", and the next read fails with "operation failed: read: the
-   input is exhausted" *)
+(* on a = 206 and b = 40 the machine prints 6, then answers a = 2 *)
 @end example
 
 @end ifinfo
@@ -500,7 +398,7 @@ let gcd_driver inputs output =
 
 We will often define a machine to include ``primitive'' operations that are
 actually very complex.  For example, in @ref{5.4} and @ref{5.5} we
-will treat Scheme's environment manipulations as primitive.  Such abstraction
+will treat the object language's environment manipulations as primitive.  Such abstraction
 is valuable because it allows us to ignore the details of parts of a machine so
 that we can concentrate on other aspects of the design.  The fact that we have
 swept a lot of complexity under the rug, however, does not mean that a machine
@@ -513,12 +411,11 @@ computes the remainder of the contents of registers @code{a} and @code{b} and
 assigns the result to register @code{t}.  If we want to construct the
 @abbr{GCD} machine without using a primitive remainder operation, we must
 specify how to compute remainders in terms of simpler operations, such as
-subtraction.  Indeed, we can write a Scheme procedure that finds remainders in
+subtraction.  Indeed, we can write a procedure that finds remainders in
 this way:
 
-@example
-(define (remainder n d)
-  (if (< n d) n (remainder (- n d) d)))
+@example ocaml
+let rec remainder n d = if n < d then n else remainder (n - d) d
 @end example
 
 We can thus replace the remainder operation in the @abbr{GCD} machine's data
@@ -527,11 +424,7 @@ shows the data paths and controller for the elaborated machine.  The
 instruction
 
 @example ocaml
-match Machine.parse_program @{|(controller (assign t (op rem) (reg a) (reg b)))|@} with
-| Ok p -> Machine.instruction_to_string p.code.(0)
-| Error e -> Machine.error_to_string e
-;;
-(* = "(assign t (op rem) (reg a) (reg b))" *)
+Assign_op ("t", "rem", [ Reg "a"; Reg "b" ])
 @end example
 
 @noindent
@@ -604,53 +497,53 @@ instructions that contains a loop, as shown in @ref{Figure 5.6}.
 @abbr{GCD} machine in @ref{Figure 5.5}.
 
 @example ocaml
-let gcd_elaborated =
-  Machine.make_machine
-    ~registers:[ "a"; "b"; "t" ]
-    ~operations:Machine.arith_operations
-    @{|(controller
- test-b
-   (test (op =) (reg b) (const 0))
-   (branch (label gcd-done))
-   (assign t (reg a))
- rem-loop
-   (test (op <) (reg t) (reg b))
-   (branch (label rem-done))
-   (assign t (op -) (reg t) (reg b))
-   (goto (label rem-loop))
- rem-done
-   (assign a (reg b))
-   (assign b (reg t))
-   (goto (label test-b))
- gcd-done)|@}
+let gcd_subtraction_controller =
+  [ Label "test-b"
+  ; Test ("=", [ Reg "b"; Const (Int 0) ])
+  ; Branch "gcd-done"
+  ; Assign ("t", Reg "a")
+  ; Label "rem-loop"
+  ; Test ("<", [ Reg "t"; Reg "b" ])
+  ; Branch "rem-done"
+  ; Assign_op ("t", "-", [ Reg "t"; Reg "b" ])
+  ; Goto "rem-loop"
+  ; Label "rem-done"
+  ; Assign ("a", Reg "b")
+  ; Assign ("b", Reg "t")
+  ; Goto "test-b"
+  ; Label "gcd-done"
+  ]
 ;;
-(* run on a = 12 and b = 8, the machine answers 4; on 25 and 55, 5 *)
+(* gcd gcd_subtraction_controller 206 40 answers 2 *)
 @end example
 
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 5.3}Exercise 5.3:} Design a machine to compute square
-roots using Newton's method, as described in @ref{Sec.1.1.7,,1.1.7}:
+roots using Newton's method, as described in @ref{1.1.7}:
 
-@example
-(define (sqrt x)
-  (define (good-enough? guess)
-    (< (abs (- (square guess) x)) 0.001))
-  (define (improve guess)
-    (average guess (/ x guess)))
-  (define (sqrt-iter guess)
-    (if (good-enough? guess)
-        guess
-        (sqrt-iter (improve guess))))
-  (sqrt-iter 1.0))
+@example ocaml
+let abs_float x = if x < 0.0 then -.x else x
+
+let sqrt x =
+  let good_enough guess =
+    abs_float (guess *. guess -. x) < 0.001
+  in
+  let improve guess = (guess +. x /. guess) /. 2.0 in
+  let rec sqrt_iter guess =
+    if good_enough guess
+    then guess
+    else sqrt_iter (improve guess)
+  in
+  sqrt_iter 1.0
 @end example
 
-Begin by assuming that @code{good-enough?} and @code{improve} operations are
+Begin by assuming that @code{good_enough} and @code{improve} operations are
 available as primitives.  Then show how to expand these in terms of arithmetic
 operations.  Describe each version of the @code{sqrt} machine design by drawing
-a data-path diagram and writing a controller definition in the register-machine
-language.
+a data-path diagram and writing a controller definition as a typed instruction
+list.
 @end quotation
 
 @node	5.1.3, 5.1.4, 5.1.2, 5.1
@@ -659,7 +552,7 @@ language.
 When designing a machine to perform a computation, we would often prefer to
 arrange for components to be shared by different parts of the computation
 rather than duplicate the components.  Consider a machine that includes two
-@abbr{GCD} computations---one that finds the @abbr{GCD} of the contents
+@abbr{GCD} computations, one that finds the @abbr{GCD} of the contents
 of registers @code{a} and @code{b} and one that finds the @abbr{GCD} of the
 contents of registers @code{c} and @code{d}.  We might start by assuming we
 have a primitive @code{gcd} operation, then expand the two instances of
@@ -674,50 +567,43 @@ corresponding portions of the machine's controller sequence.
 @strong{Figure 5.7:} Portions of the data paths and controller sequence for a machine with two @abbr{GCD} computations.
 
 @example
-                            ___                                 ___  
-+-----+        +-----+     /   \    +-----+        +-----+     /   \ 
-|  a  |<-(X)---+  b  |--->|  =  |   |  c  |<-(X)---+  d  |--->|  =  |
-+--+--+  a<-b  ++----+     \___/    +--+--+  c<-d  ++----+     \___/ 
-   |            |  ^         ^         |            |  ^         ^   
-   `----.   .---'  |         |         `----.   .---'  |         |   
-        V   V     (X) b<-t   |              V   V     (X) d<-t   |   
-       -------     |        / \            -------     |        / \  
-       \ rem /     |       /_0_\           \ rem /     |       /_0_\ 
-        --+--      |                        --+--      |             
-          |        |                          |        |             
-         (X) t<-r  |                         (X) s<-r  |             
-          |        |                          |        |             
-          V        |                          V        |             
-       +-----+     |                       +-----+     |             
-       |  t  +-----'                       |  s  +-----'             
-       +-----+                             +-----+                   
+                            ___
++-----+        +-----+     /   \
+|  a  |<-(X)---+  b  |--->|  =  |
++--+--+  a<-b  ++----+     \___/
+   |            |  ^         ^
+   `----.   .---'  |         |
+        V   V     (X) b<-t   |
+       -------     |        / \
+       \ rem /     |       /_0_\
+        --+--      |
+          |        |
+         (X) t<-r  |
+          |        |
+          V        |
+       +-----+     |
+       |  t  +-----'
+       +-----+
 @end example
 
 @example ocaml
-match
-  Machine.parse_program
-    @{|(controller
- gcd-1
- (test (op =) (reg b) (const 0))
- (branch (label after-gcd-1))
- (assign t (op rem) (reg a) (reg b))
- (assign a (reg b))
- (assign b (reg t))
- (goto (label gcd-1))
-after-gcd-1
-gcd-2
- (test (op =) (reg d) (const 0))
- (branch (label after-gcd-2))
- (assign s (op rem) (reg c) (reg d))
- (assign c (reg d))
- (assign d (reg s))
- (goto (label gcd-2))
-after-gcd-2)|@}
-with
-| Ok p -> Array.length p.code
-| Error e -> Machine.error_to_string e
-;;
-(* = 12 -- both copies assemble; the duplicated remainder boxes and test boxes are what 5.1.3 removes *)
+[ Label "gcd-1"
+; Test ("=", [ Reg "b"; Const (Int 0) ])
+; Branch "after-gcd-1"
+; Assign_op ("t", "rem", [ Reg "a"; Reg "b" ])
+; Assign ("a", Reg "b")
+; Assign ("b", Reg "t")
+; Goto "gcd-1"
+; Label "after-gcd-1"
+; Label "gcd-2"
+; Test ("=", [ Reg "d"; Const (Int 0) ])
+; Branch "after-gcd-2"
+; Assign_op ("s", "rem", [ Reg "c"; Reg "d" ])
+; Assign ("c", Reg "d")
+; Assign ("d", Reg "s")
+; Goto "gcd-2"
+; Label "after-gcd-2"
+]
 @end example
 
 @end ifinfo
@@ -750,30 +636,23 @@ a machine that uses the same data-path components for two different
 @abbr{GCD} computations.
 
 @example ocaml
-match
-  Machine.parse_program
-    @{|(controller
- gcd-1
- (test (op =) (reg b) (const 0))
- (branch (label after-gcd-1))
- (assign t (op rem) (reg a) (reg b))
- (assign a (reg b))
- (assign b (reg t))
- (goto (label gcd-1))
-after-gcd-1
-gcd-2
- (test (op =) (reg b) (const 0))
- (branch (label after-gcd-2))
- (assign t (op rem) (reg a) (reg b))
- (assign a (reg b))
- (assign b (reg t))
- (goto (label gcd-2))
-after-gcd-2)|@}
-with
-| Ok p -> Array.length p.code
-| Error e -> Machine.error_to_string e
-;;
-(* = 12 -- the two sequences rewritten over the shared registers a and b *)
+[ Label "gcd-1"
+; Test ("=", [ Reg "b"; Const (Int 0) ])
+; Branch "after-gcd-1"
+; Assign_op ("t", "rem", [ Reg "a"; Reg "b" ])
+; Assign ("a", Reg "b")
+; Assign ("b", Reg "t")
+; Goto "gcd-1"
+; Label "after-gcd-1"
+; Label "gcd-2"
+; Test ("=", [ Reg "b"; Const (Int 0) ])
+; Branch "after-gcd-2"
+; Assign_op ("t", "rem", [ Reg "a"; Reg "b" ])
+; Assign ("a", Reg "b")
+; Assign ("b", Reg "t")
+; Goto "gcd-2"
+; Label "after-gcd-2"
+]
 @end example
 
 @end quotation
@@ -782,8 +661,8 @@ with
 We have removed the duplicate data-path components (so that the data paths are
 again as in @ref{Figure 5.1}), but the controller now has two @abbr{GCD}
 sequences that differ only in their entry-point labels.  It would be better to
-replace these two sequences by branches to a single sequence---a @code{gcd}
-@newterm{subroutine}---at the end of which we branch back to the correct place
+replace these two sequences by branches to a single sequence, a @code{gcd}
+@newterm{subroutine}, at the end of which we branch back to the correct place
 in the main instruction sequence.  We can accomplish this as follows: Before
 branching to @code{gcd}, we place a distinguishing value (such as 0 or 1) into
 a special register, @code{continue}.  At the end of the @code{gcd} subroutine
@@ -797,34 +676,24 @@ of the @code{gcd} instructions.
 avoid the duplicate controller sequence in @ref{Figure 5.8}.
 
 @example ocaml
-match
-  Machine.parse_program
-    @{|(controller
- gcd
- (test (op =) (reg b) (const 0))
- (branch (label gcd-done))
- (assign t (op rem) (reg a) (reg b))
- (assign a (reg b))
- (assign b (reg t))
- (goto (label gcd))
-gcd-done
- (test (op =) (reg continue) (const 0))
- (branch (label after-gcd-1))
- (goto (label after-gcd-2))
- ; before branching to gcd from the first place where it is needed,
- ; we place 0 in the continue register
- (assign continue (const 0))
- (goto (label gcd))
-after-gcd-1
- ; before the second use of gcd, we place 1 in the continue register
- (assign continue (const 1))
- (goto (label gcd))
-after-gcd-2)|@}
-with
-| Ok p -> Array.length p.code
-| Error e -> Machine.error_to_string e
-;;
-(* = 13 -- the distinguishing values 0 and 1 in continue route each call to its own return point *)
+[ Label "gcd"
+; Test ("=", [ Reg "b"; Const (Int 0) ])
+; Branch "gcd-done"
+; Assign_op ("t", "rem", [ Reg "a"; Reg "b" ])
+; Assign ("a", Reg "b")
+; Assign ("b", Reg "t")
+; Goto "gcd"
+; Label "gcd-done"
+; Test ("=", [ Reg "continue"; Const (Int 0) ])
+; Branch "after-gcd-1"
+; Goto "after-gcd-2"
+; Assign ("continue", Const (Int 0))
+; Goto "gcd"
+; Label "after-gcd-1"
+; Assign ("continue", Const (Int 1))
+; Goto "gcd"
+; Label "after-gcd-2"
+]
 @end example
 
 @end quotation
@@ -843,15 +712,10 @@ controller of a register machine: There must be a way to assign to a register a
 label in the controller sequence in such a way that this value can be fetched
 from the register and used to continue execution at the designated entry point.
 
-To reflect this ability, we will extend the @code{assign} instruction of the
-register-machine language to allow a register to be assigned as value a label
-from the controller sequence (as a special kind of constant).  We will also
-extend the @code{goto} instruction to allow execution to continue at the entry
-point described by the contents of a register rather than only at an entry
-point described by a constant label.  Using these new constructs we can
-terminate the @code{gcd} subroutine with a branch to the location stored in the
-@code{continue} register.  This leads to the controller sequence shown in
-@ref{Figure 5.10}.
+To reflect this ability, the @code{Assign} instruction allows a register to be
+assigned a label from the controller sequence, as @code{Label_ref label}, and
+@code{Goto_reg register} continues execution at the entry point the register
+holds.  This leads to the controller sequence shown in @ref{Figure 5.10}.
 
 @quotation
 @strong{@anchor{Figure 5.10}Figure 5.10:} @math{\downarrow} Assigning labels to the
@@ -859,32 +723,22 @@ terminate the @code{gcd} subroutine with a branch to the location stored in the
 @ref{Figure 5.9}.
 
 @example ocaml
-match
-  Machine.parse_program
-    @{|(controller
- gcd
- (test (op =) (reg b) (const 0))
- (branch (label gcd-done))
- (assign t (op rem) (reg a) (reg b))
- (assign a (reg b))
- (assign b (reg t))
- (goto (label gcd))
-gcd-done
- (goto (reg continue))
- ; before calling gcd, we assign to continue the label to which gcd
- ; should return
- (assign continue (label after-gcd-1))
- (goto (label gcd))
-after-gcd-1
- ; here is the second call to gcd, with a different continuation
- (assign continue (label after-gcd-2))
- (goto (label gcd))
-after-gcd-2)|@}
-with
-| Ok p -> Array.length p.code
-| Error e -> Machine.error_to_string e
-;;
-(* = 11 -- one shared copy of gcd, with continue holding the label of the return point *)
+[ Label "gcd"
+; Test ("=", [ Reg "b"; Const (Int 0) ])
+; Branch "gcd-done"
+; Assign_op ("t", "rem", [ Reg "a"; Reg "b" ])
+; Assign ("a", Reg "b")
+; Assign ("b", Reg "t")
+; Goto "gcd"
+; Label "gcd-done"
+; Goto_reg "continue"
+; Assign ("continue", Label_ref "after-gcd-1")
+; Goto "gcd"
+; Label "after-gcd-1"
+; Assign ("continue", Label_ref "after-gcd-2")
+; Goto "gcd"
+; Label "after-gcd-2"
+]
 @end example
 
 @end quotation
@@ -907,30 +761,23 @@ With the ideas illustrated so far, we can implement any iterative process by
 specifying a register machine that has a register corresponding to each state
 variable of the process.  The machine repeatedly executes a controller loop,
 changing the contents of the registers, until some termination condition is
-satisfied.  At each point in the controller sequence, the state of the machine
-(representing the state of the iterative process) is completely determined by
-the contents of the registers (the values of the state variables).
+satisfied.
 
 Implementing recursive processes, however, requires an additional mechanism.
 Consider the following recursive method for computing factorials, which we
 first examined in @ref{1.2.1}:
 
-@example
-(define (factorial n)
-  (if (= n 1) 
-      1
-      (* (factorial (- n 1)) n)))
+@example ocaml
+let rec factorial n =
+  if n = 1 then 1 else n * factorial (n - 1)
 @end example
 
 @noindent
-As we see from the procedure, computing @math{{n!}} requires computing @math{{(n - 1)!}}.
-Our @abbr{GCD} machine, modeled on the procedure
+As we see from the procedure, computing @math{{n!}} requires computing
+@math{{(n - 1)!}}.  Our @abbr{GCD} machine, modeled on the procedure
 
-@example
-(define (gcd a b)
-  (if (= b 0) 
-      a
-      (gcd b (remainder a b))))
+@example ocaml
+let rec gcd a b = if b = 0 then a else gcd b (a mod b)
 @end example
 
 @noindent
@@ -939,93 +786,52 @@ difference between the @code{gcd} procedure, which reduces the original
 computation to a new @abbr{GCD} computation, and @code{factorial}, which
 requires computing another factorial as a subproblem.  In @abbr{GCD}, the
 answer to the new @abbr{GCD} computation is the answer to the original
-problem.  To compute the next @abbr{GCD}, we simply place the new arguments
-in the input registers of the @abbr{GCD} machine and reuse the machine's
-data paths by executing the same controller sequence.  When the machine is
-finished solving the final @abbr{GCD} problem, it has completed the entire
-computation.
-
-In the case of factorial (or any recursive process) the answer to the new
-factorial subproblem is not the answer to the original problem.  The value
-obtained for @math{{(n - 1)!}} must be multiplied by @math{n} to get the final answer.
-If we try to imitate the @abbr{GCD} design, and solve the factorial
-subproblem by decrementing the @code{n} register and rerunning the factorial
-machine, we will no longer have available the old value of @code{n} by which to
-multiply the result.  We thus need a second factorial machine to work on the
-subproblem.  This second factorial computation itself has a factorial
-subproblem, which requires a third factorial machine, and so on.  Since each
-factorial machine contains another factorial machine within it, the total
-machine contains an infinite nest of similar machines and hence cannot be
-constructed from a fixed, finite number of parts.
-
-Nevertheless, we can implement the factorial process as a register machine if
-we can arrange to use the same components for each nested instance of the
-machine.  Specifically, the machine that computes @math{{n!}}  should use the same
-components to work on the subproblem of computing @math{{(n - 1)!}}, on the
-subproblem for @math{{(n - 2)!}}, and so on.  This is plausible because, although
-the factorial process dictates that an unbounded number of copies of the same
-machine are needed to perform a computation, only one of these copies needs to
-be active at any given time.  When the machine encounters a recursive
-subproblem, it can suspend work on the main problem, reuse the same physical
-parts to work on the subproblem, then continue the suspended computation.
+problem.  In the case of factorial the value obtained for @math{{(n - 1)!}}
+must be multiplied by @math{n} to get the final answer.  If we try to imitate
+the @abbr{GCD} design, we will no longer have available the old value of
+@code{n} by which to multiply the result.  We thus need to save the contents
+of registers that will be needed after a subproblem is solved.
 
 In the subproblem, the contents of the registers will be different than they
-were in the main problem. (In this case the @code{n} register is decremented.)
-In order to be able to continue the suspended computation, the machine must
-save the contents of any registers that will be needed after the subproblem is
-solved so that these can be restored to continue the suspended computation.  In
-the case of factorial, we will save the old value of @code{n}, to be restored
-when we are finished computing the factorial of the decremented @code{n}
-register.@footnote{One might argue that we don't need to save the old @code{n};
-after we decrement it and solve the subproblem, we could simply increment it to
-recover the old value.  Although this strategy works for factorial, it cannot
-work in general, since the old value of a register cannot always be computed
-from the new one.}
+were in the main problem.  In order to be able to continue the suspended
+computation, the machine must save the contents of any registers that will be
+needed after the subproblem is solved so that these can be restored to
+continue the suspended computation.  In the case of factorial, we will save
+the old value of @code{n}, to be restored when we are finished computing the
+factorial of the decremented @code{n} register.@footnote{One might argue that
+we don't need to save the old @code{n}; after we decrement it and solve the
+subproblem, we could simply increment it to recover the old value.  Although
+this strategy works for factorial, it cannot work in general, since the old
+value of a register cannot always be computed from the new one.}
 
-Since there is no @emph{a priori} limit on the depth of nested recursive calls,
-we may need to save an arbitrary number of register values.  These values must
-be restored in the reverse of the order in which they were saved, since in a
-nest of recursions the last subproblem to be entered is the first to be
-finished.  This dictates the use of a @newterm{stack}, or ``last in, first
-out'' data structure, to save register values.  We can extend the
-register-machine language to include a stack by adding two kinds of
-instructions: Values are placed on the stack using a @code{save} instruction
-and restored from the stack using a @code{restore} instruction.  After a
-sequence of values has been @code{save}d on the stack, a sequence of
-@code{restore}s will retrieve these values in reverse order.@footnote{In
-@ref{5.3} we will see how to implement a stack in terms of more
-primitive operations.}
+Since there is no @emph{a priori} limit on the depth of nested recursive
+calls, we may need to save an arbitrary number of register values.  These
+values must be restored in the reverse of the order in which they were saved,
+since in a nest of recursions the last subproblem to be entered is the first
+to be finished.  This dictates the use of a @newterm{stack}, or ``last in,
+first out'' data structure, to save register values.  The controller uses
+@code{Save} to push a register's contents and @code{Restore} to pop a word
+back into a register.  After a sequence of values has been saved on the
+stack, a sequence of restores will retrieve these values in reverse
+order.@footnote{In @ref{5.3} we will see how to implement a stack in terms of
+more primitive operations.}
 
 With the aid of the stack, we can reuse a single copy of the factorial
-machine's data paths for each factorial subproblem.  There is a similar design
-issue in reusing the controller sequence that operates the data paths.  To
-reexecute the factorial computation, the controller cannot simply loop back to
-the beginning, as with an iterative process, because after solving the 
-@math{{(n - 1)!}} subproblem the machine must still multiply the result by @math{n}.  The
-controller must suspend its computation of @math{{n!}}, solve the @math{{(n - 1)!}}
-subproblem, then continue its computation of @math{{n!}}.  This view of the
-factorial computation suggests the use of the subroutine mechanism described in
-@ref{5.1.3}, which has the controller use a @code{continue} register to
-transfer to the part of the sequence that solves a subproblem and then continue
-where it left off on the main problem.  We can thus make a factorial subroutine
-that returns to the entry point stored in the @code{continue} register.  Around
-each subroutine call, we save and restore @code{continue} just as we do the
-@code{n} register, since each ``level'' of the factorial computation will use
-the same @code{continue} register.  That is, the factorial subroutine must put
-a new value in @code{continue} when it calls itself for a subproblem, but it
-will need the old value to return to the place that called it to solve
-a subproblem.
+machine's data paths for each factorial subproblem.  To reexecute the
+factorial computation, the controller uses the subroutine mechanism of
+@ref{5.1.3}: it suspends its computation of @math{{n!}}, solves the
+@math{{(n - 1)!}} subproblem, then continues.  Around each subroutine call, we
+save and restore @code{continue} just as we do the @code{n} register, since
+each level of the factorial computation uses the same @code{continue}
+register.
 
 @noindent
-@ref{Figure 5.11} shows the data paths and controller for a machine that
-implements the recursive @code{factorial} procedure.  The machine has a stack
-and three registers, called @code{n}, @code{val}, and @code{continue}.  To
-simplify the data-path diagram, we have not named the register-assignment
-buttons, only the stack-operation buttons (@code{sc} and @code{sn} to save
-registers, @code{rc} and @code{rn} to restore registers).  To operate the
+@ref{Figure 5.11} shows the data paths for a machine that implements the
+recursive @code{factorial} procedure.  The machine has a stack and three
+registers, called @code{n}, @code{val}, and @code{continue}.  To operate the
 machine, we put in register @code{n} the number whose factorial we wish to
-compute and start the machine.  When the machine reaches @code{fact-done}, the
-computation is finished and the answer will be found in the @code{val}
+compute and start the machine.  When the machine reaches @code{fact-done},
+the computation is finished and the answer will be found in the @code{val}
 register.  In the controller sequence, @code{n} and @code{continue} are saved
 before each recursive call and restored upon return from the call.  Returning
 from a call is accomplished by branching to the location stored in
@@ -1034,164 +840,116 @@ that the last return will go to @code{fact-done}.  The @code{val} register,
 which holds the result of the factorial computation, is not saved before the
 recursive call, because the old contents of @code{val} is not useful after the
 subroutine returns.  Only the new value, which is the value produced by the
-subcomputation, is needed.
+subcomputation, is needed.  The controller is the typed list:
 
 @float
 @anchor{Figure 5.11}
 @ifinfo
-@strong{Figure 5.11:} A recursive factorial machine.
-
-@example
-                             ___
-                            /   \
-    +----------*-----------|  =  |
-    |          |            \___/
-   (X)         |              ^
-    |          |              |
-    V          |          +---+---+   sn    +-------+
-+-------+      |          |       +---(X)-->|       |
-|  val  |<-(X)-|----------+   n   |         | stack |
-+-----+-+      |          |       |<--(X)---+       |
-  ^   |        |          +-------+   rn    +-+-----+
-  |   |        |            ^                 |   ^
- (X)  |        |            |                 |   |
-  |   |   +----|--------*  (X)                |  (X) sc
-  |   |   |    |        |   |             rc (X)  |
-  |   |   |    *----.   |   |                 |   |
-  |   V   V    |    V   V   |                 V   |
-  |  -------   |   -------  |              +------+-+
-  |  \  *  /   |   \  -  /  |              |continue+--> controller
-  |   --+--    |    --+--   |              +--------+
-  |     |      |      |     |               ^      ^
-  +-----+      |      +-----+               |      |
-               |                           (X)    (X)
-               |                            |      |
-              / \                   after- / \    / \  fact-
-             /_1_\                  fact  /___\  /___\ done
-@end example
-
-@example ocaml
-let factorial_machine =
-  Machine.make_machine
-    ~registers:[ "n"; "val"; "continue" ]
-    ~operations:Machine.arith_operations
-    @{|(controller
-   (assign continue (label fact-done))
- fact-loop
-   (test (op =) (reg n) (const 1))
-   (branch (label base-case))
-   (save continue)
-   (save n)
-   (assign n (op -) (reg n) (const 1))
-   (assign continue (label after-fact))
-   (goto (label fact-loop))
- after-fact
-   (restore n)
-   (restore continue)
-   (assign val (op *) (reg n) (reg val))
-   (goto (reg continue))
- base-case
-   (assign val (const 1))
-   (goto (reg continue))
- fact-done)|@}
-;;
-(* with n = 5 the machine stops with val = 120; with n = 3, val = 6 *)
-@end example
-
+@strong{Figure 5.11:} A recursive factorial machine.  (Data paths only; the
+controller is the typed list below.)
 @end ifinfo
 @ifhtml
 @image{../../text/original/figures/chap5/Fig5.11b,,147mm,Figure 5.11: A recursive factorial machine.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap5/Fig5.11b.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap5/Fig5.11b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 5.11:} A recursive factorial machine.}
 @end float
 
+@example ocaml
+let factorial_controller =
+  [ Assign ("continue", Label_ref "fact-done")
+  ; Label "fact-loop"
+  ; Test ("=", [ Reg "n"; Const (Int 1) ])
+  ; Branch "base-case"
+  ; Save "continue"
+  ; Save "n"
+  ; Assign_op ("n", "-", [ Reg "n"; Const (Int 1) ])
+  ; Assign ("continue", Label_ref "after-fact")
+  ; Goto "fact-loop"
+  ; Label "after-fact"
+  ; Restore "n"
+  ; Restore "continue"
+  ; Assign_op ("val", "*", [ Reg "n"; Reg "val" ])
+  ; Goto_reg "continue"
+  ; Label "base-case"
+  ; Assign ("val", Const (Int 1))
+  ; Goto_reg "continue"
+  ; Label "fact-done"
+  ]
+;;
+(* on n = 5 the machine answers val = 120 *)
+@end example
+
+@noindent
 Although in principle the factorial computation requires an infinite machine,
-the machine in @ref{Figure 5.11} is actually finite except for the stack, which
-is potentially unbounded.  Any particular physical implementation of a stack,
-however, will be of finite size, and this will limit the depth of recursive
-calls that can be handled by the machine.  This implementation of factorial
-illustrates the general strategy for realizing recursive algorithms as ordinary
-register machines augmented by stacks.  When a recursive subproblem is
-encountered, we save on the stack the registers whose current values will be
-required after the subproblem is solved, solve the recursive subproblem, then
-restore the saved registers and continue execution on the main problem.  The
+the machine in @ref{Figure 5.11} is actually finite except for the stack,
+which is potentially unbounded.  When a recursive subproblem is encountered,
+we save on the stack the registers whose current values will be required
+after the subproblem is solved, solve the recursive subproblem, then restore
+the saved registers and continue execution on the main problem.  The
 @code{continue} register must always be saved.  Whether there are other
-registers that need to be saved depends on the particular machine, since not
-all recursive computations need the original values of registers that are
-modified during solution of the subproblem (see @ref{Exercise 5.4}).
+registers that need to be saved depends on the particular machine (see
+@ref{Exercise 5.4}).
 
 @subsubheading A double recursion
 
 Let us examine a more complex recursive process, the tree-recursive computation
 of the Fibonacci numbers, which we introduced in @ref{1.2.2}:
 
-@example
-(define (fib n)
-  (if (< n 2) 
-      n 
-      (+ (fib (- n 1)) (fib (- n 2)))))
+@example ocaml
+let rec fib n =
+  if n < 2 then n else fib (n - 1) + fib (n - 2)
 @end example
 
 @noindent
-Just as with factorial, we can implement the recursive Fibonacci computation as
-a register machine with registers @code{n}, @code{val}, and @code{continue}.
-The machine is more complex than the one for factorial, because there are two
-places in the controller sequence where we need to perform recursive
-calls---once to compute @math{{\hbox{Fib}(n - 1)}} and once to compute @math{{\hbox{Fib}(n - 2)}}.  To
-set up for each of these calls, we save the registers whose values will be
-needed later, set the @code{n} register to the number whose Fib we need to
-compute recursively (@math{{n - 1}} or @math{{n - 2}}), and assign to @code{continue} the
-entry point in the main sequence to which to return (@code{afterfib-n-1} or
-@code{afterfib-n-2}, respectively).  We then go to @code{fib-loop}.  When we
-return from the recursive call, the answer is in @code{val}.  @ref{Figure 5.12}
-shows the controller sequence for this machine.
+Just as with factorial, we can implement the recursive Fibonacci computation
+as a register machine with registers @code{n}, @code{val}, and
+@code{continue}.  The machine is more complex than the one for factorial,
+because there are two places in the controller sequence where we need to
+perform recursive calls.  To set up for each of these calls, we save the
+registers whose values will be needed later and assign to @code{continue} the
+entry point to return to.  When we return from the recursive call, the answer
+is in @code{val}.  @ref{Figure 5.12} shows the controller sequence for this
+machine, which on @code{n = 10} answers @code{val = 55}:
 
 @quotation
 @strong{@anchor{Figure 5.12}Figure 5.12:} @math{\downarrow} Controller for a machine to compute
 Fibonacci numbers.
+@end quotation
 
 @example ocaml
-let fib_machine =
-  Machine.make_machine
-    ~registers:[ "n"; "val"; "continue" ]
-    ~operations:Machine.arith_operations
-    @{|(controller
-   (assign continue (label fib-done))
- fib-loop
-   (test (op <) (reg n) (const 2))
-   (branch (label immediate-answer))
-   (save continue)
-   (assign continue (label afterfib-n-1))
-   (save n)
-   (assign n (op -) (reg n) (const 1))
-   (goto (label fib-loop))
- afterfib-n-1
-   (restore n)
-   (restore continue)
-   (assign n (op -) (reg n) (const 2))
-   (save continue)
-   (assign continue (label afterfib-n-2))
-   (save val)
-   (goto (label fib-loop))
- afterfib-n-2
-   (assign n (reg val))
-   (restore val)
-   (restore continue)
-   (assign val (op +) (reg val) (reg n))
-   (goto (reg continue))
- immediate-answer
-   (assign val (reg n))
-   (goto (reg continue))
- fib-done)|@}
-;;
-(* with n = 6 the machine stops with val = 8; with n = 10, val = 55 *)
+[ Assign ("continue", Label_ref "done")
+; Label "fib"
+; Test ("<", [ Reg "n"; Const (Int 2) ])
+; Branch "immediate-answer"
+; Save "continue"
+; Assign ("continue", Label_ref "afterfib-n-1")
+; Save "n"
+; Assign_op ("n", "-", [ Reg "n"; Const (Int 1) ])
+; Goto "fib"
+; Label "afterfib-n-1"
+; Restore "n"
+; Restore "continue"
+; Assign_op ("n", "-", [ Reg "n"; Const (Int 2) ])
+; Save "continue"
+; Assign ("continue", Label_ref "afterfib-n-2")
+; Save "val"
+; Goto "fib"
+; Label "afterfib-n-2"
+; Assign ("n", Reg "val")
+; Restore "val"
+; Restore "continue"
+; Assign_op ("val", "+", [ Reg "val"; Reg "n" ])
+; Goto_reg "continue"
+; Label "immediate-answer"
+; Assign ("val", Reg "n")
+; Goto_reg "continue"
+; Label "done"
+]
 @end example
-
-@end quotation
 
 @quotation
 @strong{@anchor{Exercise 5.4}Exercise 5.4:} Specify register machines that
@@ -1203,24 +961,20 @@ controller instruction sequence and draw a diagram showing the data paths.
 @item
 Recursive exponentiation:
 
-@example
-(define (expt b n)
-  (if (= n 0)
-      1
-      (* b (expt b (- n 1)))))
+@example ocaml
+let rec expt b n = if n = 0 then 1 else b * expt b (n - 1)
 @end example
 
 @item
 Iterative exponentiation:
 
-@example
-(define (expt b n)
-  (define (expt-iter counter product)
-    (if (= counter 0)
-        product
-        (expt-iter (- counter 1)
-                   (* b product))))
-  (expt-iter n 1))
+@example ocaml
+let rec expt b n =
+  let rec expt_iter counter product =
+    if counter = 0 then product
+    else expt_iter (counter - 1) (b * product)
+  in
+  expt_iter n 1
 @end example
 
 @end enumerate
@@ -1235,62 +989,56 @@ point in the execution.
 
 @quotation
 @strong{@anchor{Exercise 5.6}Exercise 5.6:} Ben Bitdiddle observes that the
-Fibonacci machine's controller sequence has an extra @code{save} and an extra
-@code{restore}, which can be removed to make a faster machine.  Where are these
-instructions?
+Fibonacci machine's controller sequence has an extra @code{Save} and an extra
+@code{Restore}, which can be removed to make a faster machine.  Where are these
+instructions?  (The machine with the extra pair removed runs 257 steps with
+36 saves against 281 steps with 48 saves.)
 @end quotation
 
 @node	5.1.5, 5.2, Chapter 5, 5.1
 @subsection Instruction Summary
 
-A controller instruction in our register-machine language has one of the
-following forms, where each @math{{⟨\kern0.06em input_i⟩}} is either 
-@code{(reg ⟨@var{register-name}⟩)} or @code{(const ⟨@var{constant-value}⟩)}.  
-These instructions were introduced in @ref{5.1.1}:
+A controller instruction in our register-machine language is a constructor of
+@code{Sec_5_1.instruction}, with operands built from @code{Const word},
+@code{Reg name}, and @code{Label_ref label}.  The instructions introduced in
+@ref{5.1.1} are:
 
-@example
-(assign ⟨@var{register-name}⟩ (reg ⟨@var{register-name}⟩))
-(assign ⟨@var{register-name}⟩ 
-        (const ⟨@var{constant-value}⟩))
-(assign ⟨@var{register-name}⟩ 
-        (op ⟨@var{operation-name}⟩) 
-        ⟨@var{input₁}⟩ @r{…} ⟨@var{inputₙ}⟩)
-(perform (op ⟨@var{operation-name}⟩) 
-         ⟨@var{input₁}⟩ 
-         @r{…} 
-         ⟨@var{inputₙ}⟩)
-(test (op ⟨@var{operation-name}⟩) 
-      ⟨@var{input₁}⟩ 
-      @r{…} 
-      ⟨@var{inputₙ}⟩)
-(branch (label ⟨@var{label-name}⟩))
-(goto (label ⟨@var{label-name}⟩))
+@example ocaml
+Assign (register, source)
+Assign_op (register, operation, inputs)
+Test (operation, inputs)
+Branch label
+Goto label
 @end example
 
 @noindent
-The use of registers to hold labels was introduced in @ref{5.1.3}:
+Holding labels in registers was introduced in @ref{5.1.3}:
 
-@example
-(assign ⟨@var{register-name}⟩ (label ⟨@var{label-name}⟩))
-(goto (reg ⟨@var{register-name}⟩))
+@example ocaml
+Assign (register, Label_ref label)
+Goto_reg register
 @end example
 
 @noindent
-Instructions to use the stack were introduced in @ref{5.1.4}:
+Using the stack was introduced in @ref{5.1.4}:
 
-@example
-(save ⟨@var{register-name}⟩)
-(restore ⟨@var{register-name}⟩)
+@example ocaml
+Save register
+Restore register
 @end example
 
 @noindent
-The only kind of @code{⟨}@var{constant-value}@code{⟩} we have seen so far is a number,
-but later we will use strings, symbols, and lists.  (This edition's
-Exercise 5.1a already leans ahead of the summary: its driver loop
-compares the input against the symbol constant @code{(const end)}.)
-For example,@*
-@code{(const "abc")} is the string @code{"abc"},@*
-@code{(const abc)} is the symbol @code{abc},@*
-@code{(const (a b c))} is the list @code{(a b c)},@*
-and @code{(const ())} is the empty list.
+Running an action was introduced in @ref{5.1.1}:
 
+@example ocaml
+Perform (operation, inputs)
+@end example
+
+@noindent
+A @code{Label name} marks the next instruction's address and executes
+nothing.  The words we have seen so far are numbers, with @code{Int},
+@code{Float}, @code{Bool}, @code{Str}, @code{Addr}, and @code{Unassigned}
+to come as labels, text, and unassigned registers enter the machines.
+@code{instruction_to_string} renders an instruction in constructor notation,
+and @code{assemble} rejects unknown registers, operations, and labels and
+duplicate labels before execution.

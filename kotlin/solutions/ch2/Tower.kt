@@ -449,9 +449,7 @@ public fun installRationalPackage(table: NumTable) {
     }
 }
 
-/** Installs the predicates the extended exercises assume: the book's
- * `equ?` and `=zero?` (exercises 2.79 and 2.80), with the tower's truth
- * carried as `ZLong(1)` and `ZLong(0)`. */
+/** Install the equality and zero operations expected by the tower lessons. */
 public fun installTowerPredicates(table: NumTable) {
     fun bool(b: Boolean): Num = if (b) ZLong(1) else ZLong(0)
     table.put("equ?", listOf("integer", "integer")) { args ->
@@ -541,7 +539,7 @@ public fun div(
     y: Num,
 ): Num = applyGeneric(table, "div", listOf(x, y))
 
-/** The book's generic `equ?` (exercise 2.79). */
+/** Generic numeric equality through the operation table (exercise 2.79). */
 context(r: Raise<GenError>)
 public fun equv(
     table: NumTable,
@@ -549,15 +547,14 @@ public fun equv(
     y: Num,
 ): Boolean = applyGeneric(table, "equ?", listOf(x, y)) == ZLong(1)
 
-/** The book's generic `=zero?` (exercise 2.80). */
+/** A generic numeric zero test through the operation table (exercise 2.80). */
 context(r: Raise<GenError>)
 public fun isZeroG(
     table: NumTable,
     x: Num,
 ): Boolean = applyGeneric(table, "=zero?", listOf(x)) == ZLong(1)
 
-/** Constructs an integer of the tower through the table, as the book's
- * `make-scheme-number` does. */
+/** Construct an integer in the numeric tower through the installed factory. */
 context(r: Raise<GenError>)
 public fun makeInteger(
     table: NumTable,
@@ -567,8 +564,7 @@ public fun makeInteger(
     return make.invoke(r, listOf(ZLong(n)))
 }
 
-/** Constructs a rational of the tower through the table, as the book's
- * `make-rational` does. */
+/** Construct a rational number in the numeric tower through its installed factory. */
 context(r: Raise<GenError>)
 public fun makeRational(
     table: NumTable,

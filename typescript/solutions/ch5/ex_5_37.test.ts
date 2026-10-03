@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import { describe, expect, it } from "vitest";
-import { ex_5_37 } from "./ex_5_37.js";
+// Original exercise
 
-describe("exercise 5.37", () => {
-  it("runs the blind code and shows the wasted stack", () => {
-    const answers = ex_5_37();
-    expect(Number(answers[1]?.split(": ")[1]?.split(" ")[0])).toBeGreaterThan(
-      Number(answers[0]?.split(": ")[1]?.split(" ")[0]),
-    );
-    expect(answers[3]).toContain("both answer 120");
+import { describe, expect, it } from "vitest";
+import { ex_5_37 } from "./ex_5_37.ts";
+
+describe("exercise 5.37 preserving disabled", () => {
+  it("compares the shipped discipline with the indiscriminate one", () => {
+    const lines = ex_5_37();
+    expect(lines[0]).toContain("shipped:");
+    expect(lines[1]).toContain("indiscriminate wrapper");
+    expect(lines[2]).toContain("answers are unchanged");
   });
 });

@@ -2,12 +2,11 @@
 // Original exercise
 
 /**
- * Exercise 4.11: the book represents a frame as a pair of parallel lists;
- * here it asks for the other classic shape: a frame is a list of bindings,
- * one (name value) entry each, and the environment operations are
- * rewritten over that association list. The pending part is the frame
- * representation and new lookup-variable-value, set-variable-value!, and
- * define-variable! procedures that walk it.
+ * Exercise 4.11: represent a frame as an array of name-cell bindings
+ * searched in order instead of a map; each binding is a name-value pair.
+ * Rewrite the environment operations. The pending part is the frame
+ * representation and the new lookupVariableValue, setVariableValue, and
+ * defineVariableValue procedures that walk it.
  */
 export class PendingSolution extends Error {
   constructor() {
@@ -16,15 +15,28 @@ export class PendingSolution extends Error {
   }
 }
 
-/** A frame as the book now draws it: a list of (name value) bindings. */
-export const sampleFrameText = "((a 1) (b 2))";
+/** A frame entry points at the shared cell every alias observes. */
+export type CellFixture = { value: number | undefined };
+export type BindingFixture = { readonly name: string; readonly cell: CellFixture };
+export const sampleFrame: readonly BindingFixture[] = [
+  { name: "a", cell: { value: 1 } },
+  { name: "b", cell: { value: 2 } },
+];
 
-/** Programs the new operations must serve: define, lookup, set!, and the
- * shared-frame visibility of set! through a nested frame. */
-export const assocPrograms = [
-  "(define a 1)",
-  "((lambda () (define b 2) b))",
-  "((lambda () (define b 2) (set! a 10) a))",
+/** Checked source programs exercising declaration, lookup, assignment, and
+ * shared-frame visibility through a nested frame. */
+export const assocPrograms: readonly string[] = [
+  `const a = 1;
+a;`,
+  `const a = 1;
+const b = 2;
+b;`,
+  `let a = 1;
+const result = (() => {
+  a = 10;
+  return a;
+})();
+result;`,
 ];
 
 export function ex_4_11(): string {

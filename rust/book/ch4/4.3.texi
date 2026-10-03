@@ -1,340 +1,205 @@
 @node	4.3, 4.4, 4.2, Chapter 4
-@section Variations on a Scheme --- Nondeterministic Computing
+@section Nondeterministic Computing
 
-In this section, we extend the Scheme evaluator to support a programming
+In this section, we extend the evaluator to support a programming
 paradigm called @newterm{nondeterministic computing} by building into the
 evaluator a facility to support automatic search.  This is a much more profound
 change to the language than the introduction of lazy evaluation in
 @ref{4.2}.  In this edition the evaluator of the section is the module
-@code{sec_4_3} of the chapter crate, and the search machinery is an explicit
-backtracking engine: every open @code{amb} is a choice frame holding its
-pending alternatives and the continuation that consumes them, a dead end
-unwinds by returning the typed @code{Backtrack} signal to the nearest frame,
-assignments made on a branch land on an undo trail that backtracking rolls
-back, and the driver keeps the frame stack between inputs so that
-@code{try_again} yields each further answer without replaying the work the
-last answer already did.
+@code{ch04::sec_4_3}, and the search machinery is an explicit
+backtracking engine over typed data: the named experiment
+@code{search-depth-first/1} explores @code{Choose}, @code{Fail}, and
+@code{Success} values depth-first in the vector's written order, records every
+assignment on an explicit trail, and rolls back only trailed assignments when
+it backtracks.  It is deterministic for a fixed program, and its answers are
+checked against the independent reference model @code{reference_model}.  This
+is a property of the experiment only: @code{?}, @code{Result}, panics, and
+ordinary @code{return} never trigger search backtracking in the guest
+language.
 
 Nondeterministic computing, like stream processing, is useful for ``generate
 and test'' applications.  Consider the task of starting with two lists of
 positive integers and finding a pair of integers---one from the first list and
 one from the second list---whose sum is prime.  We saw how to handle this with
 finite sequence operations in @ref{2.2.3} and with infinite streams in
-@ref{3.5.3}.  Our approach was to generate the sequence of all possible
-pairs and filter these to select the pairs whose sum is prime.  Whether we
-actually generate the entire sequence of pairs first as in @ref{Chapter 2}, or
-interleave the generating and filtering as in @ref{Chapter 3}, is immaterial to
-the essential image of how the computation is organized.
-
-The nondeterministic approach evokes a different image.  Imagine simply that we
-choose (in some way) a number from the first list and a number from the second
-list and require (using some mechanism) that their sum be prime.  This is
-expressed by following procedure:
-
-@example rust
-let session = amb_session(&[
-    "(define (prime-sum-pair list1 list2) \
-     (let ((a (an-element-of list1)) (b (an-element-of list2))) \
-     (require (prime? (+ a b))) \
-     (list a b)))",
-]);
-println!("@{session@}");
-// => ;;; Amb-Eval value: ok
-@end example
-
-@noindent
-It might seem as if this procedure merely restates the problem, rather than
-specifying a way to solve it.  Nevertheless, this is a legitimate
-nondeterministic program.@footnote{We assume that we have previously defined a
-procedure @code{prime?} that tests whether numbers are prime.  Even with
-@code{prime?} defined, the @code{prime-sum-pair} procedure may look
-suspiciously like the unhelpful ``pseudo-Lisp'' attempt to define the
-square-root function, which we described at the beginning of
-@ref{1.1.7}.  In fact, a square-root procedure along those lines can actually
-be formulated as a nondeterministic program.  By incorporating a search
-mechanism into the evaluator, we are eroding the distinction between purely
-declarative descriptions and imperative specifications of how to compute
-answers.  We'll go even farther in this direction in @ref{4.4}.}
-
-The key idea here is that expressions in a nondeterministic language can have
-more than one possible value.  For instance, @code{an-element-of} might return
-any element of the given list.  Our nondeterministic program evaluator will
-work by automatically choosing a possible value and keeping track of the
-choice.  If a subsequent requirement is not met, the evaluator will try a
-different choice, and it will keep trying new choices until the evaluation
-succeeds, or until we run out of choices.  Just as the lazy evaluator freed the
-programmer from the details of how values are delayed and forced, the
-nondeterministic program evaluator will free the programmer from the details of
-how choices are made.
-
-It is instructive to contrast the different images of time evoked by
-nondeterministic evaluation and stream processing.  Stream processing uses lazy
-evaluation to decouple the time when the stream of possible answers is
-assembled from the time when the actual stream elements are produced.  The
-evaluator supports the illusion that all the possible answers are laid out
-before us in a timeless sequence.  With nondeterministic evaluation, an
-expression represents the exploration of a set of possible worlds, each
-determined by a set of choices.  Some of the possible worlds lead to dead ends,
-while others have useful values.  The nondeterministic program evaluator
-supports the illusion that time branches, and that our programs have different
-possible execution histories.  When we reach a dead end, we can revisit a
-previous choice point and proceed along a different branch.
-
-The nondeterministic program evaluator implemented below is called the
-@code{amb} evaluator because it is based on a new special form called
-@code{amb}.  We can type the above definition of @code{prime-sum-pair} at the
-@code{amb} evaluator driver loop (along with definitions of @code{prime?},
-@code{an-element-of}, and @code{require}) and run the procedure as follows:
-
-@example rust
-let session = amb_session(&[
-    "(prime-sum-pair '(1 3 5 8) '(20 35 110))",
-]);
-println!("@{session@}");
-// => ;;; Starting a new problem
-// => ;;; Amb-Eval value: (3 20)
-@end example
-
-@noindent
-The value returned was obtained after the evaluator repeatedly chose elements
-from each of the lists, until a successful choice was made.
-
-Section @ref{4.3.1} introduces @code{amb} and explains how it supports
-nondeterminism through the evaluator's automatic search mechanism.
-@ref{4.3.2} presents examples of nondeterministic programs, and
-@ref{4.3.3} gives the details of how to implement the @code{amb} evaluator in
-the edition's engine.
-
-@menu
-* 4.3.1::            Amb and Search
-* 4.3.2::            Examples of Nondeterministic Programs
-* 4.3.3::            Implementing the @code{Amb} Evaluator
-@end menu
-
-@node	4.3.1, 4.3.2, 4.3, 4.3
-@subsection Amb and Search
-
-To extend Scheme to support nondeterminism, we introduce a new special form
-called @code{amb}.@footnote{The idea of @code{amb} for nondeterministic
-programming was first described in 1961 by John McCarthy (see @ref{McCarthy 1963}).}
-The expression
+@ref{3.5.3}.  Our approach was to generate the sequence of all possible pairs
+and filter these for those whose sum is prime.  In the nondeterministic
+approach, we say that we will pick an element from the first list and an
+element from the second list, and require that their sum be prime.  This
+approach can be more natural, because it says nothing about the order in
+which pairs are tried:
 
 @example
-(amb ⟨@var{e₁}⟩ ⟨@var{e₂}⟩ @r{…} ⟨@var{eₙ}⟩)
+element = Choose(first_list),
+second = Choose(second_list),
+Guard(SumEq([element, second], @r{…}), Success([element, second]))
 @end example
 
 @noindent
-returns the value of one of the @math{n} expressions @math{{⟨\kern0.03em e_i⟩}}
-``ambiguously.''  For example, the expression
-
-@example
-(list (amb 1 2 3) (amb 'a 'b))
-@end example
-
-@noindent
-can have six possible values:
-
-@example
-@code{(1 a)} @code{(1 b)} @code{(2 a)} @code{(2 b)} @code{(3 a)} @code{(3 b)}
-@end example
-
-@noindent
-@code{Amb} with a single choice produces an ordinary (single) value.
-
-@code{Amb} with no choices---the expression @code{(amb)}---is an expression
-with no acceptable values.  Operationally, we can think of @code{(amb)} as an
-expression that when evaluated causes the computation to ``fail'': The
-computation aborts and no value is produced.  Using this idea, we can express
-the requirement that a particular predicate expression @code{p} must be true as
-follows:
-
-@example rust
-let session = amb_session(&[
-    "(define (require p) (if (not p) (amb)))",
-]);
-println!("@{session@}");
-// => ;;; Amb-Eval value: ok
-@end example
-
-@noindent
-With @code{amb} and @code{require}, we can implement the @code{an-element-of}
-procedure used above:
-
-@example rust
-let session = amb_session(&[
-    "(define (an-element-of items) \
-     (require (not (null? items))) \
-     (amb (car items) (an-element-of (cdr items))))",
-]);
-println!("@{session@}");
-// => ;;; Amb-Eval value: ok
-@end example
-
-@noindent
-@code{An-element-of} fails if the list is empty.  Otherwise it ambiguously
-returns either the first element of the list or an element chosen from the rest
-of the list.
-
-We can also express infinite ranges of choices.  The following procedure
-potentially returns any integer greater than or equal to some given @math{n}:
-
-@example rust
-let session = amb_session(&[
-    "(define (an-integer-starting-from n) \
-     (amb n (an-integer-starting-from (+ n 1))))",
-]);
-println!("@{session@}");
-// => ;;; Amb-Eval value: ok
-@end example
-
-@noindent
-This is like the stream procedure @code{integers-starting-from} described in
-@ref{3.5.2}, but with an important difference: The stream procedure
-returns an object that represents the sequence of all integers beginning with
-@math{n}, whereas the @code{amb} procedure returns a single integer.@footnote{In
-actuality, the distinction between nondeterministically returning a single
-choice and returning all choices depends somewhat on our point of view.  From
-the perspective of the code that uses the value, the nondeterministic choice
-returns a single value.  From the perspective of the programmer designing the
-code, the nondeterministic choice potentially returns all possible values, and
-the computation branches so that each value is investigated separately.}
-
-Abstractly, we can imagine that evaluating an @code{amb} expression causes time
-to split into branches, where the computation continues on each branch with one
-of the possible values of the expression.  We say that @code{amb} represents a
-@newterm{nondeterministic choice point}.  If we had a machine with a sufficient
-number of processors that could be dynamically allocated, we could implement
-the search in a straightforward way.  Execution would proceed as in a
-sequential machine, until an @code{amb} expression is encountered.  At this
-point, more processors would be allocated and initialized to continue all of
-the parallel executions implied by the choice.  Each processor would proceed
-sequentially as if it were the only choice, until it either terminates by
-encountering a failure, or it further subdivides, or it finishes.@footnote{One
-might object that this is a hopelessly inefficient mechanism.  It might require
-millions of processors to solve some easily stated problem this way, and most
-of the time most of those processors would be idle.  This objection should be
-taken in the context of history.  Memory used to be considered just such an
-expensive commodity.  In 1964 a megabyte of @abbr{RAM} cost about $400,000.  Now every
-personal computer has many megabytes of @abbr{RAM}, and most of the time most of that
-@abbr{RAM} is unused.  It is hard to underestimate the cost of mass-produced
-electronics.}
-
-On the other hand, if we have a machine that can execute only one process (or a
-few concurrent processes), we must consider the alternatives sequentially.  One
-could imagine modifying an evaluator to pick at random a branch to follow
-whenever it encounters a choice point.  Random choice, however, can easily lead
-to failing values.  We might try running the evaluator over and over, making
-random choices and hoping to find a non-failing value, but it is better to
-@newterm{systematically search} all possible execution paths.  The @code{amb}
-evaluator that we will develop and work with in this section implements a
-systematic search as follows: When the evaluator encounters an application of
-@code{amb}, it initially selects the first alternative.  This selection may
-itself lead to a further choice.  The evaluator will always initially choose
-the first alternative at each choice point.  If a choice results in a failure,
-then the evaluator automagically@footnote{@anchor{Footnote 250}Automagically: ``Automatically, but
+The engine carries the choice, the constraint, and the answer as data.  If the
+first pair fails the guard, the trail restores the bindings and the next pair
+is tried; the successful pair is answered in the order the search produced it.
+The programmer states the constraints, and the engine searches
+``automagically.''@footnote{@anchor{Footnote 250}Automagically: ``Automatically, but
 in a way which, for some reason (typically because it is too complicated, or
 too ugly, or perhaps even too trivial), the speaker doesn't feel like
 explaining.''  (@ref{Steele et al. 1983}, @ref{Raymond 1993})}
-@newterm{backtracks} to the most
-recent choice point and tries the next alternative.  If it runs out of
-alternatives at any choice point, the evaluator will back up to the previous
-choice point and resume from there.  This process leads to a search strategy
-known as @newterm{depth-first search} or @newterm{chronological backtracking}.@footnote{The integration of
-automatic search strategies into programming languages has had a long and
-checkered history.  The first suggestions that nondeterministic algorithms
-might be elegantly encoded in a programming language with search and automatic
-backtracking came from Robert @ref{Floyd (1967)}.  Carl @ref{Hewitt (1969)} invented a
-programming language called Planner that explicitly supported automatic
-chronological backtracking, providing for a built-in depth-first search
-strategy.  @ref{Sussman et al. (1971)} implemented a subset of this
-language, called MicroPlanner, which was used to support work in problem
-solving and robot planning.  Similar ideas, arising from logic and theorem
-proving, led to the genesis in Edinburgh and Marseille of the elegant language
-Prolog (which we will discuss in @ref{4.4}).  After sufficient
-frustration with automatic search, @ref{McDermott and Sussman (1972)} developed a
-language called Conniver, which included mechanisms for placing the search
-strategy under programmer control.  This proved unwieldy, however, and @ref{Sussman and Stallman 1975}
-found a more tractable approach while investigating methods
-of symbolic analysis for electrical circuits.  They developed a
-non-chronological backtracking scheme that was based on tracing out the logical
-dependencies connecting facts, a technique that has come to be known as
-@newterm{dependency-directed backtracking}.  Although their method was complex,
-it produced reasonably efficient programs because it did little redundant
-search.  @ref{Doyle (1979)} and @ref{McAllester (1978; 1980)} generalized and clarified the
-methods of Stallman and Sussman, developing a new paradigm for formulating
-search that is now called @newterm{truth maintenance}.  Modern problem-solving
-systems all use some form of truth-maintenance system as a substrate.  See
-@ref{Forbus and deKleer 1993} for a discussion of elegant ways to build
-truth-maintenance systems and applications using truth maintenance.
-@ref{Zabih et al. 1987} describes a nondeterministic extension to Scheme
-that is based on @code{amb}; it is similar to the interpreter described in this
-section, but more sophisticated, because it uses dependency-directed
-backtracking rather than chronological backtracking.  @ref{Winston 1992} gives an
-introduction to both kinds of backtracking.}
 
-@subsubheading Driver loop
+The multiple-dwelling puzzle of @ref{4.3.2} is a larger example of the same
+shape: one choice point per resident, one guard per restriction, and one
+answer tuple for the assignment that survives.  The restrictions can be tried
+in any order; @ref{Exercise 4.39} asks what that freedom costs.
 
-The driver loop for the @code{amb} evaluator has some unusual properties.  It
-reads an expression and prints the value of the first non-failing execution, as
-in the @code{prime-sum-pair} example shown above.  If we want to see the value
-of the next successful execution, we can ask the interpreter to backtrack and
-attempt to generate a second non-failing execution.  This is signaled by typing
-the symbol @code{try-again}, which the edition's driver recognizes in a session
-line and answers by resuming the deepest pending choice.  If any expression
-except @code{try-again} is given, the interpreter will start a new problem,
-discarding the unexplored alternatives in the previous problem.  Here is a
-sample interaction:
+@menu
+* 4.3.1::            Search and Choice
+* 4.3.2::            Examples of Nondeterministic Programs
+* 4.3.3::            Implementing the Search Evaluator
+@end menu
+
+@node	4.3.1, 4.3.2, 4.3, 4.3
+@subsection Search and Choice
+
+To extend the object language to support nondeterminism, we introduce a
+choice form.@footnote{The idea of nondeterministic choice in programming was
+first described in 1961 by John McCarthy (see @ref{McCarthy 1963}).}  In this
+edition the choice form is not new Rust syntax: the experiment's programs are
+typed data, and a choice is the constructor
 
 @example rust
-let session = amb_session(&[
-    "(prime-sum-pair '(1 3 5 8) '(20 35 110))",
-    "try-again",
-    "try-again",
-    "try-again",
-    "(prime-sum-pair '(19 27 30) '(11 36 58))",
-]);
-println!("@{session@}");
-// => ;;; Starting a new problem
-// => ;;; Amb-Eval value: (3 20)
-// => ;;; Amb-Eval value: (3 110)
-// => ;;; Amb-Eval value: (8 35)
-// => ;;; There are no more values of
-// => (prime-sum-pair (quote (1 3 5 8)) (quote (20 35 110)))
-// => ;;; Starting a new problem
-// => ;;; Amb-Eval value: (30 11)
+Search::Choose(Vec<Search>)
 @end example
 
+@noindent
+which enumerates its alternatives in the order they are written.  An
+expression with many values is a tree of choices; a dead end is
+
+@example rust
+Search::Fail
+@end example
+
+@noindent
+and a produced answer is @code{Search::Success}, whose parts are computed from
+the bindings the search has made:
+
+@example rust
+Search::Success(vec![AnswerTerm::Var(String::from("i"))])
+@end example
+
+@noindent
+To run the same generate-and-test shape in the engine, we choose one integer
+from each list, and a guard decides which choices survive.  The guard
+vocabulary has no primality test, so the experiment stands in equality to one
+prime target, 17, for the general prime-sum check:
+
+@example rust
+let program = Search::Choose(vec![
+    Search::ChooseRange @{
+        var: String::from("x"),
+        lo: 1,
+        hi: 10,
+        body: Box::new(Search::ChooseRange @{
+            var: String::from("y"),
+            lo: 1,
+            hi: 10,
+            body: Box::new(Search::Guard(
+                Predicate::SumEq(
+                    vec![
+                        Term::Variable(String::from("x")),
+                        Term::Variable(String::from("y")),
+                    ],
+                    17,
+                ),
+                Box::new(Search::Success(vec![
+                    AnswerTerm::Var(String::from("x")),
+                    AnswerTerm::Var(String::from("y")),
+                ])),
+            )),
+        @}),
+    @},
+]);
+let mut engine = SearchEngine::new();
+let outcome = engine.run(&program);
+@end example
+
+@noindent
+Here @code{x} ranges over the inclusive bounds of @code{ChooseRange}, the
+guard admits exactly the pairs that sum to 17, and the answers are the pairs
+in depth-first written order.
+
+@subsubheading The mechanics of choice
+
+A choice point is a request to the engine to try one alternative, and, if
+that alternative fails, to restore the state to the moment of the choice and
+try the next one.  The engine implements this with an explicit @newterm{trail}:
+every assignment records the name and the old value it displaced, and
+backtracking pops trail entries until the bindings are as they were at the
+choice.  Two kinds of assignment are distinguished from the start:
+
+@itemize @bullet
+
+@item
+@code{Search::Set(name, value, body)} is an ordinary assignment: when the
+search crosses it going backwards, the old value is restored.
+
+@item
+@code{Search::Persist(name, value, body)} is a permanent assignment: the
+trail never restores it (see @ref{Exercise 4.51}).
+
+@end itemize
+
+@noindent
+Constraints are data as well.  @code{Search::Guard(predicate, body)} runs the
+body only when the predicate holds over the current bindings, and the
+predicate vocabulary of the query module covers the tests the puzzles need:
+@code{Eq}, @code{Ne}, @code{Lt}, @code{Le}, @code{Gt}, @code{Ge},
+@code{TextLt}, @code{SumEq}, @code{Bound}, the disjunction @code{Or}, the
+difference test @code{DiffEq(a, b, c, d)} over four bound names for @math{{a - b = c - d}}, and
+@code{Pythagorean(a, b, c)} for @math{{a^2 + b^2 = c^2}}.  An ordered effect
+that the log must record is @code{Search::Emit(tag, body)}.
+
+@subsubheading Trying again
+
+The driver of the book's evaluator answers one value and then accepts a
+request for the next one.  In this edition the same behavior is observable in
+one run: @code{SearchEngine::run} answers every success in search order, and
+@code{SearchEngine::run_prefix(program, n)} answers at most @math{n} of
+them---the observable prefix discipline that makes unbounded generators
+finite to inspect.  Each call explores the program afresh, so the book's
+``try again'' is observed as successive prefixes of one deterministic
+enumeration rather than as a saved continuation; the alternatives are held as
+data instead of as a second continuation.
+
 @quotation
-@strong{In this language: automatic search.}  The @code{amb} evaluator is an
-explicit backtracking engine: an open @code{amb} pushes one choice frame ---
-the alternatives not yet tried, each with its environment, under the
-continuation that consumes the chosen value --- and a dead end returns the
-typed @code{Backtrack} signal to the newest frame, which tries its next
-alternative and unwinds when it runs dry.  Because a returned solution does
-not preserve the host stack, the frames are data: the driver keeps the stack
-between inputs, so @code{try_again} resumes the deepest pending choice
-without replaying the answered work, and every @code{set!} made on a branch
-records an undo entry that the unwind rolls back.  A program that wants
-first-class continuations to inspect or reorder its own control flow still
-wants the book's continuation-passing evaluator; for programs that only
-search, the frames are plain data and the engine is ordinary Rust code.
+@strong{In this language: automatic search.}  The book's search is woven into
+the evaluator through success and failure continuations; this edition keeps
+the variation in the named experiment @code{search-depth-first/1}, where the
+alternatives are data.  A @code{Choose} node holds its alternatives in
+written order, the engine marks the trail before each one and rolls the trail
+back to the mark afterwards, and only trailed assignments are undone---which
+is exactly the book's undo trail.  @code{Persist} is the book's
+@code{permanent-set!}; @code{Guard} is @code{require}; @code{run_prefix} is
+the driver's ``try again'' made into a finite observation.  The reference
+model @code{reference_model} is a separate enumerator with its own trail and
+answer bookkeeping, so answer order and rollback discipline are checked
+against something other than the engine's own state.  The core evaluator is
+unchanged: ordinary Rust never backtracks, and the experiment is selected
+explicitly.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.35}Exercise 4.35:} Write a procedure
 @code{an-integer-between} that returns an integer between two given bounds.
-This can be used to implement a procedure that finds Pythagorean triples, i.e.,
+In this edition the engine supplies the generator as
+@code{Search::ChooseRange}, which binds its variable over an inclusive range.
+Use it to implement a search that finds Pythagorean triples, i.e.,
 triples of integers @math{{(i, j, k)}} between the given bounds such that
 @math{{i \le j}} and @math{{i^2 + j^2 = k^2}}, as follows:
 
 @example
-(define (a-pythagorean-triple-between low high)
-  (let ((i (an-integer-between low high)))
-    (let ((j (an-integer-between i high)))
-      (let ((k (an-integer-between j high)))
-        (require (= (+ (* i i) (* j j)) 
-                    (* k k)))
-        (list i j k)))))
+i = ChooseRange(low, high),
+j = ChooseRange(i, high),
+k = ChooseRange(j, high),
+Guard(Pythagorean(i, j, k), Success([i, j, k]))
 @end example
 @end quotation
 
@@ -342,10 +207,12 @@ triples of integers @math{{(i, j, k)}} between the given bounds such that
 @strong{@anchor{Exercise 4.36}Exercise 4.36:} @ref{Exercise 3.69} discussed how
 to generate the stream of @emph{all} Pythagorean triples, with no upper bound
 on the size of the integers to be searched.  Explain why simply replacing
-@code{an-integer-between} by @code{an-integer-starting-from} in the procedure
-in @ref{Exercise 4.35} is not an adequate way to generate arbit@-rary Py@-tha@-go@-rean
+@code{an-integer-between} by @code{an-integer-starting-from}---the unbounded
+generator @code{Search::ChooseFrom}---in the procedure
+of @ref{Exercise 4.35} is not an adequate way to generate arbit@-rary Py@-tha@-go@-rean
 triples.  Write a procedure that actually will accomplish this.  (That is,
-write a procedure for which repeatedly typing @code{try-again} would in
+write a procedure for which repeatedly asking for the next answer---observing
+successive prefixes of @code{SearchEngine::run_prefix}---would in
 principle eventually generate all Py@-tha@-go@-rean triples.)
 @end quotation
 
@@ -356,96 +223,85 @@ one in @ref{Exercise 4.35}.  Is he correct?  (Hint: Consider the number of
 possibilities that must be explored.)
 
 @example
-(define (a-pythagorean-triple-between low high)
-  (let ((i (an-integer-between low high))
-        (hsq (* high high)))
-    (let ((j (an-integer-between i high)))
-      (let ((ksq (+ (* i i) (* j j))))
-        (require (>= hsq ksq))
-        (let ((k (sqrt ksq)))
-          (require (integer? k))
-          (list i j k))))))
+i = ChooseRange(low, high),
+j = ChooseRange(i, high),
+k = ChooseFrom(j),
+Guard(Pythagorean(i, j, k),
+      Guard(Le(k, high), Success([i, j, k])))
 @end example
 @end quotation
 
 @node	4.3.2, 4.3.3, 4.3.1, 4.3
 @subsection Examples of Nondeterministic Programs
 
-Section @ref{4.3.3} describes the implementation of the @code{amb} evaluator.
+Section @ref{4.3.3} describes the implementation of the search evaluator.
 First, however, we give some examples of how it can be used.  The advantage of
 nondeterministic programming is that we can suppress the details of how search
-is carried out, thereby expressing our programs at a higher level of
-abstraction.
+is carried out, thereby expressing our programs at a higher level.
 
-@subsubheading Logic Puzzles
+@subsubheading Logic puzzles
 
-The following puzzle (taken from @ref{Dinesman 1968}) is typical of a large class of
-simple logic puzzles:
-
-@quotation
-Baker, Cooper, Fletcher, Miller, and Smith live on different floors of an
-apartment house that contains only five floors.  Baker does not live on the top
-floor.  Cooper does not live on the bottom floor.  Fletcher does not live on
-either the top or the bottom floor.  Miller lives on a higher floor than does
-Cooper.  Smith does not live on a floor adjacent to Fletcher's.  Fletcher does
-not live on a floor adjacent to Cooper's.  Where does everyone live?
-@end quotation
-
-@noindent
-We can determine who lives on each floor in a straightforward way by
-enumerating all the possibilities and imposing the given
-restrictions:@footnote{Our program uses the following procedure to determine if
-the elements of a list are distinct:
-
-@example
-(define (distinct? items)
-  (cond ((null? items) true)
-        ((null? (cdr items)) true)
-        ((member (car items) (cdr items)) false)
-        (else (distinct? (cdr items)))))
-@end example
-
-@code{Member} is like @code{memq} except that it uses @code{equal?} instead
-of @code{eq?} to test for equality.}
+The multiple-dwelling puzzle: Baker, Cooper, Fletcher, Miller, and Smith live
+on different floors of a five-floor apartment house.  Baker does not live on
+the top floor.  Cooper does not live on the bottom floor.  Fletcher does not
+live on either the top or the bottom floor.  Miller lives on a higher floor
+than Cooper.  Smith does not live on a floor adjacent to Fletcher.  Fletcher
+does not live on a floor adjacent to Cooper.  The search program is one
+choice per resident and one guard per restriction:
 
 @example rust
-let answers = amb_answers(&[
-    "(define (multiple-dwelling) \
-     (let ((baker (amb 1 2 3 4 5)) (cooper (amb 1 2 3 4 5)) \
-     (fletcher (amb 1 2 3 4 5)) (miller (amb 1 2 3 4 5)) \
-     (smith (amb 1 2 3 4 5))) \
-     (require (distinct? (list baker cooper fletcher miller smith))) \
-     (require (not (= baker 5))) \
-     (require (not (= cooper 1))) \
-     (require (not (= fletcher 5))) \
-     (require (not (= fletcher 1))) \
-     (require (> miller cooper)) \
-     (require (not (= (abs (- smith fletcher)) 1))) \
-     (require (not (= (abs (- fletcher cooper)) 1))) \
-     (list (list 'baker baker) (list 'cooper cooper) \
-     (list 'fletcher fletcher) (list 'miller miller) \
-     (list 'smith smith))))",
-    "(multiple-dwelling)",
-]);
-println!("@{answers:?@}");
-// => ["((baker 3) (cooper 2) (fletcher 4) (miller 5) (smith 1))"]
+fn multiple_dwelling() -> Search @{
+    let floors = |name: &str| Search::ChooseRange @{
+        var: String::from(name),
+        lo: 1,
+        hi: 5,
+        body: Box::new(@r{…}),
+    @};
+    @r{…}
+    // One Guard per restriction, then the answer.  A DiffEq test
+    // compares two differences over bound names only, so the constant
+    // differences are bound first and each adjacency exclusion is
+    // an Or over the six non-adjacent differences (two, three, or
+    // four floors either way):
+    // Set(c0, 0, Set(c2, 2, Set(c3, 3, Set(c4, 4,
+    // Guard(Ne(baker, 5),
+    // Guard(Ne(cooper, 1),
+    // Guard(Ne(fletcher, 1),
+    // Guard(Ne(fletcher, 5),
+    // Guard(Lt(cooper, miller),
+    // Guard(Or([DiffEq(smith, fletcher, c2, c0),
+    //           DiffEq(smith, fletcher, c3, c0),
+    //           DiffEq(smith, fletcher, c4, c0),
+    //           DiffEq(smith, fletcher, c0, c2),
+    //           DiffEq(smith, fletcher, c0, c3),
+    //           DiffEq(smith, fletcher, c0, c4)]),
+    // Guard(Or(@r{…} the same six differences for fletcher, cooper),
+    // Success([baker, cooper, fletcher, miller, smith]))))))))))))
+    @r{…}
+@}
 @end example
 
 @noindent
-The evaluator enumerates assignments of people to floors and imposes the
-restrictions one at a time; the one assignment that survives is the book's
-answer.  Although this simple procedure works, it is very slow.
-@ref{Exercise 4.39} and @ref{Exercise 4.40} discuss some possible improvements.
+The restrictions are @code{Ne} tests for the floor exclusions, @code{Lt} for
+Miller above Cooper, and one @code{Or} of @code{DiffEq} tests for each
+adjacency exclusion: @code{DiffEq(a, b, c, d)} holds exactly when the two
+differences @math{a - b} and @math{c - d} are equal over four bound names, so
+each exclusion admits only the non-adjacent differences.  The evaluator
+enumerates assignments of
+people to floors and imposes the restrictions one at a time; the one
+assignment that survives is the book's answer.  Although this simple program
+works, it is very slow.  @ref{Exercise 4.39} and @ref{Exercise 4.40} discuss
+some possible improvements.
 
 @quotation
 @strong{@anchor{Exercise 4.38}Exercise 4.38:} Modify the multiple-dwelling
-procedure to omit the requirement that Smith and Fletcher do not live on
+program to omit the requirement that Smith and Fletcher do not live on
 adjacent floors.  How many solutions are there to this modified puzzle?
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.39}Exercise 4.39:} Does the order of the
-restrictions in the multiple-dwelling procedure affect the answer? Does it
+restrictions in the multiple-dwelling program affect the answer? Does it
 affect the time to find an answer?  If you think it matters, demonstrate a
 faster program obtained from the given one by reordering the restrictions.  If
 you think it does not matter, argue your case.
@@ -458,11 +314,10 @@ after the requirement that floor assignments be distinct?  It is very
 inefficient to generate all possible assignments of people to floors and then
 leave it to backtracking to eliminate them.  For example, most of the
 restrictions depend on only one or two of the person-floor variables, and can
-thus be imposed before floors have been selected for all the people.  Write and
-demonstrate a much more efficient nondeterministic procedure that solves this
-problem based upon generating only those possibilities that are not already
-ruled out by previous restrictions.  (Hint: This will require a nest of
-@code{let} expressions.)
+thus be imposed before floors have been selected for all the people.  Write
+and demonstrate a much more efficient nondeterministic program that solves
+this problem based upon generating only those possibilities that are not
+already ruled out by previous restrictions.
 @end quotation
 
 @quotation
@@ -477,7 +332,7 @@ puzzle (from @ref{Phillips 1934}):
 Five schoolgirls sat for an examination.  Their parents---so they
 thought---showed an undue degree of interest in the result.  They therefore
 agreed that, in writing home about the examination, each girl should make one
-true statement and one untrue one.  The following are the relevant passages
+true statement and one untrue one.  The following are the relevant extracts
 from their letters:
 
 @itemize @bullet
@@ -503,21 +358,22 @@ What in fact was the order in which the five girls were placed?
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.43}Exercise 4.43:} Use the @code{amb} evaluator to
+@strong{@anchor{Exercise 4.43}Exercise 4.43:} Use the search experiment to
 solve the following puzzle:@footnote{This is taken from a booklet called
 ``Problematical Recreations,'' published in the 1960s by Litton Industries,
 where it is attributed to the @cite{Kansas State Engineer}.}
 
 @quotation
 Mary Ann Moore's father has a yacht and so has each of his four friends:
-Colonel Downing, Mr. Hall, Sir Barnacle Hood, and Dr.  Parker.  Each of the
-five also has one daughter and each has named his yacht after a daughter of one
-of the others.  Sir Barnacle's yacht is the Gabrielle, Mr. Moore owns the
-Lorna; Mr. Hall the Rosalind.  The Melissa, owned by Colonel Downing, is named
-after Sir Barnacle's daughter.  Gabrielle's father owns the yacht that is named
-after Dr.  Parker's daughter.  Who is Lorna's father?
+Colonel Downing, Mr. Hall, Sir Barnacle Hood, and Dr. Parker.  Each of the
+five also has one daughter and each has named his yacht after a daughter of
+one of the others.  Sir Barnacle's yacht is the @i{Gabrielle}, Mr. Moore owns
+the @i{Lorna}; Mr. Hall the @i{Rosanna}.  The @i{Melissa}, owned by Colonel
+Downing, is named after Sir Barnacle's daughter.  Gabrielle's father owns the
+yacht that is named after Colonel Downing's daughter.  Who is Lorna's father?
 @end quotation
 
+@noindent
 Try to write the program so that it runs efficiently (see @ref{Exercise 4.40}).
 Also determine how many solutions there are if we are not told that Mary Ann's
 last name is Moore.
@@ -526,7 +382,9 @@ last name is Moore.
 @quotation
 @strong{@anchor{Exercise 4.44}Exercise 4.44:} @ref{Exercise 2.42} described the
 ``eight-queens puzzle'' of placing queens on a chessboard so that no two attack
-each other.  Write a nondeterministic program to solve this puzzle.
+each other.  Write a nondeterministic program to solve this puzzle: one
+@code{ChooseRange} per row places a column, @code{Ne} guards keep columns
+distinct, and @code{DiffEq} guards keep the diagonals distinct.
 @end quotation
 
 @subsubheading Parsing natural language
@@ -536,21 +394,20 @@ attempting to @newterm{parse} the input, that is, to match the input against
 some grammatical structure.  For example, we might try to recognize simple
 sentences consisting of an article followed by a noun followed by a verb, such
 as ``The cat eats.''  To accomplish such an analysis, we must be able to
-identify the parts of speech of individual words.  We could start with some
-lists that classify various words:@footnote{Here we use the convention that the
-first element of each list designates the part of speech for the rest of the
-words in the list.}
+identify the parts of speech of individual words.  We could start with typed
+data that classify various words:@footnote{Here we use the convention that the
+tag of each classification designates the part of speech for the rest of the
+words in it.}
 
 @example rust
-let session = amb_session(&[
-    "(define nouns '(noun student professor cat class))",
-    "(define verbs '(verb studies lectures eats sleeps))",
-    "(define articles '(article the a))",
-]);
-println!("@{session@}");
-// => ;;; Amb-Eval value: ok
-// => ;;; Amb-Eval value: ok
-// => ;;; Amb-Eval value: ok
+let nouns: Vec<Word> = vec![
+    word(Part::Noun, "student"),
+    word(Part::Noun, "professor"),
+    word(Part::Noun, "cat"),
+    word(Part::Noun, "class"),
+];
+let verbs: Vec<Word> = vec![/* studies lectures eats sleeps */];
+let articles: Vec<Word> = vec![/* the a */];
 @end example
 
 @noindent
@@ -558,159 +415,92 @@ We also need a @newterm{grammar}, that is, a set of rules describing how
 grammatical elements are composed from simpler elements.  A very simple grammar
 might stipulate that a sentence always consists of two pieces---a noun phrase
 followed by a verb---and that a noun phrase consists of an article followed by
-a noun.  With this grammar, the sentence ``The cat eats'' is parsed as follows:
+a noun.  With this grammar, the sentence ``The cat eats'' is parsed as typed
+tree data:
 
 @example
-(sentence
- (noun-phrase (article the) (noun cat))
- (verb eats))
+Sentence(
+  NounPhrase(Article(the), Noun(cat)),
+  Verb(eats))
 @end example
 
 @noindent
 We can generate such a parse with a simple program that has separate procedures
 for each of the grammatical rules.  To parse a sentence, we identify its two
-constituent pieces and return a list of these two elements, tagged with the
-symbol @code{sentence}:
-
-@example rust
-let session = amb_session(&[
-    "(define (parse-sentence) \
-     (list 'sentence \
-     (parse-noun-phrase) \
-     (parse-word verbs)))",
-]);
-println!("@{session@}");
-// => ;;; Amb-Eval value: ok
-@end example
-
-@noindent
+constituent pieces and construct the two-element tree tagged @code{Sentence}.
 A noun phrase, similarly, is parsed by finding an article followed by a
-noun:
+noun.  At the lowest level, parsing boils down to repeatedly checking that the
+next unparsed word is a member of the list of words for the required part of
+speech.  To implement this, we maintain the input that has not yet been parsed
+in a trailed binding @code{unparsed}---an index into the word vector.  Each
+time we check a word, we require that @code{unparsed} be in range and that the
+word there belong to the designated part of speech.  If so, we advance
+@code{unparsed} and return the word together with its part of speech:
+@footnote{Notice that @code{parse_word} assigns to the unparsed input
+index.  For this to work, our search must undo the effects of the assignment
+when it backtracks---which is exactly the trailed @code{Search::Set}.}
 
 @example rust
-let session = amb_session(&[
-    "(define (parse-noun-phrase) \
-     (list 'noun-phrase \
-     (parse-word articles) \
-     (parse-word nouns)))",
-]);
-println!("@{session@}");
-// => ;;; Amb-Eval value: ok
+// parse_word(part): bind "word" to the index at "unparsed",
+// guard that the word there has the required part of
+// speech, then Set("unparsed", index + 1, Success(...)) on
+// the accepted path.
+let parse_word = |part: Part| Search::ChooseRange @{
+    var: String::from("word"),
+    lo: 0,
+    hi: last_index,
+    body: Box::new(Search::Guard(
+        Eq(word, unparsed),
+        Box::new(Search::Guard(
+            word_has_part("word", part),
+            Box::new(Search::Set(
+                String::from("unparsed"),
+                next_index,
+                Box::new(Search::Success(
+                    vec![word_of("word")],
+                )),
+            )),
+        )),
+    )),
+@};
 @end example
 
 @noindent
-At the lowest level, parsing boils down to repeatedly checking that the next
-unparsed word is a member of the list of words for the required part of speech.
-To implement this, we maintain a global variable @code{*unparsed*}, which is
-the input that has not yet been parsed.  Each time we check a word, we require
-that @code{*unparsed*} must be non-empty and that it should begin with a word
-from the designated list.  If so, we remove that word from @code{*unparsed*}
-and return the word together with its part of speech (which is found at the
-head of the list):@footnote{Notice that @code{parse-word} uses @code{set!} to
-modify the unparsed input list.  For this to work, our @code{amb} evaluator
-must undo the effects of @code{set!} operations when it backtracks.}
+To start the parsing, all we need to do is set @code{unparsed} to the
+beginning of the input, try to parse a sentence, and check that nothing is
+left over:
 
 @example rust
-let session = amb_session(&[
-    "(define (parse-word word-list) \
-     (require (not (null? *unparsed*))) \
-     (require (memq (car *unparsed*) (cdr word-list))) \
-     (let ((found-word (car *unparsed*))) \
-     (set! *unparsed* (cdr *unparsed*)) \
-     (list (car word-list) found-word)))",
-]);
-println!("@{session@}");
-// => ;;; Amb-Eval value: ok
-@end example
-
-@noindent
-To start the parsing, all we need to do is set @code{*unparsed*} to be the
-entire input, try to parse a sentence, and check that nothing is left over:
-
-@example rust
-let session = amb_session(&[
-    "(define *unparsed* '())",
-    "(define (parse input) \
-     (set! *unparsed* input) \
-     (let ((sent (parse-sentence))) \
-     (require (null? *unparsed*)) \
-     sent))",
-]);
-println!("@{session@}");
-// => ;;; Amb-Eval value: ok
-// => ;;; Amb-Eval value: ok
+// parse(input): Set("unparsed", 0, body), parse a sentence, then
+// Guard(Bound(unparsed_is_at_the_end), the sentence's tree).
 @end example
 
 @noindent
 We can now try the parser and verify that it works for our simple test
 sentence:
 
-@example rust
-let session = amb_session(&[
-    "(parse '(the cat eats))",
-]);
-println!("@{session@}");
-// => ;;; Starting a new problem
-// => ;;; Amb-Eval value: (sentence
-// =>  (noun-phrase (article the) (noun cat))
-// =>  (verb eats))
+@example
+parse(the cat eats)
+// => Sentence(NounPhrase(Article(the), Noun(cat)), Verb(eats))
 @end example
 
 @noindent
-The @code{amb} evaluator is useful here because it is convenient to express the
-parsing constraints with the aid of @code{require}.  Automatic search and
+The search experiment is useful here because it is convenient to express the
+parsing constraints with the aid of guards.  Automatic search and
 backtracking really pay off, however, when we consider more complex grammars
 where there are choices for how the units can be decomposed.
 
-Let's add to our grammar a list of prepositions:
+Let's add to our grammar a list of prepositions (``for'', ``to'', ``in'',
+``by'', ``with'') and define a prepositional phrase (e.g., ``for the cat'') to
+be a preposition followed by a noun phrase.  Now we can define a sentence to
+be a noun phrase followed by a verb phrase, where a verb phrase can be either
+a verb or a verb phrase extended by a prepositional phrase:@footnote{Observe
+that this definition is recursive---a verb may be followed by any number of
+prepositional phrases.}
 
-@example rust
-let session = amb_session(&[
-    "(define prepositions '(prep for to in by with))",
-]);
-println!("@{session@}");
-// => ;;; Amb-Eval value: ok
-@end example
-
-@noindent
-and define a prepositional phrase (e.g., ``for the cat'') to be a preposition
-followed by a noun phrase:
-
-@example rust
-let session = amb_session(&[
-    "(define (parse-prepositional-phrase) \
-     (list 'prep-phrase \
-     (parse-word prepositions) \
-     (parse-noun-phrase)))",
-]);
-println!("@{session@}");
-// => ;;; Amb-Eval value: ok
-@end example
-
-@noindent
-Now we can define a sentence to be a noun phrase followed by a verb phrase,
-where a verb phrase can be either a verb or a verb phrase extended by a
-prepositional phrase:@footnote{Observe that this definition is recursive---a
-verb may be followed by any number of prepositional phrases.}
-
-@example rust
-let session = amb_session(&[
-    "(define (parse-sentence) \
-     (list 'sentence \
-     (parse-noun-phrase) \
-     (parse-verb-phrase)))",
-    "(define (parse-verb-phrase) \
-     (define (maybe-extend verb-phrase) \
-     (amb verb-phrase \
-     (maybe-extend \
-     (list 'verb-phrase \
-     verb-phrase \
-     (parse-prepositional-phrase))))) \
-     (maybe-extend (parse-word verbs)))",
-]);
-println!("@{session@}");
-// => ;;; Amb-Eval value: ok
-// => ;;; Amb-Eval value: ok
+@example
+VerbPhrase(verb)
+VerbPhrase(verb_phrase, PrepPhrase(prep, noun_phrase))
 @end example
 
 @noindent
@@ -718,678 +508,248 @@ While we're at it, we can also elaborate the definition of noun phrases to
 permit such things as ``a cat in the class.''  What we used to call a noun
 phrase, we'll now call a simple noun phrase, and a noun phrase will now be
 either a simple noun phrase or a noun phrase extended by a prepositional
-phrase:
-
-@example rust
-let session = amb_session(&[
-    "(define (parse-simple-noun-phrase) \
-     (list 'simple-noun-phrase \
-     (parse-word articles) \
-     (parse-word nouns)))",
-    "(define (parse-noun-phrase) \
-     (define (maybe-extend noun-phrase) \
-     (amb noun-phrase \
-     (maybe-extend \
-     (list 'noun-phrase \
-     noun-phrase \
-     (parse-prepositional-phrase))))) \
-     (maybe-extend (parse-simple-noun-phrase)))",
-]);
-println!("@{session@}");
-// => ;;; Amb-Eval value: ok
-// => ;;; Amb-Eval value: ok
-@end example
+phrase.  The choice points are the alternative decompositions, and each
+expansion is a @code{Choose} of its two shapes.
 
 @noindent
 Our new grammar lets us parse more complex sentences.  For example
 
-@example rust
-let session = amb_session(&[
-    "(parse '(the student with the cat \
-     sleeps in the class))",
-]);
-println!("@{session@}");
-// => ;;; Starting a new problem
-// => ;;; Amb-Eval value: (sentence
-// =>  (noun-phrase
-// =>   (simple-noun-phrase (article the) (noun student))
-// =>   (prep-phrase (prep with)
-// =>                (simple-noun-phrase
-// =>                 (article the)
-// =>                 (noun cat))))
-// =>  (verb-phrase
-// =>   (verb sleeps)
-// =>   (prep-phrase (prep in)
-// =>                (simple-noun-phrase
-// =>                 (article the)
-// =>                 (noun class)))))
-@end example
-
-@noindent
-Observe that a given input may have more than one legal parse.  In the sentence
-``The professor lectures to the student with the cat,'' it may be that the
-professor is lecturing with the cat, or that the student has the cat.  Our
-nondeterministic program finds both possibilities:
-
-@example rust
-let session = amb_session(&[
-    "(parse '(the professor lectures to \
-     the student with the cat))",
-    "try-again",
-]);
-println!("@{session@}");
-// => ;;; Starting a new problem
-// => ;;; Amb-Eval value: (sentence
-// =>  (simple-noun-phrase (article the)
-// =>                      (noun professor))
-// =>  (verb-phrase
-// =>   (verb-phrase
-// =>    (verb lectures)
-// =>    (prep-phrase (prep to)
-// =>                 (simple-noun-phrase
-// =>                  (article the)
-// =>                  (noun student))))
-// =>   (prep-phrase (prep with)
-// =>                (simple-noun-phrase
-// =>                 (article the)
-// =>                 (noun cat)))))
-// => ;;; Amb-Eval value: (sentence
-// =>  (simple-noun-phrase (article the)
-// =>                      (noun professor))
-// =>  (verb-phrase (verb lectures)
-// =>               (prep-phrase
-// =>                (prep to)
-// =>                (noun-phrase
-// =>                 (simple-noun-phrase
-// =>                  (article the)
-// =>                  (noun student))
-// =>                 (prep-phrase
-// =>                  (prep with)
-// =>                  (simple-noun-phrase
-// =>                   (article the)
-// =>                   (noun cat)))))))
+@example
+parse(the student with the cat sleeps in the class)
+// => Sentence(
+//      NounPhrase(
+//        SimpleNounPhrase(Article(the), Noun(student)),
+//        PrepPhrase(Prep(with),
+//                   SimpleNounPhrase(Article(the), Noun(cat)))),
+//      VerbPhrase(
+//        Verb(sleeps),
+//        PrepPhrase(Prep(in),
+//                   SimpleNounPhrase(Article(the), Noun(class)))))
 @end example
 
 @quotation
-@strong{@anchor{Exercise 4.45}Exercise 4.45:} With the grammar given above, the
-following sentence can be parsed in five different ways: ``The professor
-lectures to the student in the class with the cat.''  Give the five parses and
-explain the differences in shades of meaning among them.
+@strong{@anchor{Exercise 4.45}Exercise 4.45:} With the grammar given above,
+the following sentence can be parsed in five different ways: ``The professor
+lectures to the student in the class with the cat.''  Write a search program
+that returns all five parses as tree data, and explain why the grammar is
+ambiguous for this sentence.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.46}Exercise 4.46:} The evaluators in
-@ref{4.1} and @ref{4.2} do not determine what order operands are evaluated in.
-We will see that the @code{amb} evaluator evaluates them from left to right.
-Explain why our parsing program wouldn't work if the operands were evaluated in
-some other order.
+@ref{4.1} and in this section determine the order in which operands are
+evaluated: the guest language fixes it from left to right.  Our parsing
+program consumes its input in that order, and the assignment that advances
+@code{unparsed} must run before the next word is tried.  Explain why our
+parsing program doesn't work if the operands are evaluated from right to left,
+and rewrite it so that the consumption order is explicit and independent of
+operand order.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.47}Exercise 4.47:} Louis Reasoner suggests that,
 since a verb phrase is either a verb or a verb phrase followed by a
 prepositional phrase, it would be much more straightforward to define the
-procedure @code{parse-verb-phrase} as follows (and similarly for noun phrases):
+procedure @code{parse_verb_phrase} like this:
 
 @example
-(define (parse-verb-phrase)
-  (amb (parse-word verbs)
-       (list 
-        'verb-phrase
-        (parse-verb-phrase)
-        (parse-prepositional-phrase))))
+parse_verb_phrase() =
+  Choose([parse_word(verbs),
+          VerbPhrase(parse_verb_phrase(),
+                     parse_prepositional_phrase())])
 @end example
 
-Does this work?  Does the program's behavior change if we interchange the order
-of expressions in the @code{amb}?
+Does this work?  Does the program's behavior change if we interchange the
+order of the alternatives in the @code{Choose}?
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.48}Exercise 4.48:} Extend the grammar given above to
-handle more complex sentences.  For example, you could extend noun phrases and
-verb phrases to include adjectives and adverbs, or you could handle compound
-sentences.@footnote{This kind of grammar can become arbitrarily complex, but it
-is only a toy as far as real language understanding is concerned.  Real
-natural-language understanding by computer requires an elaborate mixture of
-syntactic analysis and interpretation of meaning.  On the other hand, even toy
-parsers can be useful in supporting flexible command languages for programs
-such as information-retrieval systems.  @ref{Winston 1992} discusses computational
-approaches to real language understanding and also the applications of simple
-grammars to command languages.}
+@strong{@anchor{Exercise 4.48}Exercise 4.48:} Extend the grammar given above
+to handle more complex sentences.  For example, you could extend noun phrases
+and verb phrases to include adjectives and adverbs, or you could handle
+compound sentences.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.49}Exercise 4.49:} Alyssa P. Hacker is more
 interested in generating interesting sentences than in parsing them.  She
-reasons that by simply changing the procedure @code{parse-word} so that it
+reasons that by simply changing the procedure @code{parse_word} so that it
 ignores the ``input sentence'' and instead always succeeds and generates an
 appropriate word, we can use the programs we had built for parsing to do
-generation instead.  Implement Alyssa's idea, and show the first half-dozen or
-so sentences generated.@footnote{Although Alyssa's idea works just fine (and is
-surprisingly simple), the sentences that it generates are a bit boring---they
-don't sample the possible sentences of this language in a very interesting way.
-In fact, the grammar is highly recursive in many places, and Alyssa's technique
-``falls into'' one of these recursions and gets stuck.  See @ref{Exercise 4.50}
-for a way to deal with this.}
+generation instead.  Implement Alyssa's idea: with an unbounded generator for
+word choice, the grammar produces an infinite language, so observe it through
+@code{SearchEngine::run_prefix} and show that successive prefixes enumerate
+sentences in the search order your program defines.
 @end quotation
 
 @node	4.3.3, 4.4, 4.2, 4.3
-@subsection Implementing the @code{Amb} Evaluator
+@subsection Implementing the Search Evaluator
 
-The evaluation of an ordinary Scheme expression may return a value, may never
-terminate, or may signal an error.  In nondeterministic Scheme the evaluation
-of an expression may in addition result in the discovery of a dead end, in
-which case evaluation must backtrack to a previous choice point.  The
-interpretation of nondeterministic Scheme is complicated by this extra case.
+The evaluation of an ordinary program may return a value, may never
+terminate, or may signal a trap.  In the search experiment the exploration of
+a program may in addition result in the discovery of a dead end, in which case
+the search must backtrack to a previous choice point.  This section describes
+the engine that implements this behavior over the typed data of
+@ref{4.3.1}.
 
-We will construct the @code{amb} evaluator for nondeterministic Scheme by
-building an explicit backtracking engine on the evaluator substrate of
-@ref{4.1}.@footnote{We chose to
-implement the lazy evaluator in @ref{4.2} as a modification of the
-ordinary metacircular evaluator of @ref{4.1.1}.  In this edition the
-@code{amb} evaluator is likewise plain code rather than continuation
-passing: a self-referential continuation closure is painful to build in
-Rust, while a typed failure signal unwinding to a stored choice frame is
-plain, testable, and semantically equivalent: the book's fail
-continuation is the engine's saved frame.}  As in the analyzing
-evaluator, evaluation of an expression is accomplished by handing each
-subexpression's value to a continuation that runs the rest of the
-computation.  The difference between the
-interpretation of ordinary Scheme and the interpretation of nondeterministic
-Scheme is that the rest of the computation is stored data: a choice frame
-keeps its pending alternatives together with the continuation that consumes
-each chosen value, so a failure can resume the frame and a returned answer
-can leave the frame resumable.
+@subsubheading Alternatives and the trail
 
-@subsubheading Continuations and failure
-
-The book's @code{amb} evaluator threads two @newterm{continuation
-procedures} through every execution procedure: a @newterm{success
-continuation}, called with each value the evaluation produces, and a
-@newterm{failure continuation}, called when the evaluation discovers a dead
-end.  The edition keeps the success continuation and stores the failure
-machinery in the engine: the failure path is a typed signal plus the saved
-choice frames, so no second closure kind is threaded through the program.
-The success continuation is one type:
+The engine keeps one explicit trail and one ordered effect log:
 
 @example rust
-/// The rest of one expression's evaluation: the book's success
-/// continuation, a closure from the value just obtained to everything
-/// that follows it.
-pub type Cont = Rc<dyn Fn(&Amb, Value) -> EvalResult>;
-@end example
-
-@noindent
-A failure needs no closure: it is the typed signal
-
-@example rust
-/// The engine's failure signal: the book's @code{(amb)} and a
-/// @code{require} that does not hold both raise it, and the nearest
-/// choice frame catches it.
-pub fn fail(&self) -> EvalResult @{
-    Err(SchemeError::Backtrack)
+pub struct SearchEngine @{
+    trail: Vec<(String, Option<i64>)>,
+    bindings: HashMap<String, i64>,
+    answers: Vec<Vec<AnswerValue>>,
+    effects: Vec<String>,
+    limit: usize,
 @}
 @end example
 
 @noindent
-which unwinds the host stack to the nearest choice frame.  The frames live
-in the evaluator:
+Every assignment records the name and the value it displaced:
 
 @example rust
-/// One resumable choice frame: the book's @code{try-next} loop stored
-/// as data. @code{alts} holds the alternatives not yet tried, each with
-/// the environment to evaluate it in; @code{k} is the continuation that
-/// consumes each chosen value; @code{trail_len} is the trail length at
-/// the push, the line backtracking rolls the trail back to.
-struct AmbFrame @{
-    alts: VecDeque<(Value, Rc<Env>)>,
-    k: Cont,
-    trail_len: usize,
+fn bind(&mut self, name: &str, value: i64) @{
+    let previous = self.bindings.insert(name.to_owned(), value);
+    self.trail.push((name.to_owned(), previous));
 @}
 @end example
 
 @noindent
-Because a solution that has returned to the driver no longer has a host
-stack under it, the frame keeps the continuation: @code{try_again} can
-re-enter the rest of the computation from the frame alone, which is what
-makes the driver's second answer resume instead of replay.
-
-Failures are initiated only when a dead end is encountered.  This occurs
-
-@itemize @bullet
-
-@item
-if the user program executes @code{(amb)} (an expression that always fails),
-the device @code{require} is built from (see @ref{4.3.1});
-
-@item
-if the user types @code{try-again} at the top-level driver.
-
-@end itemize
-
-@noindent
-In addition, if a side-effect operation (such as assignment to a variable)
-occurs on a branch of the process resulting from a choice, it may be necessary,
-when the process finds a dead end, to undo the side effect before making a new
-choice.  This is accomplished by an undo trail: every assignment records the
-frame, the name, and the old value, and backtracking rolls the trail back to
-the line it was at when the owning frame was pushed.
-
-@subsubheading Structure of the evaluator
-
-The syntax- and data-representation procedures for the @code{amb} evaluator
-are identical to those in the evaluator of @ref{4.1.7}, and the dispatch
-below reads like that evaluator's clause chain, except for the fact
-that we need additional syntax procedures to recognize the new special
-forms:@footnote{We assume
-that the evaluator supports @code{let} (see @ref{Exercise 4.22}), which we have
-used in our nondeterministic programs.  The base language installs
-@code{require} as an ordinary procedure, so the dispatch below has no
-@code{require} clause; exercise @ref{Exercise 4.54} installs one.}
+The trail rolls back in one place.  When the search unwinds to a choice (a
+failed alternative, or the end of an alternative's reach), the engine restores
+every entry above the choice's mark:
 
 @example rust
-if is_tagged_list(exp, "amb") @{
-    return self.search(exp, env, k, Search::InOrder);
-@}
-if is_tagged_list(exp, "ramb") @{
-    return self.search(exp, env, k, Search::Shuffled);
-@}
-if is_assignment(exp) @{
-    return self.eval_assignment(exp, env, &k, Assignment::Undoable);
-@}
-if is_tagged_list(exp, "permanent-set!") @{
-    return self.eval_assignment(exp, env, &k, Assignment::Permanent);
-@}
-if is_tagged_list(exp, "if-fail") @{
-    return self.eval_if_fail(exp, env, &k);
-@}
-@end example
-
-@noindent
-The top-level entry @code{eval_with} (similar to the version of @code{eval}
-given in @ref{4.1.7}) analyzes nothing at driver time (the dispatch runs
-directly over the syntax) but like the analyzed evaluator of @ref{4.1.7}
-it answers through an execution procedure: here, the continuation that
-receives the value and runs the rest of the computation.  In going through
-the clauses, compare each with the corresponding procedure for the ordinary
-evaluator given in @ref{4.1.7}:
-
-@example rust
-pub fn eval_with(&self, exp: &Value, env: &Rc<Env>, k: Cont) -> EvalResult
-@end example
-
-@noindent
-A success continuation is a closure of one value argument: the value just
-obtained.  So the general form of the engine's clause shape is
-
-@example rust
-// @code{k} is @code{Rc<dyn Fn(&Amb, Value) -> EvalResult>}
-self.eval_with(&value_expression, env, cont(move |amb, value| @{
-    // @code{value} is this form's answer; @code{k} runs the rest
-    k(amb, @r{…})
-@}))
-@end example
-
-@noindent
-For example, executing
-
-@example rust
-let answer: Cont = cont(|_, value| Ok(value));
-amb.eval_with(&form, &env, answer)
-@end example
-
-@noindent
-will attempt to evaluate the given form and will return either the form's
-value (if the evaluation succeeds) or the @code{Backtrack} signal (if the
-evaluation fails).  The driver loop shown below uses this entry with a
-frame stack it keeps between inputs, which is what supports the
-@code{try-again} request.
-
-@subsubheading Simple expressions
-
-The clauses for the simplest kinds of expressions are essentially the same
-as those for the ordinary evaluator of @ref{4.1.7}, except for handing the
-value on through the continuation instead of returning it:
-
-@example rust
-if is_self_evaluating(exp) @{
-    return k(self, exp.clone());
-@}
-if is_quoted(exp) @{
-    return k(self, text_of_quotation(exp)?);
-@}
-if is_variable(exp) @{
-    return k(self, lookup_variable(exp, env)?);
-@}
-if is_lambda(exp) @{
-    return k(self, Value::Closure(lambda_closure(exp, env)?));
-@}
-@end example
-
-@noindent
-Notice that looking up a variable always `succeeds.'  If the lookup fails
-to find the variable, it signals an error, as usual.  Such a ``failure''
-indicates a program bug---a reference to an unbound variable; it is not an
-indication that we should try another nondeterministic choice instead of
-the one that is currently being tried.
-
-@subsubheading Conditionals and sequences
-
-Conditionals evaluate the predicate against a continuation that picks the
-branch, so a choice inside the predicate resumes into the branch it
-chose:
-
-@example rust
-fn eval_if(&self, exp: &Value, env: &Rc<Env>, k: &Cont) -> EvalResult @{
-    let (predicate, consequent, alternative) = if_parts(exp)?;
-    let branch: Cont = @{
-        let env = Rc::clone(env);
-        let k = Rc::clone(k);
-        cont(move |amb, tested| @{
-            let chosen = if is_true(&tested) @{
-                consequent.clone()
-            @} else @{
-                alternative.clone()
-            @};
-            amb.eval_with(&chosen, &env, Rc::clone(&k))
-        @})
-    @};
-    self.eval_with(&predicate, env, branch)
-@}
-@end example
-
-@noindent
-Sequences run each form but the last against a continuation that runs the
-rest, so a choice inside an early form resumes into the later forms:
-
-@example rust
-pub fn eval_sequence(&self, forms: &[Value], env: &Rc<Env>, k: &Cont) -> EvalResult @{
-    let Some((head, tail)) = forms.split_first() else @{
-        return Err(SchemeError::TypeMismatch(
-            "Empty sequence: ANALYZE".to_owned(),
-        ));
-    @};
-    if tail.is_empty() @{
-        return self.eval_with(head, env, Rc::clone(k));
-    @}
-    let rest: Cont = @{
-        let tail = tail.to_vec();
-        let env = Rc::clone(env);
-        let k = Rc::clone(k);
-        cont(move |amb, _| amb.eval_sequence(&tail, &env, Rc::clone(&k)))
-    @};
-    self.eval_with(head, env, rest)
-@}
-@end example
-
-@subsubheading Definitions and assignments
-
-Definitions evaluate the definition-value expression first; the
-continuation binds the name and answers @code{ok}:
-
-@example rust
-fn eval_definition(&self, exp: &Value, env: &Rc<Env>, k: &Cont) -> EvalResult @{
-    let name = variable_name(&definition_variable(exp)?)?;
-    let value_exp = definition_value(exp)?;
-    let bind: Cont = @{
-        let env = Rc::clone(env);
-        let k = Rc::clone(k);
-        cont(move |amb, value| @{
-            env.define(Rc::clone(&name), value);
-            k(amb, Value::sym("ok"))
-        @})
-    @};
-    self.eval_with(&value_exp, env, bind)
-@}
-@end example
-
-@noindent
-Assignments are more interesting.  This is the first place where the undo
-trail earns its keep.  The assignment clause's continuation saves the old
-value of the variable, assigns, and, for the undoable kind, records the
-entry that backtracking restores.  A successful assignment therefore
-provides, as data, everything a subsequent failure needs to undo it before
-the search proceeds.@footnote{We didn't worry about undoing
-definitions, since we can assume that internal definitions are scanned out
-(@ref{4.1.6}).}
-
-@example rust
-fn eval_assignment(
-    &self,
-    exp: &Value,
-    env: &Rc<Env>,
-    k: &Cont,
-    kind: Assignment,
-) -> EvalResult @{
-    let name = variable_name(&assignment_variable(exp)?)?;
-    let value_exp = assignment_value(exp)?;
-    let assign: Cont = @{
-        let env = Rc::clone(env);
-        let k = Rc::clone(k);
-        cont(move |amb, value| @{
-            let old = env.lookup(&name)?;
-            env.set(&name, value)?;
-            if kind == Assignment::Undoable @{
-                amb.record_undo(&env, &name, old);
-            @}
-            k(amb, Value::sym("ok"))
-        @})
-    @};
-    self.eval_with(&value_exp, env, assign)
-@}
-@end example
-
-@noindent
-The trail rolls back in one place.  When a search unwinds to a choice
-frame (a failed alternative replay, or the driver's @code{try_again}),
-the engine restores every entry above the frame's push line:
-
-@example rust
-fn undo_to(&self, limit: usize) @{
-    let mut trail = self.trail.borrow_mut();
-    while trail.len() > limit @{
-        let Some(undo) = trail.pop() else @{
+fn rollback(&mut self, mark: usize) @{
+    while self.trail.len() > mark @{
+        let Some((name, previous)) = self.trail.pop() else @{
             break;
         @};
-        undo.env
-            .set(&undo.name, undo.old)
-            .expect("trail entry restores its own binding");
+        match previous @{
+            Some(value) => @{
+                self.bindings.insert(name, value);
+            @}
+            None => @{
+                self.bindings.remove(&name);
+            @}
+        @}
     @}
-@}
-@end example
-
-@subsubheading Procedure applications
-
-The application clause contains no new ideas except for the bookkeeping
-that makes the operand walk resumable.  The operator evaluates first, then
-the operands walk left to right, each against a continuation that carries
-the operator, the arguments already obtained, and the operand expressions
-still to evaluate:
-
-@example rust
-fn eval_application(&self, exp: &Value, env: &Rc<Env>, k: &Cont) -> EvalResult @{
-    let operator = first_of(exp)?;
-    let operands = operand_items(exp)?;
-    let walk: Cont = @{
-        let operands = operands.clone();
-        let env = Rc::clone(env);
-        let k = Rc::clone(k);
-        cont(move |amb, proc| @{
-            continue_args(amb, proc, &[], &operands, &env, &k)
-        @})
-    @};
-    self.eval_with(&operator, env, walk)
-@}
-
-fn continue_args(
-    amb: &Amb,
-    proc: Value,
-    done: &[Value],
-    rest: &[Value],
-    env: &Rc<Env>,
-    k: &Cont,
-) -> EvalResult @{
-    let Some((head, tail)) = rest.split_first() else @{
-        return amb.apply_procedure(&proc, done, k);
-    @};
-    let step: Cont = @{
-        let done = done.to_vec();
-        let tail = tail.to_vec();
-        let env = Rc::clone(env);
-        let k = Rc::clone(k);
-        cont(move |amb, value| @{
-            let mut args = done.clone();
-            args.push(value);
-            continue_args(amb, proc.clone(), &args, &tail, &env, &k)
-        @})
-    @};
-    amb.eval_with(head, env, step)
 @}
 @end example
 
 @noindent
-The actual procedure application is performed in the same way as for the
-ordinary evaluator, except that a compound procedure's body runs against
-the incoming continuation instead of returning to a caller's stack frame:
+This is the book's undo trail, and it is why @code{parse_word}'s assignment of
+@ref{4.3.2} works: the failed parse restores the input index before the next
+alternative runs.  The permanent assignment of @ref{Exercise 4.51} records
+nothing on the trail:
 
 @example rust
-pub fn apply_procedure(&self, proc: &Value, args: &[Value], k: &Cont) -> EvalResult @{
-    match proc @{
-        Value::Primitive @{ f, .. @} => k(self, f(args)?),
-        Value::Closure(closure) => @{
-            let name = closure.name.as_deref().unwrap_or("#[compound-procedure]");
-            let frame = extend_environment(
-                name,
-                &closure.params,
-                closure.rest.as_ref(),
-                args,
-                &closure.env,
-            )?;
-            self.eval_sequence(&closure.body, &frame, k)
-        @}
-        other => Err(SchemeError::NotProcedure(other.clone())),
-    @}
-@}
+Search::Persist(name, value, body) => @{
+    self.bindings.insert(name.clone(), *value);
+    self.explore(body);
+@},
 @end example
 
-@subsubheading Evaluating @code{amb} expressions
+@subsubheading Evaluating choice expressions
 
-The @code{amb} special form is the key element in the nondeterministic
-language.  Its clause pushes one frame of pending alternatives and drives
-it: the drive loop evaluates each front alternative against the frame's
-continuation, retries through the @code{Backtrack} signal, and unwinds
-(popping its own frame and rolling back its trail segment) when the
-alternatives run dry.  The unwind is what makes the @code{amb} site that
-pushed this frame try its next alternative.
+The exploration of a choice is the heart of the search.  The alternatives are
+tried in written order; the mark is taken before each one and the trail is
+rolled back to the mark after it, so no alternative sees the mutations of the
+alternative before it:
 
 @example rust
-fn search(&self, exp: &Value, env: &Rc<Env>, k: Cont, order: Search) -> EvalResult @{
-    let choices = operand_items(exp)?;
-    let mut alts: Vec<_> = choices
-        .iter()
-        .map(|choice| (choice.clone(), Rc::clone(env)))
-        .collect();
-    if order == Search::Shuffled @{
-        let mut rng = self.rng.borrow_mut();
-        for i in (1..alts.len()).rev() @{
-            let bound = u64::try_from(i + 1).expect("an alternative count fits u64");
-            let draw = rng.random(bound);
-            let j = usize::try_from(draw).expect("the draw lands below the count");
-            alts.swap(i, j);
+Search::Choose(alternatives) => @{
+    for alternative in alternatives @{
+        if self.answers.len() >= self.limit @{
+            return;
         @}
+        let mark = self.trail.len();
+        self.explore(alternative);
+        self.rollback(mark);
     @}
-    self.push_frame(alts, k);
-    self.drive()
-@}
-
-pub fn drive(&self) -> EvalResult @{
-    while let Some(job) = self.next_job() @{
-        match job @{
-            Job::Alternative @{ expr, env, k, trail_len @} => @{
-                // A no-op for the first alternative (the trail ends at
-                // the push line) and the rollback of the failed
-                // alternative's mutations for every later one.
-                self.undo_to(trail_len);
-                let result = self.eval_with(&expr, &env, k);
-                if let Err(SchemeError::Backtrack) = result @{
-                    self.count_failure();
-                    self.undo_to(trail_len);
-                @} else @{
-                    return result;
-                @}
-            @}
-            Job::Exhausted(frame) => @{
-                self.count_failure();
-                self.undo_to(frame.trail_len);
-                return Err(SchemeError::Backtrack);
-            @}
-        @}
-    @}
-    Err(SchemeError::Backtrack)
-@}
-@end example
-
-@subsubheading Driver loop
-
-The driver loop for the @code{amb} evaluator is complex, due to the mechanism
-that permits the user to try again in evaluating an expression.  In the
-edition the driver is the evaluator itself: @code{run} starts a new problem,
-discarding the unexplored alternatives of any earlier one, and
-@code{try_again} yields the next answer of the problem in flight.  The
-@code{try_again} loop is the book's @code{internal-loop}: it takes the
-deepest pending frame's next alternative, evaluates it against the frame's
-stored continuation (the rest of the computation as data) and so
-resumes without replaying the work earlier answers already did.
-
-@example rust
-pub fn try_again(&self) -> EvalResult @{
-    while let Some(job) = self.next_job() @{
-        match job @{
-            Job::Alternative @{ expr, env, k, trail_len @} => @{
-                // Rolling the trail back to the frame's push line
-                // discards the mutations of the path this resume
-                // leaves behind: the answered path, or the failed
-                // alternative before it.
-                self.undo_to(trail_len);
-                let result = self.eval_with(&expr, &env, k);
-                if let Err(SchemeError::Backtrack) = result @{
-                    self.count_failure();
-                    self.undo_to(trail_len);
-                @} else @{
-                    return result;
-                @}
-            @}
-            Job::Exhausted(frame) => @{
-                self.count_failure();
-                self.undo_to(frame.trail_len);
-            @}
-        @}
-    @}
-    Err(SchemeError::Backtrack)
-@}
+@},
 @end example
 
 @noindent
-The initial call has no pending frame: a @code{try-again} with no problem
-in flight reports exactly that, the book's ``There is no current
-problem.''  When the deepest frame runs dry and every frame above it has
-popped, @code{try_again} answers the same @code{Backtrack} signal the
-driver prints as ``There are no more values of.''
+The generators are the same loop with the binding made for each generated
+value; @code{ChooseRange} is @code{an-integer-between} and stops at its
+inclusive bound, @code{ChooseFrom} is
+@code{an-integer-starting-from} and runs until the answer limit stops it:
+
+@example rust
+Search::ChooseRange @{ var, lo, hi, body @} => @{
+    for value in *lo..=*hi @{
+        if self.answers.len() >= self.limit @{
+            return;
+        @}
+        self.bind(var, value);
+        self.explore(body);
+        self.rollback_binding(var);
+    @}
+@},
+@end example
+
+@noindent
+A guard runs its body only when its predicate holds over the current bindings,
+and an effect is logged before its body runs.  A success computes its answer
+from the current bindings and records it:
+
+@example rust
+Search::Success(parts) => @{
+    if let Some(answer) = self.resolve_answer(parts) @{
+        self.answers.push(answer);
+    @}
+@},
+Search::Fail => @{ @},
+@end example
+
+@noindent
+Failure is therefore not an exception: it is simply a branch that produces no
+answers, and the caller's rollback discipline restores the state before the
+next alternative.  This is why the experiment is deterministic for a fixed
+program and why ordinary Rust control flow never triggers backtracking.
+
+@subsubheading Trying again and answer limits
+
+The book's driver loop answers one value and then accepts a request for the
+next one.  Here the same computation is answered as an ordered collection:
+@code{run} explores until the program is exhausted, and @code{run_prefix}
+stops after the requested number of answers, which is what makes an unbounded
+generator like @code{ChooseFrom} observable as a finite prefix.  The answers
+are computed from the bindings at the moment of the success, so an answer can
+carry values the search computed before it (see the @code{Sum},
+@code{Product}, and @code{Atom} parts of @code{AnswerTerm}).
+
+@subsubheading The reference model
+
+The engine is not its own oracle.  @code{reference_model} is an independent
+finite enumerator with its own trail and answer bookkeeping; the conformance
+checks compare the engine's answer order, rollback discipline, and effect log
+against it:
+
+@example rust
+pub fn reference_model(program: &Search) -> SearchOutcome @{
+    @r{…} // a separate depth-first enumerator
+@}
+@end example
 
 @quotation
-@strong{@anchor{Exercise 4.50}Exercise 4.50:} Implement a new special form
-@code{ramb} that is like @code{amb} except that it searches alternatives in a
-random order, rather than from left to right.  Show how this can help with
+@strong{@anchor{Exercise 4.50}Exercise 4.50:} Implement a new choice form
+@code{ramb} that is like @code{Choose} except that it searches alternatives in
+a random order, rather than from left to right.  Show how this can help with
 Alyssa's problem in @ref{Exercise 4.49}.
 @end quotation
 
 @quotation
 @emph{Exercise 4.50a is added by this edition and extends exercise
 4.50; SICP numbers stop at 4.50.} @strong{@anchor{Exercise 4.50a}Exercise 4.50a:} The
-edition's @code{ramb} draws from a seeded generator: the evaluator holds a
-seeded @code{xorshift64*} instance, created when the driver is constructed
-(@code{Amb::new(AMB_SEED)}), and shuffles each @code{ramb}'s alternatives
-with a Fisher--Yates pass over its draws; the shuffle uses no global generator.
+edition's @code{ramb} draws from a seeded generator.  Build it on the
+runtime's deterministic @code{random} facility (@code{sicp_runtime::random}, a
+seeded @code{xorshift64*} whose constructor rejects a zero seed), created when
+your driver is constructed, and shuffle each choice's alternatives with a
+Fisher--Yates pass over its draws; the shuffle must use no global generator.
 Demonstrate the reproducibility this buys: two drivers from one seed must
 ramble identically, and a driver from a different seed must ramble
 differently.
@@ -1397,31 +757,31 @@ differently.
 
 @quotation
 @strong{@anchor{Exercise 4.51}Exercise 4.51:} Implement a new kind of
-assignment called @code{permanent-set!} that is not undone upon failure.  For
-example, we can choose two distinct elements from a list and count the number
-of trials required to make a successful choice as follows:
+assignment called @code{permanent-set!} that is not undone upon failure.  In
+this edition the trailless write is @code{Search::Persist}, which stores a
+literal value that the trail never restores; a running count is part of what
+this exercise adds.  For example, we can choose two distinct elements from a
+list and count the number of trials required to make a successful choice as
+follows (your extension's counting form):
 
 @example
-(define count 0)
-(let ((x (an-element-of '(a b c)))
-      (y (an-element-of '(a b c))))
-  (permanent-set! count (+ count 1))
-  (require (not (eq? x y)))
-  (list x y count))
-
-@i{;;; Starting a new problem}
-@i{;;; Amb-Eval value:}
-@i{(a b 2)}
-
-@i{;;; Amb-Eval input:}
-try-again
-
-@i{;;; Amb-Eval value:}
-@i{(a c 3)}
+count = 0
+x = Choose([a, b, c]),
+y = Choose([a, b, c]),
+Persist(count, count + 1),
+Guard(Ne(x, y), Success([x, y, count]))
 @end example
 
-What values would have been displayed if we had used @code{set!} here
-rather than @code{permanent-set!}?
+@noindent
+and the interaction answers the first pair with its trial count and the next
+pair with the count including the trials the first answer consumed:
+
+@example
+answers: (a b 2), (a c 3)
+@end example
+
+What values would have been displayed if we had used an ordinary trailed
+@code{Set} here rather than @code{Persist}?
 @end quotation
 
 @quotation
@@ -1432,29 +792,13 @@ usual and returns as usual if the evaluation succeeds.  If the evaluation
 fails, however, the value of the second expression is returned, as in the
 following example:
 
-@example
-@i{;;; Amb-Eval input:}
-(if-fail 
- (let ((x (an-element-of '(1 3 5))))
-   (require (even? x))
-   x)
- 'all-odd)
+@smallexample
+if_fail(Choose([1, 3, 5]) where the value must be even, all_odd)
+// => all-odd
 
-@i{;;; Starting a new problem}
-@i{;;; Amb-Eval value:}
-@i{all-odd}
-
-@i{;;; Amb-Eval input:}
-(if-fail
- (let ((x (an-element-of '(1 3 5 8))))
-   (require (even? x))
-   x)
- 'all-odd)
-
-@i{;;; Starting a new problem}
-@i{;;; Amb-Eval value:}
-@i{8}
-@end example
+if_fail(Choose([1, 3, 5, 8]) where the value must be even, all_odd)
+// => 8
+@end smallexample
 @end quotation
 
 @quotation
@@ -1463,54 +807,58 @@ described in @ref{Exercise 4.51} and @code{if-fail} as in @ref{Exercise 4.52},
 what will be the result of evaluating
 
 @example
-(let ((pairs '()))
-  (if-fail 
-   (let ((p (prime-sum-pair 
-             '(1 3 5 8) 
-             '(20 35 110))))
-     (permanent-set! pairs 
-                     (cons p pairs))
-     (amb))
-   pairs))
+pairs = []
+if_fail(
+  p = prime_sum_pair([1, 3, 5, 8], [20, 35, 110]),
+  Persist(pairs, cons(p, pairs)),
+  Fail,
+  pairs)
 @end example
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.54}Exercise 4.54:} If we had not realized that
-@code{require} could be implemented as an ordinary procedure that uses
-@code{amb}, to be defined by the user as part of a nondeterministic program, we
-would have had to implement it as a special form.  This would require syntax
-procedures
+@code{require} could be implemented as an ordinary procedure that uses the
+choice form, to be defined by the user as part of a nondeterministic program,
+we would have had to implement it as a special form.  This would require
+syntax procedures over the typed syntax data
 
-@example
-(define (require? exp) 
-  (tagged-list? exp 'require))
-
-(define (require-predicate exp) 
-  (cadr exp))
+@example rust
+fn is_require(exp: &Expr) -> bool @{ @r{…} @}
+fn requirement_predicate(exp: &Expr) -> &Expr @{ @r{…} @}
 @end example
 
 @noindent
-and a new clause in the dispatch in @code{analyze}
+and a new clause in the analyzer's dispatch
 
-@example
-((require? exp) (analyze-require exp))
+@example rust
+if is_require(exp) @{
+    return analyze_require(exp);
+@}
 @end example
 
 @noindent
-as well the procedure @code{analyze-require} that handles @code{require}
-expressions.  Complete the following definition of @code{analyze-require}.
+as well as the procedure @code{analyze_require} that handles @code{require}
+expressions.  Complete the following definition of @code{analyze_require},
+where @code{pproc} is the analyzed predicate and the execution procedure
+receives the success and failure continuations:
 
-@example
-(define (analyze-require exp)
-  (let ((pproc (analyze 
-                (require-predicate exp))))
-    (lambda (env succeed fail)
-      (pproc env
-             (lambda (pred-value fail2)
-               (if ⟨??⟩
-                   ⟨??⟩
-                   (succeed 'ok fail2)))
-             fail))))
+@example rust
+fn analyze_require(exp: &Expr) -> Result<Exec, Fault> @{
+    let pproc = analyze(requirement_predicate(exp))?;
+    Ok(move |env, succeed, fail| @{
+        pproc(
+            env,
+            move |pred_value, fail2| @{
+                if ⟨??⟩ @{
+                    ⟨??⟩
+                @} else @{
+                    succeed(Value::Unit, fail2)
+                @}
+            @},
+            fail,
+        )
+    @})
+@}
 @end example
 @end quotation

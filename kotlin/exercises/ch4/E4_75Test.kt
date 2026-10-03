@@ -12,6 +12,31 @@ public class E4_75Test :
         test("Exercise 4.75: the unique special form").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            uniqueDemos() shouldBe listOf("MEASURE")
+            uniqueDemos() shouldBe
+                listOf(
+                    "unique (job ?x (computer wizard)):",
+                    "?x = [Bitdiddle, Ben]",
+                    "unique (job ?x (computer programmer)): 0 answer(s)",
+                    "jobs held by exactly one:",
+                    "?x = [Bitdiddle, Ben]",
+                    "?j = [computer, wizard]",
+                    "?x = [Tweakit, Lem, E]",
+                    "?j = [computer, technician]",
+                    "?x = [Reasoner, Louis]",
+                    "?j = [computer, programmer, trainee]",
+                    "?x = [Warbucks, Oliver]",
+                    "?j = [administration, big, wheel]",
+                    "?x = [Scrooge, Eben]",
+                    "?j = [accounting, chief, accountant]",
+                    "?x = [Cratchet, Robert]",
+                    "?j = [accounting, scrivener]",
+                    "?x = [Aull, DeWitt]",
+                    "?j = [administration, secretary]",
+                    "bosses with exactly one report:",
+                    "?person = [Reasoner, Louis]",
+                    "?boss = [Hacker, Alyssa, P]",
+                    "?person = [Cratchet, Robert]",
+                    "?boss = [Scrooge, Eben]",
+                )
         }
     })

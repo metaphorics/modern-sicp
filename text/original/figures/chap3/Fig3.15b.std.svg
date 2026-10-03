@@ -95,7 +95,7 @@
         <dc:subject>
           <rdf:Bag>
             <rdf:li>list</rdf:li>
-            <rdf:li>set-cdr</rdf:li>
+            <rdf:li>set-tail</rdf:li>
           </rdf:Bag>
         </dc:subject>
       </cc:Work>

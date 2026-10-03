@@ -3,14 +3,12 @@
 
 package sicp.ch3.exercises
 
+import sicp.runtime.Datum
 import sicp.runtime.PendingSolution
-import sicp.runtime.Value
 
 /**
- * Exercise 3.18: `containsCycle` examines a list and reports whether
- * taking successive cdrs would loop forever, that is, whether some cdr
- * chain leads back to a pair already visited. As in exercise 3.17, the
- * standard library has no identity-keyed set, so the visited-pairs
- * structure must be scanned with `===`.
+ * Exercise 3.18: `containsCycle` follows a datum's second-field chain and
+ * reports whether it reaches a previously visited `PairCell`. The visited
+ * cells are compared by identity with `===`.
  */
-public fun containsCycle(x: Value): Boolean = throw PendingSolution()
+public fun containsCycle(x: Datum): Boolean = throw PendingSolution()

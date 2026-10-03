@@ -15,9 +15,9 @@ public class E4_54Test :
             requireFilteredEvens() shouldBe listOf("2", "4")
         }
 
-        test("Exercise 4.54: a satisfied requirement answers ok").config(
+        test("Exercise 4.54: a satisfied requirement answers true").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            requireSatisfied() shouldBe "ok"
+            requireSatisfied() shouldBe "true"
         }
     })

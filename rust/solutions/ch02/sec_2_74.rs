@@ -7,7 +7,7 @@ mod ex_2_74 {
     use std::rc::Rc;
 
     use ch02::sec_2_4::{contents, tag_list_key, type_tag};
-    use sicp_runtime::{Handler, Key, OpTable, SchemeError, Value, cons_cell};
+    use sicp_runtime::{Handler, Key, OpTable, SicpError, Value, cons_cell};
 
     /// Builds a north-division file entry: `(name . record)`, where a
     /// record is an alist keyed by field-name symbols.
@@ -71,7 +71,7 @@ mod ex_2_74 {
     fn north_get_record() -> Handler {
         Rc::new(|args| {
             let [name, records] = args else {
-                return Err(SchemeError::WrongArity {
+                return Err(SicpError::WrongArity {
                     procedure: "get-record".into(),
                     expected: "2".into(),
                     got: args.len(),
@@ -97,14 +97,13 @@ mod ex_2_74 {
     fn north_get_salary() -> Handler {
         Rc::new(|args| {
             let [record] = args else {
-                return Err(SchemeError::WrongArity {
+                return Err(SicpError::WrongArity {
                     procedure: "get-salary".into(),
                     expected: "1".into(),
                     got: args.len(),
                 });
             };
-            assoc("salary", record)
-                .ok_or_else(|| SchemeError::TypeMismatch("no salary field".into()))
+            assoc("salary", record).ok_or_else(|| SicpError::TypeMismatch("no salary field".into()))
         })
     }
 
@@ -113,7 +112,7 @@ mod ex_2_74 {
     fn south_get_record() -> Handler {
         Rc::new(|args| {
             let [name, records] = args else {
-                return Err(SchemeError::WrongArity {
+                return Err(SicpError::WrongArity {
                     procedure: "get-record".into(),
                     expected: "2".into(),
                     got: args.len(),
@@ -136,14 +135,14 @@ mod ex_2_74 {
     fn south_get_salary() -> Handler {
         Rc::new(|args| {
             let [record] = args else {
-                return Err(SchemeError::WrongArity {
+                return Err(SicpError::WrongArity {
                     procedure: "get-salary".into(),
                     expected: "1".into(),
                     got: args.len(),
                 });
             };
             property("salary", record)
-                .ok_or_else(|| SchemeError::TypeMismatch("no salary field".into()))
+                .ok_or_else(|| SicpError::TypeMismatch("no salary field".into()))
         })
     }
 
@@ -231,11 +230,11 @@ mod ex_2_74 {
     /// file because the file itself carries the type tag that selects the
     /// division's handler. Answers `false` — the book's own miss value —
     /// when the file has no record for `name`.
-    fn get_record(table: &OpTable, name: &str, file: &Value) -> Result<Value, SchemeError> {
+    fn get_record(table: &OpTable, name: &str, file: &Value) -> Result<Value, SicpError> {
         let tag = type_tag(file)?;
         let Some(handler) = table.get(&Key::sym("get-record"), &tag_list_key(&[tag.as_ref()]))
         else {
-            return Err(SchemeError::UserRaised {
+            return Err(SicpError::UserRaised {
                 message: "No method for these types: GET-RECORD".into(),
                 irritants: vec![Value::Sym(tag)],
             });
@@ -246,11 +245,11 @@ mod ex_2_74 {
     /// Part (b): headquarters' `get-salary`, dispatching on the tag the
     /// record itself carries — the record's structure is the division's
     /// business, not headquarters'.
-    fn get_salary(table: &OpTable, record: &Value) -> Result<Value, SchemeError> {
+    fn get_salary(table: &OpTable, record: &Value) -> Result<Value, SicpError> {
         let tag = type_tag(record)?;
         let Some(handler) = table.get(&Key::sym("get-salary"), &tag_list_key(&[tag.as_ref()]))
         else {
-            return Err(SchemeError::UserRaised {
+            return Err(SicpError::UserRaised {
                 message: "No method for these types: GET-SALARY".into(),
                 irritants: vec![Value::Sym(tag)],
             });
@@ -263,7 +262,7 @@ mod ex_2_74 {
         table: &OpTable,
         name: &str,
         files: &[Value],
-    ) -> Result<Option<Value>, SchemeError> {
+    ) -> Result<Option<Value>, SicpError> {
         for file in files {
             let record = get_record(table, name, file)?;
             if record != Value::Bool(false) {
@@ -273,10 +272,10 @@ mod ex_2_74 {
         Ok(None)
     }
 
-    fn as_salary(v: &Value) -> Result<i128, SchemeError> {
+    fn as_salary(v: &Value) -> Result<i128, SicpError> {
         match v {
             Value::Int(n) => Ok(*n),
-            other => Err(SchemeError::TypeMismatch(format!("not a salary: {other}"))),
+            other => Err(SicpError::TypeMismatch(format!("not a salary: {other}"))),
         }
     }
 
@@ -285,7 +284,7 @@ mod ex_2_74 {
     /// third division installed with no change to headquarters' code.
     /// Returns the salaries found for Bitdiddle in the north file, for
     /// Hacker in the south file, and for Hacker across both files.
-    pub fn ex_2_74() -> Result<(i128, i128, i128), SchemeError> {
+    pub fn ex_2_74() -> Result<(i128, i128, i128), SicpError> {
         let table = OpTable::new();
         install_north_division(&table);
         install_south_division(&table);
@@ -302,7 +301,7 @@ mod ex_2_74 {
         let hacker_salary = as_salary(&get_salary(&table, &hacker_record)?)?;
 
         let found = find_employee_record(&table, "Hacker", &[north, south, acquired])?
-            .ok_or_else(|| SchemeError::TypeMismatch("Hacker is in the south file".into()))?;
+            .ok_or_else(|| SicpError::TypeMismatch("Hacker is in the south file".into()))?;
         let found_salary = as_salary(&get_salary(&table, &found)?)?;
 
         Ok((bitdiddle_salary, hacker_salary, found_salary))

@@ -9,10 +9,10 @@ import io.kotest.matchers.shouldBe
 
 public class E4_37Test :
     FunSpec({
-        test("Exercise 4.37: Ben's generator answers (3 4 5) first").config(
+        test("Exercise 4.37: Ben's generator answers [3, 4, 5] first").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            benFirstTriple() shouldBe "(3 4 5)"
+            benFirstTriple() shouldBe "[3, 4, 5]"
         }
 
         test("Exercise 4.37: the book-order program backtracks 461 times to the first triple").config(

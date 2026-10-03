@@ -1,89 +1,85 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Original exercise
 
-//! The reference solution of exercise 4.60: the `lives-near` pairs. The
-//! book's rule answers each same-town pair twice, once per order; the
-//! edition's deduplicated rule keeps the pair whose first member sorts
-//! before the second under a host `name<` predicate applied with
-//! `lisp-value`.
+//! The reference solution of exercise 4.60: `lives-near` deduplicates
+//! symmetric pairs with an explicit name-order predicate.
 
-use std::rc::Rc;
+/// Shared typed support for this exercise.
+pub mod support;
 
-use ch04::sec_4_4::{Engine, microshaft};
-use sicp_runtime::{Handler, SchemeError, Value, print_value};
+use ch04::sec_4_3::Predicate;
+use ch04::sec_4_4::{Database, Query, qeval};
+use sicp_runtime::host::query::Term;
+use support::{answer_text, atom, fact, list, relation, rule, var};
 
-mod ex_4_60 {
-    //! Exercise 4.60: the duplicated pairs and the once-only rule.
-
-    use super::*;
-
-    /// The book's `lives-near` rule, which lists each pair twice.
-    pub fn duplicated() -> Engine {
-        let engine = microshaft();
-        engine.load(&[
-            "(rule (lives-near ?person-1 ?person-2) \
-             (and (address ?person-1 (?town . ?rest-1)) \
-             (address ?person-2 (?town . ?rest-2)) \
-             (not (same ?person-1 ?person-2))))",
-            "(rule (same ?x ?x))",
-        ]);
-        engine
-    }
-
-    /// The deduplicated rule: person-1 must print before person-2.
-    pub fn deduplicated() -> Engine {
-        // A fresh engine without the duplicated rule, plus the ordered
-        // one and the host comparison it applies.
-        let ordered = microshaft();
-        ordered.load(&["(rule (same ?x ?x))"]);
-        ordered.install_predicate("name<", name_less_than());
-        ordered.load(&["(rule (lives-near ?person-1 ?person-2) \
-             (and (address ?person-1 (?town . ?rest-1)) \
-             (address ?person-2 (?town . ?rest-2)) \
-             (lisp-value name< ?person-1 ?person-2)))"]);
-        ordered
-    }
-
-    /// The host predicate `lisp-value` applies: printed-name order.
-    fn name_less_than() -> Handler {
-        Rc::new(|args: &[Value]| match args {
-            [a, b] => Ok(Value::boolean(print_value(a) < print_value(b))),
-            _ => Err(SchemeError::TypeMismatch("name< wants two people".into())),
-        })
-    }
+fn addresses() -> Database {
+    let mut database = Database::new();
+    database.assert(fact(
+        "address",
+        vec![
+            atom("Bitdiddle Ben"),
+            list(vec![
+                atom("Slumerville"),
+                atom("Ridge Road"),
+                Term::Integer(10),
+            ]),
+        ],
+    ));
+    database.assert(fact(
+        "address",
+        vec![
+            atom("Hacker Alyssa P"),
+            list(vec![atom("Cambridge"), atom("Mass Ave"), Term::Integer(78)]),
+        ],
+    ));
+    database.assert(fact(
+        "address",
+        vec![
+            atom("Fect Cy D"),
+            list(vec![atom("Cambridge"), atom("Mass Ave"), Term::Integer(78)]),
+        ],
+    ));
+    database.add_rule(rule(
+        fact("lives_near", vec![var("person_1"), var("person_2")]),
+        vec![
+            relation(
+                "address",
+                vec![
+                    var("person_1"),
+                    list(vec![var("town_1"), var("street_1"), var("number_1")]),
+                ],
+            ),
+            relation(
+                "address",
+                vec![
+                    var("person_2"),
+                    list(vec![var("town_2"), var("street_2"), var("number_2")]),
+                ],
+            ),
+            Query::Value(
+                Predicate::Eq(
+                    Term::Variable("town_1".to_owned()),
+                    Term::Variable("town_2".to_owned()),
+                ),
+                vec![],
+            ),
+            Query::Value(
+                Predicate::TextLt(
+                    Term::Variable("person_1".to_owned()),
+                    Term::Variable("person_2".to_owned()),
+                ),
+                vec![],
+            ),
+        ],
+    ));
+    database
 }
 
 #[test]
 fn ex_4_60() {
-    // The book's rule lists every pair twice, once per order.
-    assert_eq!(
-        ex_4_60::duplicated()
-            .answers("(lives-near ?person-1 ?person-2)")
-            .len(),
-        8,
-        "four same-town pairs, each in both orders"
+    let outcome = qeval(
+        &addresses(),
+        &relation("lives_near", vec![var("person_1"), var("person_2")]),
     );
-    assert_eq!(
-        ex_4_60::duplicated().answers("(lives-near ?person-1 ?person-2)"),
-        [
-            "(lives-near (Bitdiddle Ben) (Reasoner Louis))",
-            "(lives-near (Fect Cy D) (Hacker Alyssa P))",
-            "(lives-near (Bitdiddle Ben) (Aull DeWitt))",
-            "(lives-near (Hacker Alyssa P) (Fect Cy D))",
-            "(lives-near (Reasoner Louis) (Bitdiddle Ben))",
-            "(lives-near (Reasoner Louis) (Aull DeWitt))",
-            "(lives-near (Aull DeWitt) (Bitdiddle Ben))",
-            "(lives-near (Aull DeWitt) (Reasoner Louis))",
-        ]
-    );
-    // The ordered rule lists each pair once.
-    assert_eq!(
-        ex_4_60::deduplicated().answers("(lives-near ?person-1 ?person-2)"),
-        [
-            "(lives-near (Bitdiddle Ben) (Reasoner Louis))",
-            "(lives-near (Fect Cy D) (Hacker Alyssa P))",
-            "(lives-near (Aull DeWitt) (Bitdiddle Ben))",
-            "(lives-near (Aull DeWitt) (Reasoner Louis))",
-        ]
-    );
+    assert_eq!(outcome.answers.len(), 1);
+    assert_eq!(answer_text(&outcome.answers[0], "person_1"), "Fect Cy D");
 }

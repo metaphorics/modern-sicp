@@ -20,7 +20,7 @@ check:
         just --justfile "$edition/justfile" --working-directory "$edition" lint
     done
     just check-tools
-    just check-corpus
+    just check-exercise-map
 
 # Tests across every edition and the Python tools.
 test:
@@ -30,13 +30,16 @@ test:
         just --justfile "$edition/justfile" --working-directory "$edition" test
     done
     just test-tools
+    just test-conformance
 
 # The pending scaffolds per edition; nonzero while one is unsolved, which is the report.
 scaffold:
     #!/usr/bin/env bash
+    status=0
     for edition in {{editions}}; do
-        just --justfile "$edition/justfile" --working-directory "$edition" scaffold
+        just --justfile "$edition/justfile" --working-directory "$edition" scaffold || status=1
     done
+    exit "$status"
 
 # HTML, EPUB 3 and PDF for every edition.
 books:
@@ -45,6 +48,8 @@ books:
     for edition in {{editions}}; do
         just --justfile "$edition/justfile" --working-directory "$edition" book
     done
+    just check-book-structure
+    just check-listing-width
 
 check-tools:
     uv run --project tools ruff format --check tools
@@ -54,9 +59,31 @@ check-tools:
 test-tools:
     uv run --project tools pytest tools/tests
 
-# Re-runs every Scheme corpus program and compares it to its expected file.
-check-corpus:
-    uv run --project tools python tools/scheme_corpus_check.py --root spec/scheme-subset
+check-book-structure:
+    uv run --project tools python tools/book_structure_check.py --texi2any "{{books-prefix}}/bin/texi2any"
+
+# Code listings wider than the PDF measure, from each edition's last PDF log.
+check-listing-width:
+    uv run --project tools python tools/listing_width_check.py --makeinfo "{{books-prefix}}/bin/makeinfo"
+
+# Every exercise row of docs/exercise-map.md against the edition trees.
+check-exercise-map:
+    uv run --project tools python tools/exercise_map_check.py
+
+# Runs every host-subset case through each edition's teaching engines and
+# compares it with the native toolchain or the independent reference model.
+# The OCaml driver runs `opam exec` in OPAMSWITCH, the pinned 5.5.1 switch
+# unless the caller names another (CI names its local switch). The TypeScript
+# driver runs bare `node`, so the recipe puts the pinned Node 24.21.0 first on
+# PATH exactly as typescript/justfile does for its own recipes.
+test-conformance:
+    #!/usr/bin/env bash
+    node_dir="{{env_var("HOME")}}/.local/share/mise/installs/node/24.21.0/bin"
+    if [ ! -x "$node_dir/node" ]; then
+        echo "pinned Node 24.21.0 missing at $node_dir (run the edition setup)" >&2
+        exit 1
+    fi
+    PATH="$node_dir:$PATH" OPAMSWITCH="${OPAMSWITCH:-5.5.1}" uv run --locked --project tools python tools/host_conformance_check.py
 
 # CONTRIBUTING.md states that this syncs tools/ and runs its tests.
 setup-tools:

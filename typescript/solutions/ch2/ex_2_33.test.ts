@@ -8,11 +8,11 @@ import { appendViaAccumulate, lengthViaAccumulate, mapViaAccumulate } from "./ex
 
 describe("exercise 2.33", () => {
   it("map accumulates the consed results", () => {
-    expect(showList(mapViaAccumulate((x) => x * x, list(1, 2, 3, 4)))).toBe("(1 4 9 16)");
+    expect(showList(mapViaAccumulate((x) => x * x, list(1, 2, 3, 4)))).toBe("[1, 4, 9, 16]");
   });
 
   it("append accumulates seq1 onto seq2", () => {
-    expect(showList(appendViaAccumulate(list(1, 2, 3), list(4, 5, 6)))).toBe("(1 2 3 4 5 6)");
+    expect(showList(appendViaAccumulate(list(1, 2, 3), list(4, 5, 6)))).toBe("[1, 2, 3, 4, 5, 6]");
   });
 
   it("length accumulates a count", () => {

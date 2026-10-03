@@ -1,191 +1,205 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Adapted from the Scheme program of SICP section 5.4 *)
 
-(** Exercise 5.30: errors signaled inside the evaluator.
+let ( let* ) = Result.bind
 
-    (a) An unbound variable lookup answers a distinguished condition
-    code -- a pair tagged with a reserved symbol no user symbol can
-    spell -- and [ev-variable] tests for it and goes to
-    [signal-error].  (b) Every primitive application is checked:
-    [apply-primitive-procedure] answers the condition code when the
-    primitive refuses the application (wrong operand count, [car] of a
-    non-pair, division by zero), and [primitive-apply] tests for it.
-    Both paths land in the base controller's [signal-error], which
-    stops the machine with the object-level message. *)
-
-let ( >>= ) = Result.bind
-
-module Eval = Sicp_ch5.Sec_5_4
 module Ast = Sicp_common.Ast
+module Check = Sicp_common.Check
+module Env = Sicp_common.Env
+module Eval_error = Sicp_common.Eval_error
 module Value = Sicp_common.Value
+module M = Sicp_ch5.Sec_5_1
+module Eval = Sicp_ch5.Sec_5_4
 
-(** The reserved tag character no object symbol can carry. *)
-let condition_mark = "\000"
+(* A constructor no guest type can declare: guest constructors start
+   with a capital letter. *)
+let condition_tag = "#condition"
 
-let condition_word tag detail =
-  Eval.V (Value.pair (Value.symbol (condition_mark ^ tag)) (Value.string detail))
-;;
+(* A signaled interaction does not finish its program: the report is
+   already on the output, and [run] goes on to the next interaction. *)
+let signaled = "the interaction was signaled"
 
-let is_condition_word tag w =
-  match w with
+let condition_detail = function
   | Eval.V v ->
     (match Value.view v with
-     | Value.Pair (s, _) ->
-       (match Value.view s with
-        | Value.Symbol t -> t = condition_mark ^ tag
-        | _ -> false)
-     | _ -> false)
-  | _ -> false
+     | Value.Constructor (tag, [ detail ]) when tag = condition_tag ->
+       (match Value.view detail with
+        | Value.String s -> Some s
+        | _ -> None)
+     | _ -> None)
+  | _ -> None
 ;;
 
-(** [unwrap_condition w] is the detail a condition-code word carries;
-    the overridden [signal-error] reports the detail, never the
-    reserved tag a user symbol cannot spell. *)
-let unwrap_condition w =
-  match w with
-  | Eval.V v ->
-    (match Value.view v with
-     | Value.Pair (_, rest) ->
-       (match Value.view rest with
-        | Value.String detail -> detail
-        | _ -> Eval.word_to_string w)
-     | _ -> Eval.word_to_string w)
-  | w -> Eval.word_to_string w
-;;
+let r name = M.Reg name
 
-(** The exercise's operations: the checking lookup and the checking
-    primitive application, plus the two condition-code tests. *)
-let operations =
-  [ ( "lookup-variable-value"
-    , Eval.Value_op
-        (function
-          | [ Eval.Exp e; Eval.Env env ] ->
-            (match Ast.view e with
-             | Ast.Variable name ->
-               (match Value.env_find_binding env name with
-                | Some v -> Ok (Eval.V v)
-                | None ->
-                  Ok (condition_word "unbound-variable" ("unbound variable: " ^ name)))
-             | _ -> Error (Eval.Op_failed "lookup-variable-value needs a variable"))
-          | _ ->
-            Error (Eval.Arity "lookup-variable-value needs a variable and an environment"))
-    )
-  ; ( "variable-lookup-failed?"
-    , Eval.Value_op
-        (function
-          | [ w ] -> Ok (Eval.V (Value.bool (is_condition_word "unbound-variable" w)))
-          | _ -> Error (Eval.Arity "variable-lookup-failed? needs one argument")) )
-  ; ( "apply-primitive-procedure"
-    , Eval.Value_op
-        (function
-          | [ Eval.V v; Eval.Args ws ] ->
-            (match Value.view v with
-             | Value.Primitive_procedure name ->
-               Eval.word_values ws
-               >>= fun vs ->
-               (match Eval.apply_object_primitive name vs with
-                | Ok r -> Ok (Eval.V r)
-                | Error (Eval.Op_failed detail) ->
-                  Ok (condition_word "primitive-failure" detail)
-                | Error other ->
-                  Ok (condition_word "primitive-failure" (Eval.error_to_string other)))
-             | _ ->
-               Error
-                 (Eval.Op_failed "apply-primitive-procedure needs a primitive procedure"))
-          | _ ->
-            Error
-              (Eval.Op_failed
-                 "apply-primitive-procedure needs a procedure and an operand list")) )
-  ; ( "primitive-application-failed?"
-    , Eval.Value_op
-        (function
-          | [ w ] -> Ok (Eval.V (Value.bool (is_condition_word "primitive-failure" w)))
-          | _ -> Error (Eval.Arity "primitive-application-failed? needs one argument")) )
-  ; ( "signal-error"
-    , Eval.Action_op
-        (function
-          | [ w ] -> Error (Eval.Op_failed (unwrap_condition w))
-          | _ -> Error (Eval.Arity "signal-error needs one argument")) )
+let checked_primitive_apply =
+  [ M.Label "primitive-apply"
+  ; M.Assign_op ("val", "apply-primitive-procedure", [ r "proc"; r "argl" ])
+  ; M.Test ("condition?", [ r "val" ])
+  ; M.Branch "signal-error"
+  ; M.Assign_op ("argl", "primitive-excess-arguments", [ r "proc"; r "argl" ])
+  ; M.Restore "continue"
+  ; M.Goto "apply-excess"
   ]
 ;;
 
-(** [ev_variable_checking] tests the lookup's condition code before
-    continuing. *)
-let ev_variable_checking =
-  {|ev-variable
-  (assign val
-          (op lookup-variable-value)
-          (reg exp)
-          (reg env))
-  (test (op variable-lookup-failed?) (reg val))
-  (branch (label variable-lookup-failed))
-  (goto (reg continue))
-variable-lookup-failed
-  (goto (label signal-error))|}
+let checked_binary_apply =
+  [ M.Label "ev-binary-apply"
+  ; M.Restore "argl"
+  ; M.Restore "exp"
+  ; M.Restore "continue"
+  ; M.Assign_op ("val", "apply-binary", [ r "exp"; r "argl"; r "val" ])
+  ; M.Test ("condition?", [ r "val" ])
+  ; M.Branch "signal-error"
+  ; M.Goto_reg "continue"
+  ]
 ;;
 
-(** [primitive_apply_checking] tests the application's condition code
-    before restoring [continue]. *)
-let primitive_apply_checking =
-  {|primitive-apply
-  (assign val (op apply-primitive-procedure)
-              (reg proc)
-              (reg argl))
-  (test (op primitive-application-failed?) (reg val))
-  (branch (label primitive-application-failed))
-  (restore continue)
-  (goto (reg continue))
-primitive-application-failed
-  (goto (label signal-error))|}
-;;
+let signal_error = [ M.Label "signal-error"; M.Perform ("signal-error", [ r "val" ]) ]
 
-(** The exercise's controller: the base controller with the two
-    checking entries. *)
 let controller =
-  String.concat
-    "\n"
-    (List.filter_map
-       (fun (name, text) ->
-          match name with
-          | "ev-variable" -> Some ev_variable_checking
-          | "primitive-apply" -> Some primitive_apply_checking
-          | _ -> Some text)
-       Eval.controller_fragments)
+  Sec_5_23.extend ~dispatch:[] ~entries:signal_error
+  |> Sec_5_23.splice ~from:"ev-binary-apply" ~until:"ev-collect" checked_binary_apply
+  |> Sec_5_23.splice
+       ~from:"primitive-apply"
+       ~until:"compound-apply"
+       checked_primitive_apply
 ;;
 
-let run source =
-  Eval.make_evaluator ~controller ~operations ~source ()
-  >>= fun m ->
-  let note =
-    match Eval.start m with
-    | Ok () -> "end of input"
-    | Error e when Eval.error_to_string e = "operation failed: " ^ Eval.input_exhausted ->
-      "end of input"
-    | Error e -> Eval.error_to_string e
+(* Only the runtime failures of a checked program become condition
+   codes; a failure of the machine itself still stops it. *)
+let caught = function
+  | Eval_error.Division_by_zero
+  | Eval_error.Bounds_error _
+  | Eval_error.Type_error _
+  | Eval_error.User_error _ -> true
+  | _ -> false
+;;
+
+let with_condition = function
+  | Error e when caught e ->
+    Ok (Eval.V (Value.construct condition_tag [ Value.string (Eval_error.to_string e) ]))
+  | outcome -> outcome
+;;
+
+(* A primitive's guest callback runs on the base evaluator: a callback
+   failure escapes as an error of the primitive, so the primitive's
+   application becomes the condition on the signaling machine. *)
+let guest_apply ~emit proc vs =
+  let* ev = Eval.make_evaluator ~controller:Eval.base_controller ~emit () in
+  let names = List.mapi (fun i _ -> Printf.sprintf "argument %d" i) vs in
+  let env = Env.extend (("procedure", proc) :: List.combine names vs) Env.empty in
+  Eval.eval
+    ev
+    env
+    (Ast.apply (Ast.var "procedure") (List.map (fun name -> Ast.var name) names))
+;;
+
+let arity expected ws =
+  Error (Eval_error.Arity_mismatch { expected; given = List.length ws })
+;;
+
+let operations ~emit =
+  let base = Eval.operation_table ~apply:(guest_apply ~emit) in
+  let checked name =
+    match List.assoc_opt name base with
+    | Some (M.Value_op f) -> Some (name, M.Value_op (fun ws -> with_condition (f ws)))
+    | _ -> None
   in
-  Ok (note :: Eval.transcript m)
+  List.filter_map checked [ "apply-primitive-procedure"; "apply-binary" ]
+  @ [ ( "condition?"
+      , M.Test_op
+          (function
+            | [ w ] -> Ok (Option.is_some (condition_detail w))
+            | ws -> arity 1 ws) )
+    ; ( "signal-error"
+      , M.Action_op
+          (function
+            | [ w ] ->
+              (match condition_detail w with
+               | Some detail ->
+                 emit ("error: " ^ detail ^ "\n");
+                 Error (Eval_error.Invalid_form signaled)
+               | None ->
+                 Error (Eval_error.Bad_instruction "signal-error without a condition"))
+            | ws -> arity 1 ws) )
+    ]
 ;;
 
-(** [ex_5_30 ()] runs the checking evaluator over the caught failures
-    and one clean computation: an unbound variable, [car] of a symbol,
-    division by zero, a wrong operand count, and a factorial that must
-    still answer [120]. *)
+let interactions =
+  [ "let a = Array.make 3 0\nlet () = print_endline (string_of_int (Array.get a 5))\n"
+  ; "let () = print_endline (string_of_int (10 / 0))\n"
+  ; "let () = print_endline (string_of_int (7 mod 0))\n"
+  ; "let () = print_endline (string_of_int (List.length (List.map (fun x -> 10 / x) [ 1; \
+     0 ])))\n"
+  ; "let v = 10 / 0\nlet () = print_endline \"after\"\n"
+  ; "let rec factorial n = if n = 1 then 1 else factorial (n - 1) * n\n\
+     let () = print_endline (string_of_int (factorial 5))\n"
+  ]
+;;
+
+let rejected =
+  [ "let () = print_endline (string_of_int no_such_variable)\n"
+  ; "let f x y = x + y\nlet () = print_endline (string_of_int (f 1))\n"
+  ]
+;;
+
+let is_signaled = function
+  | Eval_error.Invalid_form detail -> detail = signaled
+  | _ -> false
+;;
+
+let run sources =
+  let out = Buffer.create 64 in
+  let emit = Buffer.add_string out in
+  let* ev = Eval.make_evaluator ~operations:(operations ~emit) ~controller ~emit () in
+  let* () =
+    List.fold_left
+      (fun acc source ->
+         let* () = acc in
+         let* program = Sec_5_23.admit source in
+         match Eval.run_program ev program with
+         | Ok _ -> Ok ()
+         | Error e when is_signaled e -> Ok ()
+         | Error e -> Error e)
+      (Ok ())
+      sources
+  in
+  Ok (Sec_5_23.lines_of (Buffer.contents out))
+;;
+
+(* The saved words a failed call leaves on the stack: the driver did
+   not restore them, because the interaction stopped mid-call. *)
+let depth_after_failure () =
+  let* ev =
+    Eval.make_evaluator ~operations:(operations ~emit:ignore) ~controller ~emit:ignore ()
+  in
+  let* program = Sec_5_23.admit (List.nth interactions 1) in
+  let* () =
+    match Eval.run_program ev program with
+    | Ok _ -> Error (Eval_error.Invalid_form "the failing interaction did not fail")
+    | Error e when is_signaled e -> Ok ()
+    | Error e -> Error e
+  in
+  Ok (M.stack_depth (Eval.machine ev))
+;;
+
+let admission source =
+  match Check.check ~filename:"session.ml" source with
+  | Ok _ -> "admitted"
+  | Error d -> "rejected before evaluation: " ^ Check.kind_to_string d.Check.kind
+;;
+
 let ex_5_30 () =
-  run "(car 5)"
-  >>= fun car_failure ->
-  run "(/ 1 0)"
-  >>= fun division_failure ->
-  run "(+ 1 no-such-variable)"
-  >>= fun unbound_failure ->
-  run "(remainder 7)"
-  >>= fun arity_failure ->
-  run
-    {|
-(define (factorial n)
-  (if (= n 1)
-      1
-      (* n (factorial (- n 1)))))
-(factorial 5)|}
-  >>= fun clean ->
-  Ok (car_failure @ division_failure @ unbound_failure @ arity_failure @ clean)
+  let* caught = run interactions in
+  let* depth = depth_after_failure () in
+  let base =
+    match Sec_5_23.session ~controller:Eval.base_controller (List.nth interactions 1) with
+    | Ok lines -> "base evaluator: " ^ String.concat " " lines
+    | Error e -> "base evaluator stops: " ^ Eval_error.to_string e
+  in
+  Ok
+    (caught
+     @ [ Printf.sprintf "saved frames left by the failed interaction: %d" depth; base ]
+     @ List.map admission rejected)
 ;;

@@ -2,15 +2,21 @@
 // Original exercise
 
 import { describe, expect, it } from "vitest";
-import { ex_4_66, wheelAccumulationCounts } from "./ex_4_66.js";
+import {
+  naiveWheelCount,
+  programmerSalaries,
+  programmerSalarySum,
+  salvagedWheelCount,
+} from "./ex_4_66.js";
 
-describe("exercise 4.66: accumulation over proof frames", () => {
-  it("distinguishes derivation frames from distinct values", () => {
-    expect(wheelAccumulationCounts()).toStrictEqual({ proofCount: 5, distinctAnswerCount: 2 });
+describe("exercise 4.66: accumulation over frames", () => {
+  it("sums the programmers' salaries from matched frames", () => {
+    expect(programmerSalaries()).toStrictEqual([40000, 35000]);
+    expect(programmerSalarySum()).toBe(75000);
   });
 
-  it("describes why raw accumulation overcounts", () => {
-    expect(ex_4_66()).toContain("one frame per proof");
-    expect(ex_4_66()).toContain("deduplicate");
+  it("counts five derivations but two wheels", () => {
+    expect(naiveWheelCount()).toBe(5);
+    expect(salvagedWheelCount()).toBe(2);
   });
 });

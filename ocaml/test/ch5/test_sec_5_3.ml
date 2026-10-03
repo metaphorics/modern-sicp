@@ -9,6 +9,8 @@
    on a broken clause cannot pass. *)
 
 module Memory = Sicp_ch5.Sec_5_3
+module M = Sicp_ch5.Sec_5_1
+module Eval_error = Sicp_common.Eval_error
 module S20 = Sicp_ch5_solutions.Sec_5_20
 module S21 = Sicp_ch5_solutions.Sec_5_21
 module S22 = Sicp_ch5_solutions.Sec_5_22
@@ -20,12 +22,14 @@ let the_int = Alcotest.check Alcotest.int
 
 let strings_outcome name expected = function
   | Ok lines -> strings name expected lines
-  | Error e -> Alcotest.fail (Memory.error_to_string e)
+  | Error e -> Alcotest.fail (Eval_error.to_string e)
 ;;
+
+let num n = M.Const (Memory.Num n)
 
 let run_or_fail = function
   | Ok () -> ()
-  | Error e -> Alcotest.fail (Memory.error_to_string e)
+  | Error e -> Alcotest.fail (Eval_error.to_string e)
 ;;
 
 (* The typed words: the book's letter-prefixed pointers render back in
@@ -36,7 +40,7 @@ let words () =
   >>= fun x ->
   strings_outcome
     "cell and selectors"
-    [ "p0"; "n1"; "p1"; "p2"; "true"; "true"; "true"; "true"; "(1 7)" ]
+    [ "p0"; "n1"; "p1"; "p2"; "true"; "true"; "true"; "true"; "[1; 7]" ]
     (Memory.cons mem (Memory.Num 7) Memory.Empty
      >>= fun tail ->
      Memory.set_cdr mem x tail
@@ -53,7 +57,7 @@ let words () =
        ; string_of_bool (Memory.is_pair x)
        ; string_of_bool (Memory.is_null Memory.Empty)
        ; string_of_bool (Memory.is_number (Memory.Num 4))
-       ; string_of_bool (Memory.is_symbol (Memory.Sym "junk"))
+       ; string_of_bool (Memory.is_atom (Memory.Atom "junk"))
        ; Memory.write mem x
        ]);
   Ok ()
@@ -67,12 +71,12 @@ let stack () =
     ~registers:[ "x" ]
     ~operations:[]
     ~controller:
-      {|(controller
-   (perform (op initialize-stack))
-   (save x)
-   (save x)
-   (restore x)
-   (perform (op print-stack-statistics)))|}
+      [ M.Perform ("initialize-stack", [])
+      ; M.Save "x"
+      ; M.Save "x"
+      ; M.Restore "x"
+      ; M.Perform ("print-stack-statistics", [])
+      ]
     ~memory:mem
   >>= fun m ->
   Memory.set_register m "x" (Memory.Num 7)
@@ -104,25 +108,15 @@ let gc () =
     ~registers:[ "x"; "t" ]
     ~operations:[]
     ~controller:
-      {|(controller
- build
-   (perform (op initialize-stack))
-   (assign x (op cons) (const 1) (reg x))
-   (assign x (op cons) (const 2) (reg x))
-   (assign x (op cons) (const 3) (reg x))
-   (assign x (op cons) (const 4) (reg x))
-   (assign t (op cons) (const 9) (const 9))
-   (assign t (reg x))
-   (assign t (op cons) (const 9) (const 9))
-   (assign t (reg x))
-   (assign t (op cons) (const 9) (const 9))
-   (assign t (reg x))
-   (assign t (op cons) (const 9) (const 9))
-   (assign t (reg x))
-   (assign t (op cons) (const 9) (const 9))
-   (assign t (reg x))
-   (assign t (op cons) (const 9) (const 9))
-   (assign t (reg x)))|}
+      ((M.Label "build"
+        :: M.Perform ("initialize-stack", [])
+        :: List.map
+             (fun n -> M.Assign_op ("x", "cons", [ num n; M.Reg "x" ]))
+             [ 1; 2; 3; 4 ])
+       @ List.concat
+           (List.init 6 (fun _ ->
+              [ M.Assign_op ("t", "cons", [ num 9; num 9 ]); M.Assign ("t", M.Reg "x") ]))
+      )
     ~memory:mem
   >>= fun m ->
   Memory.set_register m "x" Memory.Empty
@@ -135,7 +129,7 @@ let gc () =
     match Memory.get_register m "x" with
     | Ok (Pair 3) -> 3
     | Ok w -> Alcotest.fail ("x before the collection was " ^ Memory.word_to_string w)
-    | Error e -> Alcotest.fail (Memory.error_to_string e)
+    | Error e -> Alcotest.fail (Eval_error.to_string e)
   in
   Memory.collect_garbage m
   >>= fun () ->
@@ -168,15 +162,10 @@ let exhaustion () =
     ~registers:[ "x" ]
     ~operations:[]
     ~controller:
-      {|(controller
-   (perform (op initialize-stack))
-   (assign x (op cons) (const 1) (reg x))
-   (assign x (op cons) (const 2) (reg x))
-   (assign x (op cons) (const 3) (reg x))
-   (assign x (op cons) (const 4) (reg x))
-   (assign x (op cons) (const 5) (reg x))
-   (assign x (op cons) (const 6) (reg x))
-   (assign x (op cons) (const 7) (reg x)))|}
+      (M.Perform ("initialize-stack", [])
+       :: List.map
+            (fun n -> M.Assign_op ("x", "cons", [ num n; M.Reg "x" ]))
+            [ 1; 2; 3; 4; 5; 6; 7 ])
     ~memory:mem
   >>= fun m ->
   Memory.set_register m "x" Memory.Empty
@@ -185,13 +174,11 @@ let exhaustion () =
   >>= fun () ->
   match Memory.start m with
   | Ok () -> Alcotest.fail "the memory should have run out"
-  | Error e ->
-    the_string
-      "typed exhaustion"
-      "operation failed: the memory is exhausted"
-      (Memory.error_to_string e);
+  | Error (Eval_error.Bounds_error detail) ->
+    the_string "typed exhaustion" "the memory is exhausted" detail;
     the_int "the collector ran once" 1 (Memory.collections mem);
     Ok ()
+  | Error e -> Alcotest.fail (Eval_error.to_string e)
 ;;
 
 (* The collector without a machine to root it is a typed failure. *)
@@ -200,17 +187,18 @@ let unattached () =
   Memory.make_machine
     ~registers:[ "x" ]
     ~operations:[]
-    ~controller:{|(controller (assign x (const 1)))|}
+    ~controller:[ M.Assign ("x", num 1) ]
     ~memory:mem
   >>= fun m ->
   match Memory.collect_garbage m with
   | Ok () -> Alcotest.fail "no collector is attached"
-  | Error e ->
+  | Error (Eval_error.Invalid_form detail) ->
     the_string
       "typed unattached collector"
-      "operation failed: no collector is attached to the machine"
-      (Memory.error_to_string e);
+      "no collector is attached to the machine"
+      detail;
     Ok ()
+  | Error e -> Alcotest.fail (Eval_error.to_string e)
 ;;
 
 (* The deepest pin: the collector fires in the middle of the recursive
@@ -266,9 +254,9 @@ let ex_5_20 () =
 let ex_5_20a () =
   strings_outcome
     "the allocator's trace"
-    [ "cons -> p1 = (n1 n2); free p1 -> p2"
-    ; "cons -> p2 = (p1 e0); free p2 -> p3"
-    ; "cons -> p3 = (p1 p2); free p3 -> p4"
+    [ "cons -> p1 = (n1, n2); free p1 -> p2"
+    ; "cons -> p2 = (p1, e0); free p2 -> p3"
+    ; "cons -> p3 = (p1, p2); free p3 -> p4"
     ; "x = p1"
     ; "y = p3"
     ; "free = p4"
@@ -281,13 +269,13 @@ let ex_5_20a () =
 let ex_5_21 () =
   strings_outcome
     "both machines beside the oracle"
-    [ "(1 2 (3 (4 5))): recursive n5, iterative n5, oracle 5;"
+    [ "[1; 2; [3; [4; 5]]]: recursive n5, iterative n5, oracle 5;"
       ^ " recursive stack total-pushes = 21 maximum-depth = 14,"
       ^ " iterative stack total-pushes = 14 maximum-depth = 10"
-    ; "((7)): recursive n1, iterative n1, oracle 1;"
+    ; "[[7]]: recursive n1, iterative n1, oracle 1;"
       ^ " recursive stack total-pushes = 6 maximum-depth = 4,"
       ^ " iterative stack total-pushes = 4 maximum-depth = 4"
-    ; "(): recursive n0, iterative n0, oracle 0;"
+    ; "[]: recursive n0, iterative n0, oracle 0;"
       ^ " recursive stack total-pushes = 0 maximum-depth = 0,"
       ^ " iterative stack total-pushes = 0 maximum-depth = 0"
     ]
@@ -299,8 +287,9 @@ let ex_5_21 () =
 let ex_5_22 () =
   strings_outcome
     "append and append!"
-    [ "append: z = p13 = (1 2 3 4 5)"
-    ; "append: x is still (1 2 3) (p2), free moved to p14 -- three fresh cells"
+    [ "append: z = p13 = [1; 2; 3; 4; 5]"
+    ; "append: x is still [1; 2; 3] (p2), free moved to p14 -- three fresh cells for the"
+      ^ " copy, six for the saved words"
     ; "append!: before, the last pair of x points at e0:\n"
       ^ "index    0   1   2   3   4   5   6   7\n"
       ^ "the-cars n3  n2  n1  n5  n4  e0  e0  e0\n"
@@ -309,7 +298,7 @@ let ex_5_22 () =
       ^ "index    0   1   2   3   4   5   6   7\n"
       ^ "the-cars n3  n2  n1  n5  n4  e0  e0  e0\n"
       ^ "the-cdrs p4  p0  p1  e0  p3  e0  e0  e0"
-    ; "append!: the answer is x itself, now (1 2 3 4 5) -- the same pointer p2"
+    ; "append!: the answer is x itself, now [1; 2; 3; 4; 5] -- the same pointer p2"
       ^ " the caller passed, and free is still p5"
     ]
     (S22.ex_5_22 ())

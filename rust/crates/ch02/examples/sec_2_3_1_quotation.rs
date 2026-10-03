@@ -14,13 +14,13 @@ fn sym(s: &str) -> Symbol {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // The book's `(list 'a 'b 'c)`: a flat list of symbols.
+    // A flat list of symbols, built from the symbols themselves.
     let letters: List<Symbol> = List::from_iter([sym("a"), sym("b"), sym("c")]);
     println!("{letters}");
     // => (a b c)
     assert_eq!(letters.to_string(), "(a b c)");
 
-    // `(list (list 'george))`: a list containing one list. `Nest`
+    // A list containing one list: `Nest`
     // holds this shape directly, the same tree type 2.2 built for
     // nested list structure.
     let nested: Nest<Symbol> = sub(&[sub(&[leaf(sym("george"))])]);

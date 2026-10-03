@@ -12,6 +12,6 @@ public class E5_48Test :
         test("Exercise 5.48: the two-machine session answers ok then 120").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            compileAndRunSession() shouldBe emptyList()
+            compileAndRunSession().last() shouldBe "the two runs agree: true"
         }
     })

@@ -28,19 +28,17 @@ in the unhighlighted PDF, and the same value is asserted in the listing's
 file under @file{packages/ch0/src/}, so the transcript cannot drift from
 the code. Lines the book's programs print rather than evaluate, a probe
 or a table driven by a loop, appear as comment lines without the marker.
-Where a chapter preserves a REPL session verbatim, the session's own
-responses are kept in the same comment form, including the sessions'
-definitions:
+A definition carries no response at all: it binds a name rather than
+answering with a value. Every expression does answer, and the answer
+follows in the marker form whatever its type:
 
 @example typescript
 const a = 3;
-// ;Value: a
 
 const b = a + 1;
-// ;Value: b
 
-a + b + (a * b)
-// ;Value: 19
+a === b
+// => false
 @end example
 
 @noindent
@@ -53,8 +51,8 @@ result in every listing is asserted by the file the listing names.
 
 Exercise numbers are one to one with SICP. An exercise whose material
 survives in TypeScript keeps its number and its intent; only its language
-changes. When a statement exists to teach Scheme itself, the edition
-replaces it under the same number and says so. Each exercise row in the
+changes. When a statement exists to teach the original language itself,
+the edition replaces it under the same number and says so. Each exercise row in the
 edition's map carries one of three classes: @code{T} for a translation
 where only the syntax changes, @code{A} for an adaptation where the idea
 survives and the statement changes, and @code{R} for a replacement that
@@ -66,9 +64,8 @@ Two fixed sentences appear in the text wherever the numbering needs
 explaining, and they always read exactly as follows. A replacement says:
 
 @quotation
-@emph{SICP exercise @var{N.M} is about Scheme itself, so this edition
-replaces it; the exercise below keeps the number and teaches the same
-section material.}
+@emph{This edition replaces SICP exercise @var{N.M} with a host-language
+exercise that keeps its number and teaching objective.}
 @end quotation
 
 @noindent

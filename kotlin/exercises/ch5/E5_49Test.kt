@@ -12,6 +12,6 @@ public class E5_49Test :
         test("Exercise 5.49: each form's prompt, run, and printed value is grouped").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            readCompileExecutePrint() shouldBe emptyList()
+            readCompileExecutePrint().last() shouldBe "every turn answered: true"
         }
     })

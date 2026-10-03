@@ -105,10 +105,10 @@
             <rdf:li>pair</rdf:li>
             <rdf:li>sequence</rdf:li>
             <rdf:li>chain</rdf:li>
-            <rdf:li>cons</rdf:li>
-            <rdf:li>car</rdf:li>
-            <rdf:li>cdr</rdf:li>
-            <rdf:li>nil</rdf:li>
+            <rdf:li>pairing</rdf:li>
+            <rdf:li>first</rdf:li>
+            <rdf:li>rest</rdf:li>
+            <rdf:li>empty-list</rdf:li>
           </rdf:Bag>
         </dc:subject>
       </cc:Work>

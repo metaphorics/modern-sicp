@@ -11,12 +11,12 @@ import sicp.runtime.PendingSolution
  * the `hsq >= ksq` requirement prunes each (i, j) branch before any
  * third choice point is entered, and the integer-square-root test
  * replaces the k choice outright, so his generator consumes a fraction
- * of the choices the 4.35 program spends -- and both answer (3 4 5)
+ * of the choices the 4.35 program spends -- and both answer [3, 4, 5]
  * first. The backtrack counts below are the edition's metric: one
  * backtrack per failure resumption that delivers an alternative from a
  * pending choice frame, counted to the first answer.
  *
- * Expected answers: both generators answer (3 4 5) first; the 4.35
+ * Expected answers: both generators answer [3, 4, 5] first; the 4.35
  * order costs 461 backtracks to the first triple and Ben's costs 42.
  */
 public fun benFirstTriple(): String = throw PendingSolution()

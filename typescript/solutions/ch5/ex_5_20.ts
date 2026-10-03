@@ -14,7 +14,7 @@ import {
   renderWord,
   type Value,
   write,
-} from "../../packages/ch5/src/03-storage.js";
+} from "./exercise-memory.ts";
 
 /** The exercise's planted memory: the two definitions' structures and
  * their pointers. */

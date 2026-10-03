@@ -8,12 +8,15 @@ import io.kotest.matchers.shouldBe
 
 public class E4_73Test :
     FunSpec({
-        test("Exercise 4.73: the flatten-stream delay") {
+        test("Exercise 4.73: the delayed flatten delivers a prefix beside an infinite branch") {
             flattenDelayDebate() shouldBe
                 listOf(
-                    "delayed_first3=3 source_calls=4",
-                    "eager_diverged_before_first_answer=true source_calls=2001",
-                    "finite_orders_agree=true",
+                    "?who = [Hacker, Alyssa, P]",
+                    "?who = Minnie",
+                    "?who = [Fect, Cy, D]",
+                    "?who = Minnie",
+                    "?who = [Tweakit, Lem, E]",
+                    "?who = Minnie",
                 )
         }
     })

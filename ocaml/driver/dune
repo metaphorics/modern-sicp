@@ -1,0 +1,4 @@
+(executable
+ (name sicp_run)
+ (modules sicp_run driver_reference)
+ (libraries sicp_common sicp_ch4 sicp_ch5))

@@ -82,8 +82,14 @@ struct Node @{
     parent: RefCell<Weak<Node>>,
 @}
 
-let parent = Rc::new(Node @{ label: "root", parent: RefCell::new(Weak::new()) @});
-let child = Rc::new(Node @{ label: "leaf", parent: RefCell::new(Weak::new()) @});
+let parent = Rc::new(Node @{
+    label: "root",
+    parent: RefCell::new(Weak::new()),
+@});
+let child = Rc::new(Node @{
+    label: "leaf",
+    parent: RefCell::new(Weak::new()),
+@});
 *child.parent.borrow_mut() = Rc::downgrade(&parent);
 
 let parent_label = child.parent.borrow().upgrade().map(|p| p.label);

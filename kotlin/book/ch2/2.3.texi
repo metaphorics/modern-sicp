@@ -34,22 +34,27 @@ Lists containing symbols can look just like the expressions of our
 language:
 
 @example kotlin
-vlist(VSym("*"), vlist(VSym("+"), VInt(23), VInt(45)), vlist(VSym("+"), VSym("x"), VInt(9)))
+vlist(VSym("*"),
+        vlist(VSym("+"),
+        VInt(23),
+    VInt(45)),
+        vlist(VSym("+"),
+    VSym("x"), VInt(9)))
 @end example
 
 @noindent
 In order to manipulate symbols we need a new element in our language: the
-ability to @newterm{quote} a data object.  In Scheme this ability matters
-because @code{(a b c)} is otherwise ambiguous: it could be a call to a
-function named @code{a}, or a list of three symbols.  Kotlin's syntax never
+ability to @newterm{quote} a data object.  In the original book's language this ability matters
+because a sequence of names in parentheses is otherwise ambiguous: it
+could be a call to a function named @code{a}, or a list of three symbols.  Kotlin's syntax never
 carries that ambiguity.  A call always looks like @code{a(b, c)}; a @code{Value}
 literal always looks like @code{vlist(VSym("a"), VSym("b"), VSym("c"))}.
 There is no reading of the second form under which it means anything other
 than a three-element list, so this edition needs nothing to quote:
-@code{vlist(VSym("a"), VSym("b"))} already, directly, is the list @code{(a
-b)}, with no separate mark disambiguating it from a function call.@footnote{A Kotlin string literal such as @code{"a"} is a further, unrelated distinction the book does not need to draw at this point: @code{"a"} is a @code{String}, a sequence of characters meant to be printed, and @code{VSym("a")} is the conversion that turns it into the interned, @code{==}-comparable value this section manipulates as data.  The two are never confused, because Kotlin's double quotes always mean ``string'' and nothing else.}
+@code{vlist(VSym("a"), VSym("b"))} already, directly, is a list of two symbols,
+with no separate mark disambiguating it from a function call.@footnote{A Kotlin string literal such as @code{"a"} is a @code{String}.  @code{VSym("a")} wraps that name as a symbol value.  Symbol equality compares the stored names by content; the constructor does not intern them.  Kotlin's double quotes always introduce a string literal.}
 
-Scheme's confusion is well known in the context of natural languages, where
+This confusion is well known in the context of natural languages, where
 words and sentences may be regarded either as semantic entities or as
 character strings (syntactic entities).  The common practice in natural
 languages is to use quotation marks to indicate that a word or a sentence is
@@ -101,9 +106,10 @@ is one dynamic union covering every kind of datum this language has.
 Quotation also allows the book to type in compound objects using the
 conventional printed representation for lists.@footnote{Strictly, the book's
 quotation mark violates the general rule that all compound expressions in
-Scheme should be delimited by parentheses and look like lists; a leading
-quote mark is a single-character abbreviation that a reader expands into
-@code{(quote @var{expression})} before the interpreter ever sees it.  This
+the original book's language are delimited by parentheses and look like
+lists; a leading quote mark is a single-character abbreviation that a
+reader expands into a two-element list of the symbol @code{quote} and the
+expression before the interpreter ever sees it.  This
 edition has no reader to do that expanding, so there was never a second,
 abbreviated spelling to reconcile with a first: @code{vlist(VSym("car"),
 vlist(VSym("quote"), vlist(VSym("a"), VSym("b"), VSym("c"))))} already is the
@@ -152,7 +158,10 @@ fun memq(item: Value, x: Value): Value =
 For example, the value of
 
 @example kotlin
-memq(VSym("apple"), vlist(VSym("pear"), VSym("banana"), VSym("prune")))
+memq(VSym("apple"),
+        vlist(VSym("pear"),
+        VSym("banana"),
+    VSym("prune")))
 @end example
 
 @noindent
@@ -161,7 +170,11 @@ is @code{#f}, whereas the value of
 @example kotlin
 memq(
     VSym("apple"),
-    vlist(VSym("x"), vlist(VSym("apple"), VSym("sauce")), VSym("y"), VSym("apple"), VSym("pear")),
+    vlist(VSym("x"),
+            vlist(VSym("apple"),
+        VSym("sauce")),
+        VSym("y"),
+        VSym("apple"), VSym("pear")),
 )
 @end example
 
@@ -169,10 +182,10 @@ memq(
 is @code{(apple pear)}: the first @code{apple} is buried inside a nested
 list, a different @code{Value} from the bare symbol @code{VSym("apple")} being
 searched for, so it is skipped exactly as the book's untagged sublist is
-skipped by @code{eq?}.
+skipped by its pointer-equality test.
 
 @quotation
-@emph{SICP exercise 2.53 is about Scheme itself, so this edition replaces it; the exercise below keeps the number and teaches the same section material.} @strong{@anchor{Exercise 2.53}Exercise 2.53:} What value, or what
+@emph{This edition replaces SICP exercise 2.53 with a host-language exercise that keeps its number and teaching objective.} @strong{@anchor{Exercise 2.53}Exercise 2.53:} What value, or what
 printed form, does each of the following produce?  Answer from the types
 alone where you can, without running anything.
 
@@ -180,18 +193,34 @@ alone where you can, without running anything.
 vlist(VSym("a"), VSym("b"), VSym("c"))
 vlist(vlist(VSym("george")))
 
-val pairs = vlist(vlist(VSym("x1"), VSym("x2")), vlist(VSym("y1"), VSym("y2")))
+val pairs = vlist(
+    vlist(VSym("x1"), VSym("x2")),
+    vlist(VSym("y1"), VSym("y2")),
+)
 pairs.cdr
 (pairs.cdr as VPair).car
 
-val shortList = vlist(VSym("a"), VSym("short"), VSym("list"))
+val shortList = vlist(VSym("a"),
+    VSym("short"),
+    VSym("list"))
 (shortList as VPair).car is VPair
 
 memq(
     VSym("red"),
-    vlist(vlist(VSym("red"), VSym("shoes")), vlist(VSym("blue"), VSym("socks"))),
+    vlist(
+        vlist(VSym("red"), VSym("shoes")),
+        vlist(VSym("blue"), VSym("socks")),
+    ),
 )
-memq(VSym("red"), vlist(VSym("red"), VSym("shoes"), VSym("blue"), VSym("socks")))
+memq(
+    VSym("red"),
+    vlist(
+        VSym("red"),
+        VSym("shoes"),
+        VSym("blue"),
+        VSym("socks"),
+    ),
+)
 @end example
 @end quotation
 
@@ -202,8 +231,14 @@ For example,
 
 @example kotlin
 myEqual(
-    vlist(VSym("this"), VSym("is"), VSym("a"), VSym("list")),
-    vlist(VSym("this"), VSym("is"), VSym("a"), VSym("list")),
+    vlist(VSym("this"),
+        VSym("is"),
+        VSym("a"),
+        VSym("list")),
+    vlist(VSym("this"),
+        VSym("is"),
+        VSym("a"),
+        VSym("list")),
 )
 @end example
 
@@ -212,8 +247,15 @@ is true, but
 
 @example kotlin
 myEqual(
-    vlist(VSym("this"), VSym("is"), VSym("a"), VSym("list")),
-    vlist(VSym("this"), vlist(VSym("is"), VSym("a")), VSym("list")),
+    vlist(VSym("this"),
+        VSym("is"),
+        VSym("a"),
+        VSym("list")),
+    vlist(
+        VSym("this"),
+        vlist(VSym("is"), VSym("a")),
+        VSym("list"),
+    ),
 )
 @end example
 
@@ -234,17 +276,20 @@ and @code{b} are @code{myEqual} if they are numerically equal.}
 @end quotation
 
 @quotation
-@emph{SICP exercise 2.55 is about Scheme itself, so this edition replaces it; the exercise below keeps the number and teaches the same section material.} @strong{@anchor{Exercise 2.55}Exercise 2.55:} SICP's Eva
-Lu Ator types to her interpreter the expression @code{(car ''abracadabra)},
-and to her surprise the interpreter prints back @code{quote}.  Kotlin has no
-reader, so @code{''abracadabra} is never something a running program types at
+@emph{This edition replaces SICP exercise 2.55 with a host-language exercise that keeps its number and teaching objective.} @strong{@anchor{Exercise 2.55}Exercise 2.55:} SICP's Eva
+Lu Ator types to her interpreter a doubly quoted symbol,
+and to her surprise the interpreter prints back the symbol @code{quote}.  Kotlin has no
+reader, so a quoted spelling is never something a running program types at
 a prompt, but the reader's expansion rule is simple enough to apply by hand:
-a single quote @code{'x} is sugar for the two-element list @code{(quote x)},
-so the doubled quote @code{''abracadabra} is sugar for @code{(quote (quote
-abracadabra))}.  Build the @code{Value} that @code{''abracadabra} would have read
-as, using only @code{vlist} and @code{VSym}, and give its car.  Explain, in
-terms of the value's own shape rather than by appealing to a reader, why that
-car is the symbol @code{quote} and not @code{abracadabra}.
+a single quote before a datum is sugar for the two-element list holding the
+symbol @code{quote} and the datum, so a doubled quote is sugar for a
+quotation of a quotation.  The edition models that nesting directly: each
+@code{QuotationForm.Quoted} node is one quote layer over its operand, and
+@code{QuotationForm.Name} is the symbol.  Build the tree for the doubly
+quoted symbol @code{abracadabra} and return the outer node's operand.
+Explain, in terms of the tree's own shape rather than by appealing to a
+reader, why that operand is a quotation node rather than the name
+@code{abracadabra}.
 @end quotation
 
 @node	2.3.2, 2.3.3, 2.3.1, 2.3
@@ -334,7 +379,8 @@ sealed interface Expr @{
     data class Num(val n: Long) : Expr
     data class Var(val name: String) : Expr
     data class Sum(val a1: Expr, val a2: Expr) : Expr
-    data class Product(val a1: Expr, val a2: Expr) : Expr
+    data class Product(val a1: Expr,
+        val a2: Expr) : Expr
 @}
 @end example
 
@@ -354,11 +400,18 @@ fun deriv(exp: Expr, variable: String): Expr =
     when (exp) @{
         is Expr.Num -> Expr.Num(0)
         is Expr.Var -> Expr.Num(if (exp.name == variable) 1 else 0)
-        is Expr.Sum -> Expr.Sum(deriv(exp.a1, variable), deriv(exp.a2, variable))
+        is Expr.Sum -> Expr.Sum(deriv(exp.a1,
+            variable),
+                deriv(exp.a2,
+            variable))
         is Expr.Product ->
             Expr.Sum(
-                Expr.Product(exp.a1, deriv(exp.a2, variable)),
-                Expr.Product(deriv(exp.a1, variable), exp.a2),
+                Expr.Product(exp.a1,
+                        deriv(exp.a2,
+                    variable)),
+                Expr.Product(deriv(exp.a1,
+                    variable),
+                    exp.a2),
             )
     @}
 @end example
@@ -366,8 +419,8 @@ fun deriv(exp: Expr, variable: String): Expr =
 @noindent
 This @code{deriv} function incorporates the complete differentiation
 algorithm.  Since @code{Expr}'s four variants are exhaustive, the compiler
-proves every case is handled; the book's final @code{(else (error "unknown
-expression type: DERIV" exp))} clause has no counterpart here, because there
+proves every case is handled; the book's final error clause for an unknown expression type has no
+counterpart here, because there
 is no fifth variant left for it to catch.
 
 @subsubheading Representing algebraic expressions
@@ -381,7 +434,8 @@ fun printExpr(e: Expr): String =
         is Expr.Num -> e.n.toString()
         is Expr.Var -> e.name
         is Expr.Sum -> "(+ $@{printExpr(e.a1)@} $@{printExpr(e.a2)@})"
-        is Expr.Product -> "(* $@{printExpr(e.a1)@} $@{printExpr(e.a2)@})"
+        is Expr.Product ->
+            "(* $@{printExpr(e.a1)@} $@{printExpr(e.a2)@})"
     @}
 @end example
 
@@ -398,9 +452,12 @@ val product = Expr.Product(Expr.Var("x"), Expr.Var("y"))
 printExpr(deriv(product, "x"))
 // => (+ (* x 0) (* 1 y))
 
-val nested = Expr.Product(Expr.Product(Expr.Var("x"), Expr.Var("y")), Expr.Sum(Expr.Var("x"), Expr.Num(3)))
+val nested = Expr.Product(Expr.Product(Expr.Var("x"),
+    Expr.Var("y")),
+    Expr.Sum(Expr.Var("x"), Expr.Num(3)))
 printExpr(deriv(nested, "x"))
-// => (+ (* (* x y) (+ 1 0)) (* (+ (* x 0) (* 1 y)) (+ x 3)))
+// => (+ (* (* x y) (+ 1 0)) (* (+ (* x 0) (* 1 y)) (+ x
+// 3)))
 @end example
 
 @noindent
@@ -434,13 +491,16 @@ their sum.  Also, if one of the summands is 0, then @code{makeSum} will return
 the other summand:
 
 @example kotlin
-fun isNumber(e: Expr, n: Long): Boolean = e is Expr.Num && e.n == n
+fun isNumber(e: Expr,
+    n: Long): Boolean = e is Expr.Num &&
+    e.n == n
 
 fun makeSum(a1: Expr, a2: Expr): Expr =
     when @{
         isNumber(a1, 0) -> a2
         isNumber(a2, 0) -> a1
-        a1 is Expr.Num && a2 is Expr.Num -> Expr.Num(a1.n + a2.n)
+        a1 is Expr.Num &&
+            a2 is Expr.Num -> Expr.Num(a1.n + a2.n)
         else -> Expr.Sum(a1, a2)
     @}
 @end example
@@ -454,10 +514,13 @@ thing itself:
 @example kotlin
 fun makeProduct(m1: Expr, m2: Expr): Expr =
     when @{
-        isNumber(m1, 0) || isNumber(m2, 0) -> Expr.Num(0)
+        isNumber(m1,
+            0) || isNumber(m2,
+            0) -> Expr.Num(0)
         isNumber(m1, 1) -> m2
         isNumber(m2, 1) -> m1
-        m1 is Expr.Num && m2 is Expr.Num -> Expr.Num(m1.n * m2.n)
+        m1 is Expr.Num &&
+            m2 is Expr.Num -> Expr.Num(m1.n * m2.n)
         else -> Expr.Product(m1, m2)
     @}
 
@@ -465,11 +528,18 @@ fun deriv(exp: Expr, variable: String): Expr =
     when (exp) @{
         is Expr.Num -> Expr.Num(0)
         is Expr.Var -> Expr.Num(if (exp.name == variable) 1 else 0)
-        is Expr.Sum -> makeSum(deriv(exp.a1, variable), deriv(exp.a2, variable))
+        is Expr.Sum -> makeSum(deriv(exp.a1,
+            variable),
+                deriv(exp.a2,
+            variable))
         is Expr.Product ->
             makeSum(
-                makeProduct(exp.a1, deriv(exp.a2, variable)),
-                makeProduct(deriv(exp.a1, variable), exp.a2),
+                makeProduct(exp.a1,
+                        deriv(exp.a2,
+                    variable)),
+                makeProduct(deriv(exp.a1,
+                    variable),
+                    exp.a2),
             )
     @}
 @end example
@@ -531,7 +601,18 @@ terms.  Then the last example above could be expressed as
 
 @example kotlin
 deriv(
-    NaryExpr.Product(listOf(NaryExpr.Var("x"), NaryExpr.Var("y"), NaryExpr.Sum(listOf(NaryExpr.Var("x"), NaryExpr.Num(3))))),
+    NaryExpr.Product(
+        listOf(
+            NaryExpr.Var("x"),
+            NaryExpr.Var("y"),
+            NaryExpr.Sum(
+                listOf(
+                    NaryExpr.Var("x"),
+                    NaryExpr.Num(3),
+                ),
+            ),
+        ),
+    ),
     "x",
 )
 @end example
@@ -650,7 +731,8 @@ already in the set, we just return the set unchanged.  Otherwise, we build a
 new list with the object in front:
 
 @example kotlin
-fun adjoinSet(x: Long, set: List<Long>): List<Long> = if (elementOfSet(x, set)) set else listOf(x) + set
+fun adjoinSet(x: Long, set: List<Long>): List<Long> =
+    if (elementOfSet(x, set)) set else listOf(x) + set
 @end example
 
 @noindent
@@ -661,10 +743,12 @@ depends on whether that head is also in @code{set2}.  Here is the resulting
 function:
 
 @example kotlin
-fun intersectionSet(set1: List<Long>, set2: List<Long>): List<Long> =
+fun intersectionSet(set1: List<Long>,
+    set2: List<Long>): List<Long> =
     when @{
         set1.isEmpty() || set2.isEmpty() -> emptyList()
-        elementOfSet(set1[0], set2) -> listOf(set1[0]) + intersectionSet(set1.drop(1), set2)
+        elementOfSet(set1[0], set2) -> listOf(set1[0]) +
+            intersectionSet(set1.drop(1), set2)
         else -> intersectionSet(set1.drop(1), set2)
     @}
 @end example
@@ -717,7 +801,8 @@ reach a set element that is larger than the item we are looking for, then we
 know that the item is not in the set:
 
 @example kotlin
-fun elementOfSetOrdered(x: Long, set: List<Long>): Boolean =
+fun elementOfSetOrdered(x: Long,
+    set: List<Long>): Boolean =
     when @{
         set.isEmpty() -> false
         x == set[0] -> true
@@ -754,14 +839,18 @@ intersection of @code{set1} with the tail of @code{set2}.  Here is the
 function:
 
 @example kotlin
-fun intersectionSetOrdered(set1: List<Long>, set2: List<Long>): List<Long> @{
+fun intersectionSetOrdered(set1: List<Long>,
+    set2: List<Long>): List<Long> @{
     if (set1.isEmpty() || set2.isEmpty()) return emptyList()
     val x1 = set1[0]
     val x2 = set2[0]
     return when @{
-        x1 == x2 -> listOf(x1) + intersectionSetOrdered(set1.drop(1), set2.drop(1))
-        x1 < x2 -> intersectionSetOrdered(set1.drop(1), set2)
-        else -> intersectionSetOrdered(set1, set2.drop(1))
+        x1 == x2 -> listOf(x1) + intersectionSetOrdered(set1.drop(1),
+            set2.drop(1))
+        x1 < x2 -> intersectionSetOrdered(set1.drop(1),
+            set2)
+        else -> intersectionSetOrdered(set1,
+            set2.drop(1))
     @}
 @}
 @end example
@@ -823,7 +912,7 @@ elements in the right subtree be larger.
 @image{../../text/original/figures/chap2/Fig2.16c,,120mm,Figure 2.16: Various binary trees that represent the set @{1@comma{} 3@comma{} 5@comma{} 7@comma{} 9@comma{} 11@}.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.16c.std,,120mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.16c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.16:} Various binary trees that represent the set @math{{\{1, 3, 5, 7, 9, 11\}}}.}
@@ -847,15 +936,19 @@ significant speedup over the previous representations.
 Where the book represents trees as three-item lists (the entry, the left
 subtree, the right subtree), this edition closes the shape as a sealed
 hierarchy instead, so @code{entry}, @code{left}, and @code{right} are its own
-data-class fields rather than list positions read out by @code{car}/@code{cadr}/@code{caddr}:@footnote{We are representing sets in terms of trees, and trees directly as a Kotlin sealed interface---one data abstraction built on the host language's own sum types, rather than on a second, hand-rolled list encoding the way the book builds trees out of lists.  We can regard @code{entry}, @code{left}, @code{right}, and @code{makeTree} as isolating the abstraction of a ``binary tree'' from @code{SetTree}'s own representation, the same separation the book draws between a tree and the list structure that encodes it, one layer shorter since the data class already is the representation.}
+data-class fields rather than list positions read out by repeated selection:@footnote{We are representing sets in terms of trees, and trees directly as a Kotlin sealed interface---one data abstraction built on the host language's own sum types, rather than on a second, hand-rolled list encoding the way the book builds trees out of lists.  We can regard @code{entry}, @code{left}, @code{right}, and @code{makeTree} as isolating the abstraction of a ``binary tree'' from @code{SetTree}'s own representation, the same separation the book draws between a tree and the list structure that encodes it, one layer shorter since the data class already is the representation.}
 
 @example kotlin
 sealed interface SetTree @{
     data object Empty : SetTree
-    data class Node(val entry: Long, val left: SetTree, val right: SetTree) : SetTree
+    data class Node(val entry: Long, val left: SetTree,
+        val right: SetTree) : SetTree
 @}
 
-fun makeTree(entry: Long, left: SetTree, right: SetTree): SetTree = SetTree.Node(entry, left, right)
+fun makeTree(entry: Long,
+    left: SetTree,
+    right: SetTree): SetTree =
+    SetTree.Node(entry, left, right)
 @end example
 
 @noindent
@@ -874,7 +967,8 @@ fun elementOfSetTree(x: Long, tree: SetTree): Boolean =
         is SetTree.Node ->
             when @{
                 x == tree.entry -> true
-                x < tree.entry -> elementOfSetTree(x, tree.left)
+                x < tree.entry -> elementOfSetTree(x,
+                    tree.left)
                 else -> elementOfSetTree(x, tree.right)
             @}
     @}
@@ -894,12 +988,19 @@ and left branches.  Here is the function:
 @example kotlin
 fun adjoinSetTree(x: Long, tree: SetTree): SetTree =
     when (tree) @{
-        is SetTree.Empty -> makeTree(x, SetTree.Empty, SetTree.Empty)
+        is SetTree.Empty -> makeTree(x,
+            SetTree.Empty,
+            SetTree.Empty)
         is SetTree.Node ->
             when @{
                 x == tree.entry -> tree
-                x < tree.entry -> makeTree(tree.entry, adjoinSetTree(x, tree.left), tree.right)
-                else -> makeTree(tree.entry, tree.left, adjoinSetTree(x, tree.right))
+                x < tree.entry -> makeTree(tree.entry,
+                        adjoinSetTree(x,
+                tree.left), tree.right)
+                else -> makeTree(tree.entry,
+                    tree.left,
+                        adjoinSetTree(x,
+                tree.right))
             @}
     @}
 @end example
@@ -967,14 +1068,25 @@ functions converts a binary tree to a list.
 fun treeToList1(tree: SetTree): List<Long> =
     when (tree) @{
         is SetTree.Empty -> emptyList()
-        is SetTree.Node -> treeToList1(tree.left) + listOf(tree.entry) + treeToList1(tree.right)
+        is SetTree.Node ->
+            treeToList1(tree.left) +
+                listOf(tree.entry) +
+                treeToList1(tree.right)
     @}
 
 fun treeToList2(tree: SetTree): List<Long> @{
-    fun copyToList(tree: SetTree, result: List<Long>): List<Long> =
+    fun copyToList(
+        tree: SetTree,
+        result: List<Long>,
+    ): List<Long> =
         when (tree) @{
             is SetTree.Empty -> result
-            is SetTree.Node -> copyToList(tree.left, listOf(tree.entry) + copyToList(tree.right, result))
+            is SetTree.Node ->
+                copyToList(
+                    tree.left,
+                    listOf(tree.entry) +
+                        copyToList(tree.right, result),
+                )
         @}
     return copyToList(tree, emptyList())
 @}
@@ -991,7 +1103,7 @@ the results differ?  What lists do the two functions produce for the trees in
 Do the two functions have the same order of growth in the number of steps
 required to convert a balanced tree with @math{n} elements to a list?  If not,
 which one grows more slowly?  (Kotlin's persistent @code{List} has no
-built-in O(1) prepend the way Scheme's @code{cons} does; @code{treeToList2}
+built-in O(1) prepend the way the original book's @code{cons} does; @code{treeToList2}
 above still costs the same as @code{treeToList1} once translated literally.
 Rewrite @code{treeToList2} using a single mutable @code{ArrayDeque} threaded
 through the whole recursion, with @code{addFirst} standing in for
@@ -1011,16 +1123,30 @@ tree and whose second component is the list of elements not included in the
 tree.
 
 @example kotlin
-fun listToTree(elements: List<Long>): SetTree = partialTree(elements, elements.size).first
+fun listToTree(elements: List<Long>): SetTree =
+    partialTree(elements, elements.size).first
 
-fun partialTree(elts: List<Long>, n: Int): Pair<SetTree, List<Long>> @{
+fun partialTree(
+    elts: List<Long>,
+    n: Int,
+): Pair<SetTree, List<Long>> @{
     if (n == 0) return SetTree.Empty to elts
     val leftSize = (n - 1) / 2
-    val (leftTree, nonLeftElts) = partialTree(elts, leftSize)
+    val (leftTree,
+        nonLeftElts) = partialTree(elts,
+        leftSize)
     val rightSize = n - (leftSize + 1)
     val thisEntry = nonLeftElts[0]
-    val (rightTree, remainingElts) = partialTree(nonLeftElts.drop(1), rightSize)
-    return makeTree(thisEntry, leftTree, rightTree) to remainingElts
+    val (rightTree, remainingElts) =
+        partialTree(
+            nonLeftElts.drop(1),
+            rightSize,
+        )
+    return makeTree(
+        thisEntry,
+        leftTree,
+        rightTree,
+    ) to remainingElts
 @}
 @end example
 
@@ -1085,7 +1211,9 @@ there is no such record.  @code{lookup} is implemented in almost the same way as
 an unordered list, we could use
 
 @example kotlin
-fun lookup(givenKey: Long, setOfRecords: List<Record>): Record? = setOfRecords.find @{ it.key == givenKey @}
+fun lookup(givenKey: Long,
+    setOfRecords: List<Record>): Record? =
+    setOfRecords.find @{ it.key == givenKey @}
 @end example
 
 @noindent
@@ -1225,7 +1353,7 @@ other letters each with relative frequency 1.
 @image{../../text/original/figures/chap2/Fig2.18a,,135mm,Figure 2.18: A Huffman encoding tree.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.18a.std,,135mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.18a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.18:} A Huffman encoding tree.}
@@ -1330,11 +1458,16 @@ every query:
 @example kotlin
 sealed interface HuffmanTree @{
     val weight: Long
-    data class Leaf(val sym: String, override val weight: Long) : HuffmanTree
-    data class Branch(val left: HuffmanTree, val right: HuffmanTree, override val weight: Long, val syms: List<String>) : HuffmanTree
+    data class Leaf(val sym: String,
+        override val weight: Long) : HuffmanTree
+    data class Branch(val left: HuffmanTree,
+        val right: HuffmanTree,
+        override val weight: Long,
+            val syms: List<String>) : HuffmanTree
 @}
 
-fun makeLeaf(sym: String, weight: Long): HuffmanTree = HuffmanTree.Leaf(sym, weight)
+fun makeLeaf(sym: String, weight: Long): HuffmanTree =
+    HuffmanTree.Leaf(sym, weight)
 
 fun symbols(t: HuffmanTree): List<String> =
     when (t) @{
@@ -1342,13 +1475,18 @@ fun symbols(t: HuffmanTree): List<String> =
         is HuffmanTree.Branch -> t.syms
     @}
 
-fun makeCodeTree(left: HuffmanTree, right: HuffmanTree): HuffmanTree =
-    HuffmanTree.Branch(left, right, left.weight + right.weight, symbols(left) + symbols(right))
+fun makeCodeTree(left: HuffmanTree,
+    right: HuffmanTree): HuffmanTree =
+    HuffmanTree.Branch(left,
+        right,
+        left.weight + right.weight,
+        symbols(left) + symbols(right))
 @end example
 
 @noindent
 The book's @code{symbols} and @code{weight} procedures dispatch on
-@code{leaf?} and then read @code{cadr}/@code{caddr}/@code{cadddr} by hand.
+its leaf test and then read the fields out of the list representation by
+hand.
 Here @code{symbols} is the @code{when} above, and @code{weight} is simply
 @code{HuffmanTree.weight}, an abstract property every variant overrides; both
 are simple examples of @newterm{generic procedures} (procedures that can
@@ -1359,20 +1497,24 @@ about in @ref{2.4} and @ref{2.5}.
 
 The following function implements the decoding algorithm.  It takes as
 arguments a list of bits, together with a Huffman tree.  The book's
-@code{decode-1} is a second, inner recursive procedure only because Scheme
-has no loop construct of its own; this edition writes the same
+@code{decode-1} is a second, inner recursive procedure because after each
+decoded symbol it must restart at the root with the bits that remain; this
+edition writes the same
 restart-at-the-root behavior as a single loop:
 
 @example kotlin
-fun chooseBranch(bit: Int, branch: HuffmanTree): HuffmanTree =
+fun chooseBranch(bit: Int,
+    branch: HuffmanTree): HuffmanTree =
     when @{
-        branch !is HuffmanTree.Branch -> throw IllegalArgumentException("choose-branch of a leaf")
+        branch !is HuffmanTree.Branch ->
+            throw IllegalArgumentException("choose-branch of a leaf")
         bit == 0 -> branch.left
         bit == 1 -> branch.right
         else -> throw IllegalArgumentException("bad bit: $bit")
     @}
 
-fun decode(bits: List<Int>, tree: HuffmanTree): List<String> @{
+fun decode(bits: List<Int>,
+    tree: HuffmanTree): List<String> @{
     val result = mutableListOf<String>()
     var current = tree
     for (bit in bits) @{
@@ -1412,11 +1554,13 @@ function for constructing sets is similar to @code{adjoinSetOrdered} of
 element being added to the set is never already in it:
 
 @example kotlin
-fun adjoinHuffmanSet(x: HuffmanTree, set: List<HuffmanTree>): List<HuffmanTree> =
+fun adjoinHuffmanSet(x: HuffmanTree,
+    set: List<HuffmanTree>): List<HuffmanTree> =
     when @{
         set.isEmpty() -> listOf(x)
         x.weight < set[0].weight -> listOf(x) + set
-        else -> listOf(set[0]) + adjoinHuffmanSet(x, set.drop(1))
+        else -> listOf(set[0]) + adjoinHuffmanSet(x,
+            set.drop(1))
     @}
 @end example
 
@@ -1426,8 +1570,10 @@ The following function takes a list of symbol-frequency pairs such as
 ordered set of leaves, ready to be merged according to the Huffman algorithm:
 
 @example kotlin
-fun makeLeafSet(pairs: List<Pair<String, Long>>): List<HuffmanTree> =
-    pairs.fold(emptyList()) @{ set, (sym, weight) -> adjoinHuffmanSet(makeLeaf(sym, weight), set) @}
+fun makeLeafSet(pairs: List<Pair<String,
+    Long>>): List<HuffmanTree> =
+    pairs.fold(emptyList()) @{ set, (sym, weight) ->
+        adjoinHuffmanSet(makeLeaf(sym, weight), set) @}
 @end example
 
 @quotation
@@ -1438,10 +1584,18 @@ sample message:
 val sampleTree =
     makeCodeTree(
         makeLeaf("A", 4L),
-        makeCodeTree(makeLeaf("B", 2L), makeCodeTree(makeLeaf("D", 1L), makeLeaf("C", 1L))),
+        makeCodeTree(
+            makeLeaf("B", 2L),
+            makeCodeTree(
+                makeLeaf("D", 1L),
+                makeLeaf("C", 1L),
+            ),
+        ),
     )
 
-val sampleMessage = listOf(0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0)
+val sampleMessage = listOf(
+    0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0,
+)
 @end example
 
 Use the @code{decode} function to decode the message, and give the result.
@@ -1453,7 +1607,11 @@ as arguments a message and a tree and produces the list of bits that gives the
 encoded message.
 
 @example kotlin
-fun encode(message: List<String>, tree: HuffmanTree): List<Int> = message.flatMap @{ encodeSymbol(it, tree) @}
+fun encode(
+    message: List<String>,
+    tree: HuffmanTree,
+): List<Int> =
+    message.flatMap @{ encodeSymbol(it, tree) @}
 @end example
 
 Write your own @code{encodeSymbol}, a function that returns the bits that
@@ -1471,7 +1629,10 @@ than one pair) and generates a Huffman encoding tree according to the Huffman
 algorithm.
 
 @example kotlin
-fun generateHuffmanTree(pairs: List<Pair<String, Long>>): HuffmanTree = successiveMerge(makeLeafSet(pairs))
+fun generateHuffmanTree(
+    pairs: List<Pair<String, Long>>,
+): HuffmanTree =
+    successiveMerge(makeLeafSet(pairs))
 @end example
 
 @code{makeLeafSet} is the function given above that transforms the list of

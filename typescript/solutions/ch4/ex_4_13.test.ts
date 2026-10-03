@@ -1,92 +1,58 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-import { it } from "@effect/vitest";
-import { Effect } from "effect";
-import { describe, expect } from "vitest";
-
-import { setupEnvironment } from "../../packages/ch4/src/01-metacircular.js";
-import type { Env, Value } from "../../packages/ch4/src/core.js";
-import type { EvaluationError } from "../../packages/ch4/src/errors.js";
-import { nil } from "../../packages/ch4/src/list.js";
+import { describe, expect, it } from "vitest";
+import {
+  defineVariableValue,
+  lookupVariableValue,
+  Session,
+} from "../../packages/ch4/src/01-metacircular.js";
 import { format } from "../../packages/ch4/src/read.js";
-import { evalStringWithUnbound } from "./ex_4_13.js";
+import type { Env } from "../../packages/ch4/src/runtime/env.js";
+import { child } from "../../packages/ch4/src/runtime/env.js";
+import type { Outcome } from "../../packages/ch4/src/runtime/errors.js";
+import { str } from "../../packages/ch4/src/syntax/ast.js";
+import { evalWithUnbind, removeBinding, unbindNode } from "./ex_4_13.js";
 
-const unboundName = (error: EvaluationError): string =>
-  error._tag === "UnboundVariable" ? error.name : "<not an UnboundVariable>";
-
-const lastOf = (values: ReadonlyArray<Value>): Value => {
-  const last = values[values.length - 1];
-  return last === undefined ? nil : last;
+const envWith = (): { session: Session; env: Env } => {
+  const session = new Session("core");
+  const env = session.globalEnv();
+  defineVariableValue("a", 1, env);
+  return { session, env };
 };
 
-const evalPrograms = (
-  sources: ReadonlyArray<string>,
-  env: Env,
-): Effect.Effect<Value, EvaluationError> =>
-  Effect.map(
-    Effect.forEach(sources, (source) => evalStringWithUnbound(source, env)),
-    lastOf,
-  );
+const shown = (outcome: Outcome): string =>
+  outcome.tag === "ok" ? format(outcome.value) : `error:${outcome.error.tag}`;
 
-const failureOf = (run: Effect.Effect<Value, EvaluationError>): Effect.Effect<EvaluationError> =>
-  Effect.flatMap(Effect.result(run), (outcome) =>
-    outcome._tag === "Failure"
-      ? Effect.succeed(outcome.failure)
-      : Effect.die(new Error("expected a failure")),
-  );
+describe("exercise 4.13: unbind removes a binding", () => {
+  it("drops the inner binding and exposes the outer one", () => {
+    const { session, env } = envWith();
+    const inner = child(env);
+    defineVariableValue("a", 2, inner);
+    expect(shown(lookupVariableValue("a", inner))).toBe("2");
+    expect(shown(evalWithUnbind(unbindNode(str("a")), inner, session))).toBe("undefined");
+    expect(shown(lookupVariableValue("a", inner))).toBe("1");
+  });
 
-describe("exercise 4.13: make-unbound!", () => {
-  it.effect("unbinding an inner binding exposes the outer one again", () =>
-    Effect.gen(function* () {
-      const env = yield* setupEnvironment();
-      const shadowed = yield* evalPrograms(["(define a 1)", "((lambda () (define a 2) a))"], env);
-      expect(format(shadowed)).toBe("2");
+  it("a write after unbinding updates the outer frame", () => {
+    const { session, env } = envWith();
+    const inner = child(env);
+    defineVariableValue("a", 2, inner);
+    evalWithUnbind(unbindNode(str("a")), inner, session);
+    expect(session.setVariableValue("a", 50, inner).tag).toBe("ok");
+    expect(shown(lookupVariableValue("a", env))).toBe("50");
+  });
 
-      const restoredEnv = yield* setupEnvironment();
-      const restored = yield* evalPrograms(
-        ["(define a 1)", "((lambda () (define a 2) (make-unbound! a) a))"],
-        restoredEnv,
-      );
-      expect(format(restored)).toBe("1");
-      expect(yield* evalStringWithUnbound("a", restoredEnv)).toStrictEqual({
-        _tag: "Number",
-        n: 1,
-      });
-    }),
-  );
+  it("unbinding a name no frame has fails with unbound-name", () => {
+    const { session, env } = envWith();
+    expect(shown(evalWithUnbind(unbindNode(str("zz")), env, session))).toBe("error:unbound-name");
+  });
 
-  it.effect("set! after an unbind writes the outer frame", () =>
-    Effect.gen(function* () {
-      const env = yield* setupEnvironment();
-      const result = yield* evalPrograms(
-        [
-          "(define a 1)",
-          "(define (retarget) (define a 2) (make-unbound! a) (set! a 50) a)",
-          "(retarget)",
-        ],
-        env,
-      );
-      expect(format(result)).toBe("50");
-      expect(yield* evalStringWithUnbound("a", env)).toStrictEqual({ _tag: "Number", n: 50 });
-    }),
-  );
-
-  it.effect("unbinding a name bound nowhere is an error", () =>
-    Effect.gen(function* () {
-      const env = yield* setupEnvironment();
-      const missing = yield* failureOf(evalStringWithUnbound("(make-unbound! zz)", env));
-      expect(missing._tag).toBe("UnboundVariable");
-      expect(unboundName(missing)).toBe("zz");
-
-      const twiceEnv = yield* setupEnvironment();
-      yield* evalStringWithUnbound("(define a 1)", twiceEnv);
-      yield* evalStringWithUnbound("(make-unbound! a)", twiceEnv);
-      const gone = yield* failureOf(evalStringWithUnbound("a", twiceEnv));
-      expect(gone._tag).toBe("UnboundVariable");
-      const again = yield* failureOf(evalStringWithUnbound("(make-unbound! a)", twiceEnv));
-      expect(again._tag).toBe("UnboundVariable");
-      expect(unboundName(again)).toBe("a");
-    }),
-  );
+  it("after unbinding the global name, later reads and unbinds fail", () => {
+    const { session, env } = envWith();
+    expect(shown(removeBinding("a", env))).toBe("undefined");
+    expect(shown(lookupVariableValue("a", env))).toBe("error:unbound-name");
+    expect(shown(removeBinding("a", env))).toBe("error:unbound-name");
+    expect(session.transcript).toStrictEqual([]);
+  });
 });

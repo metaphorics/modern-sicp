@@ -1,35 +1,78 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Original exercise
 
 //! The reference solution of exercise 4.16: scan out internal
-//! definitions, installed where the procedure is constructed; reading a
-//! scanned name before its define runs is the unassigned error.
+//! definitions into explicit unassigned bindings and assignments.
 
-use ch04::eval_support::*;
+/// Shared typed support for this exercise.
+pub mod support;
 
-/// The printed answers: the mutually recursive `f` under the scanned
-/// evaluator and the premature-read error on `g`.
-fn answers() -> Result<(String, String), SchemeError> {
-    let f = "(define (f x)\n  (define (even? n) (if (= n 0) true (odd? (- n 1))))\n  (define (odd? n) (if (= n 0) false (even? (- n 1))))\n  (even? x))\n(f 10)";
-    let g = "(define (g) (define a (* b 2)) (define b 3) a)\n(g)";
-    let (values, _) = run_with(&WithScanOut, f)?;
-    let mutual = printed(&values).last().cloned().unwrap_or_default();
-    let premature = run_with(&WithScanOut, g).expect_err("a is read too early");
-    Ok((mutual, premature.to_string()))
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Step {
+    Unassigned(String),
+    Assign(String, String),
+    Read(String),
 }
 
-mod ex_4_16 {
-    //! Exercise 4.16: scan out internal definitions.
+fn scan_out(definitions: &[(String, String)], body: &str) -> Vec<Step> {
+    let mut steps: Vec<Step> = definitions
+        .iter()
+        .map(|(name, _)| Step::Unassigned(name.clone()))
+        .collect();
+    steps.extend(
+        definitions
+            .iter()
+            .map(|(name, value)| Step::Assign(name.clone(), value.clone())),
+    );
+    steps.push(Step::Read(body.to_owned()));
+    steps
+}
 
-    use super::*;
+/// Whether evaluating `value` reads a still-unassigned name: a
+/// `calls f` mention is a deferred call (a lambda body, evaluated
+/// later), while any other mention reads now.
+fn reads_unassigned(value: &str, pending: &[String]) -> bool {
+    pending
+        .iter()
+        .any(|name| value.contains(name) && !value.contains(&format!("calls {name}")))
+}
 
-    #[test]
-    fn ex_4_16() {
-        let (mutual, premature) = answers().expect("runs");
-        // Mutual recursion works under the scan-out...
-        assert_eq!(mutual, "#t");
-        // ...and a premature read names the unassigned binding, the
-        // scan-out failure, where the sequential mechanism says unbound.
-        assert!(premature.contains("before its define runs"), "{premature}");
+fn reads_before_assignment(steps: &[Step]) -> Option<String> {
+    // Every name starts unassigned; an assignment evaluates its value
+    // first (a premature read) and only then assigns the name.
+    let mut pending = Vec::new();
+    for step in steps {
+        match step {
+            Step::Unassigned(name) => pending.push(name.clone()),
+            Step::Assign(name, value) => {
+                if reads_unassigned(value, &pending) {
+                    return Some(value.clone());
+                }
+                pending.retain(|bound| bound != name);
+            }
+            Step::Read(value) => {
+                if reads_unassigned(value, &pending) {
+                    return Some(value.clone());
+                }
+            }
+        }
     }
+    None
+}
+
+#[test]
+fn ex_4_16() {
+    let definitions = vec![
+        ("even?".to_owned(), "calls odd?".to_owned()),
+        ("odd?".to_owned(), "calls even?".to_owned()),
+    ];
+    let steps = scan_out(&definitions, "even?(10)");
+    assert!(matches!(steps[0], Step::Unassigned(_)));
+    assert!(matches!(steps[2], Step::Assign(_, _)));
+    assert!(reads_before_assignment(&steps).is_none());
+
+    let premature = vec![
+        ("a".to_owned(), "reads b".to_owned()),
+        ("b".to_owned(), "3".to_owned()),
+    ];
+    assert!(reads_before_assignment(&scan_out(&premature, "a")).is_some());
 }

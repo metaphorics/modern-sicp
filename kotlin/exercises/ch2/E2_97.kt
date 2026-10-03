@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.97: reduce rational functions to lowest terms. (a)
  * `reduceTerms` computes the GCD, integerizes both parts before dividing
@@ -14,4 +12,4 @@ import sicp.runtime.PendingSolution
  * either. The rational-function package's constructor then calls
  * `reduce`, so the whole system answers in lowest terms.
  */
-public fun ex_2_97(): String = throw PendingSolution()
+public fun ex_2_97(): String = throw PendingExercise()

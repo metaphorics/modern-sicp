@@ -1,59 +1,44 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-import { it } from "@effect/vitest";
-import { Effect } from "effect";
-import { describe, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import {
-  evalString,
-  isApplication,
-  listOfValues,
-  operands,
-} from "../../packages/ch4/src/01-metacircular.js";
-import type { Value } from "../../packages/ch4/src/core.js";
-import type { List } from "../../packages/ch4/src/list.js";
-import { format, read } from "../../packages/ch4/src/read.js";
-import { listOfValuesLr, listOfValuesRl, recorderEnv } from "./ex_4_01.js";
+import { listOfValues, lookupVariableValue } from "../../packages/ch4/src/01-metacircular.js";
+import type { Outcome } from "../../packages/ch4/src/runtime/errors.js";
+import { isArrayValue, type Value } from "../../packages/ch4/src/runtime/value.js";
+import { listOfValuesLr, listOfValuesRl, recorderEnv, recorderOperands } from "./ex_4_01.js";
 
-/** The operand expressions of a call whose order is observable: each
- * operand appends its tag to the object-language `sequence` list. */
-const observableOperands = (): List<Value> => {
-  const call = read("((lambda (x y z) (list x y z)) (rec 'a) (rec 'b) (rec 'c))");
-  if (!isApplication(call)) {
-    throw new Error(`expected an application, got ${format(call)}`);
+const arrayItems = (outcome: Outcome): ReadonlyArray<Value> => {
+  expect(outcome.tag).toBe("ok");
+  if (outcome.tag !== "ok" || !isArrayValue(outcome.value)) {
+    throw new Error("expected an array outcome");
   }
-  return operands(call);
+  return outcome.value.items;
 };
 
 describe("exercise 4.1: evaluation order of the operands", () => {
-  it.effect("the left-to-right variant evaluates operands in source order", () =>
-    Effect.gen(function* () {
-      const env = yield* recorderEnv();
-      const args = yield* listOfValuesLr(observableOperands(), env);
-      const sequence = yield* evalString("sequence", env);
-      expect(format(sequence)).toBe("(a b c)");
-      expect(format(args)).toBe("(a b c)");
-    }),
-  );
+  it("the left-to-right variant logs operands in source order", () => {
+    const { session, env } = recorderEnv();
+    const args = listOfValuesLr(recorderOperands(), env, session);
+    expect(session.transcript).toEqual(["a", "b", "c"]);
+    expect(arrayItems(args)).toEqual(["a", "b", "c"]);
+  });
 
-  it.effect("the right-to-left variant evaluates operands in reverse source order", () =>
-    Effect.gen(function* () {
-      const env = yield* recorderEnv();
-      const args = yield* listOfValuesRl(observableOperands(), env);
-      const sequence = yield* evalString("sequence", env);
-      expect(format(sequence)).toBe("(c b a)");
-      expect(format(args)).toBe("(a b c)");
-    }),
-  );
+  it("the right-to-left variant logs the reversed order but builds the same argument list", () => {
+    const { session, env } = recorderEnv();
+    const args = listOfValuesRl(recorderOperands(), env, session);
+    expect(session.transcript).toEqual(["c", "b", "a"]);
+    expect(arrayItems(args)).toEqual(["a", "b", "c"]);
+  });
 
-  it.effect("the module's listOfValues agrees with the left-to-right variant", () =>
-    Effect.gen(function* () {
-      const env = yield* recorderEnv();
-      const args = yield* listOfValues(observableOperands(), env);
-      const sequence = yield* evalString("sequence", env);
-      expect(format(sequence)).toBe("(a b c)");
-      expect(format(args)).toBe("(a b c)");
-    }),
-  );
+  it("the engine's listOfValues follows the specification's left-to-right order", () => {
+    const { env } = recorderEnv();
+    const args = listOfValues(recorderOperands(), env);
+    expect(arrayItems(args)).toEqual(["a", "b", "c"]);
+    const recorded = lookupVariableValue("recorded", env);
+    expect(recorded.tag).toBe("ok");
+    if (recorded.tag === "ok" && isArrayValue(recorded.value)) {
+      expect(recorded.value.items).toEqual(["a", "b", "c"]);
+    }
+  });
 });

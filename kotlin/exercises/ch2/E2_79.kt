@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.79: define a generic equality predicate `equ?` over the
  * tower's numbers and install it. The per-level installs live in
@@ -12,4 +10,4 @@ import sicp.runtime.PendingSolution
  * `equ?` across tower levels -- so [equvAcross] walks two values to a
  * common level with a raise chain before comparing.
  */
-public fun ex_2_79(): Boolean = throw PendingSolution()
+public fun ex_2_79(): Boolean = throw PendingExercise()

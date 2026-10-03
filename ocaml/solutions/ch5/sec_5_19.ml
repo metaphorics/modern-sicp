@@ -1,25 +1,11 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Adapted from the Scheme program of SICP section 5.2 *)
 
-(** Exercise 5.19: breakpoints -- set before the [n]th instruction
-    after a label, proceed past them, cancel them. *)
+let ( let* ) = Result.bind
 
-let ( >>= ) = Result.bind
-
-module Machine = Sicp_ch5.Sec_5_2
-module Sim = Sec_5_15.Sim
-
-let gcd_controller =
-  {|(controller
- test-b
-   (test (op =) (reg b) (const 0))
-   (branch (label gcd-done))
-   (assign t (op rem) (reg a) (reg b))
-   (assign a (reg b))
-   (assign b (reg t))
-   (goto (label test-b))
- gcd-done)|}
-;;
+module M = Sicp_ch5.Sec_5_1
+module Monitor = Sec_5_15.Monitor
+module Eval_error = Sicp_common.Eval_error
 
 let show_stop = function
   | Sec_5_15.Completed -> "completed"
@@ -29,71 +15,53 @@ let show_stop = function
 let registers m names =
   List.map
     (fun r ->
-       Sim.get_register m r
-       |> function
-       | Error e -> r ^ "=?" ^ Machine.error_to_string e
-       | Ok v -> r ^ " = " ^ Machine.value_to_string v)
+       match Monitor.get_register m r with
+       | Ok v -> r ^ " = " ^ M.value_to_string v
+       | Error e -> r ^ " = ? " ^ Eval_error.to_string e)
     names
   |> String.concat ", "
 ;;
 
-(** [ex_5_19 ()] installs the book's breakpoint -- [(set-breakpoint
-    gcd-machine 'test-b 4)], just before the assignment to [a] -- runs
-    the machine, examines it at each stop, proceeds to the answer,
-    then cancels the breakpoint and runs through. *)
+let load m a b =
+  let* () = Monitor.set_register m "a" (M.Int a) in
+  Monitor.set_register m "b" (M.Int b)
+;;
+
+(* The book's [(set-breakpoint gcd-machine 'test-b 4)] sits just before
+   the assignment to [a], three instructions past the label. *)
 let ex_5_19 () =
-  Sim.make
-    ~registers:[ "a"; "b"; "t" ]
-    ~operations:Machine.arith_operations
-    ~controller:gcd_controller
-  >>= fun m ->
-  Sim.set_breakpoint m "test-b" 4
-  >>= fun () ->
-  Sim.set_register m "a" (Machine.Int 12)
-  >>= fun () ->
-  Sim.set_register m "b" (Machine.Int 8)
-  >>= fun () ->
-  Sim.start m
-  >>= fun stop1 ->
+  let* m =
+    Monitor.make
+      ~registers:[ "a"; "b"; "t" ]
+      ~operations:M.arith_operations
+      ~controller:Sec_5_10.gcd_controller
+  in
+  let* () = Monitor.set_breakpoint m "test-b" 4 in
+  let* () = load m 12 8 in
+  let* stop1 = Monitor.start m in
   let at_stop1 = registers m [ "a"; "b" ] in
-  Sim.proceed m
-  >>= fun stop2 ->
+  let* stop2 = Monitor.proceed m in
   let at_stop2 = registers m [ "a"; "b" ] in
-  Sim.proceed m
-  >>= fun stop3 ->
-  Sim.get_register m "a"
-  >>= fun answer ->
-  Sim.cancel_breakpoint m "test-b" 4
-  >>= fun () ->
-  Sim.set_register m "a" (Machine.Int 20)
-  >>= fun () ->
-  Sim.set_register m "b" (Machine.Int 14)
-  >>= fun () ->
-  Sim.start m
-  >>= fun stop4 ->
-  Sim.get_register m "a"
-  >>= fun answer4 ->
-  Sim.set_breakpoint m "test-b" 4
-  >>= fun () ->
-  Sim.set_breakpoint m "test-b" 2
-  >>= fun () ->
-  Sim.cancel_all_breakpoints m
-  >>= fun () ->
-  Sim.set_register m "a" (Machine.Int 25)
-  >>= fun () ->
-  Sim.set_register m "b" (Machine.Int 15)
-  >>= fun () ->
-  Sim.start m
-  >>= fun stop5 ->
+  let* stop3 = Monitor.proceed m in
+  let* answer = Monitor.get_register m "a" in
+  Monitor.cancel_breakpoint m "test-b" 4;
+  let* () = load m 20 14 in
+  let* stop4 = Monitor.start m in
+  let* answer4 = Monitor.get_register m "a" in
+  let* () = Monitor.set_breakpoint m "test-b" 4 in
+  let* () = Monitor.set_breakpoint m "test-b" 2 in
+  Monitor.cancel_all_breakpoints m;
+  let* () = load m 25 15 in
+  let* stop5 = Monitor.start m in
   Ok
     [ "breakpoint set at test-b 4"
     ; "start: " ^ show_stop stop1 ^ " (" ^ at_stop1 ^ ")"
     ; "proceed: " ^ show_stop stop2 ^ " (" ^ at_stop2 ^ ")"
-    ; "proceed: " ^ show_stop stop3 ^ ", a = " ^ Machine.value_to_string answer
+    ; "proceed: " ^ show_stop stop3 ^ ", a = " ^ M.value_to_string answer
     ; "cancel test-b 4, rerun on (20, 14): "
       ^ show_stop stop4
       ^ ", a = "
-      ^ Machine.value_to_string answer4
+      ^ M.value_to_string answer4
     ; "set test-b 4 and test-b 2, cancel all, run on (25, 15): " ^ show_stop stop5
     ]
 ;;

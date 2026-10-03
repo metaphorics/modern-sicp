@@ -8,13 +8,13 @@ import io.kotest.matchers.shouldBe
 
 public class E2_31Test :
     FunSpec({
-        test("treeMap with identity keeps the tree") {
-            treeMap({ x -> x }, nestedTree()) shouldBe nestedTree()
+        test("treeMap with identity preserves every node and leaf") {
+            treeMap({ value -> value }, nestedTree()) shouldBe nestedTree()
         }
-        test("squareTreeViaTreeMap agrees with squareTree") {
+        test("mapping a square agrees with the direct tree traversal") {
             squareTreeViaTreeMap(nestedTree()) shouldBe squareTree(nestedTree())
         }
-        test("ex_2_31 prints (1 (4 (9 16) 25) (36 49))") {
-            ex_2_31() shouldBe "(1 (4 (9 16) 25) (36 49))"
+        test("ex_2_31 returns the typed squared tree") {
+            ex_2_31() shouldBe squareTree(nestedTree())
         }
     })

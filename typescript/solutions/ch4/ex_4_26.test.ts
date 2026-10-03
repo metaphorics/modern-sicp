@@ -1,37 +1,45 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
-import { taggedList } from "../../packages/ch4/src/01-metacircular.js";
-import { read } from "../../packages/ch4/src/read.js";
-import { alyssaSession, benSession, ex_4_26, unlessToIf } from "./ex_4_26.js";
 
-const valuesOf = (transcript: ReadonlyArray<string>): ReadonlyArray<string> =>
-  transcript.filter((_, i) => i % 4 === 3);
+import { evaluate, Session } from "../../packages/ch4/src/01-metacircular.js";
+import { bool, call, ident, num } from "../../packages/ch4/src/syntax/ast.js";
+import { alyssaSession, benDerived, unlessNode, unlessToIf } from "./ex_4_26.js";
 
-describe("exercise 4.26: unless as special form debate", () => {
-  it("the derived unless picks the arm before anything evaluates", () => {
-    const rewritten = unlessToIf(read("(unless (= 1 1) (/ 1 0) 42)"));
-    expect(taggedList("if", rewritten)).toBe(true);
-    expect(unlessToIf(read("(car '(a b))"))).toStrictEqual(read("(car '(a b))"));
+describe("exercise 4.26: unless as a special form, the debate", () => {
+  it("the derived form picks the arm before anything evaluates", () => {
+    const { env } = { env: new Session("core").globalEnv() };
+    const armed = unlessNode(bool(true), call(ident("missing"), []), num(42));
+    expect(unlessToIf(armed).tag).toBe("conditional");
+    expect(unlessToIf(num(1)).tag).toBe("number");
+    const outcome = benDerived(armed, env);
+    expect(outcome.tag).toBe("ok");
+    if (outcome.tag === "ok") {
+      expect(outcome.value).toBe(42);
+    }
   });
 
-  it("Ben's special form answers armed calls and mappings, not names", async () => {
-    const ben = await Effect.runPromise(benSession());
-    expect(ben.armed).toBe("42");
-    expect(ben.mapped).toBe("(0 7)");
-    expect(ben.nameError).toBe("UnboundVariable: unless");
+  it("the derived mapping answers [0, 7]", () => {
+    const env = new Session("core").globalEnv();
+    const onFalse = benDerived(unlessNode(bool(false), num(0), num(7)), env);
+    const onTrue = benDerived(unlessNode(bool(true), num(0), num(7)), env);
+    expect([
+      onFalse.tag === "ok" ? onFalse.value : null,
+      onTrue.tag === "ok" ? onTrue.value : null,
+    ]).toEqual([0, 7]);
   });
 
-  it("Alyssa's lazy procedure answers the same and stays first-class", async () => {
-    const alyssa = valuesOf(await Effect.runPromise(alyssaSession()));
-    expect(alyssa).toStrictEqual(["ok", "ok", "42", "(0 7)", "ok", "7"]);
+  it("Ben's name stays syntax: reading unless fails with unbound-name", () => {
+    const outcome = evaluate(ident("unless"), new Session("core").globalEnv());
+    expect(outcome.tag).toBe("error");
+    if (outcome.tag === "error" && outcome.error.tag === "unbound-name") {
+      expect(outcome.error.name).toBe("unless");
+    }
   });
 
-  it("reports both sides", () => {
-    const report = ex_4_26();
-    expect(report).toContain("UnboundVariable: unless");
-    expect(report).toContain("first-class");
+  it("Alyssa's lazy procedure answers the same calls and stays first-class", () => {
+    const result = alyssaSession();
+    expect(result.transcript).toEqual(["42", "[0, 7]", "7"]);
   });
 });

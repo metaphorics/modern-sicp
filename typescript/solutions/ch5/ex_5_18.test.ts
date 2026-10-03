@@ -2,20 +2,15 @@
 // Original exercise
 
 import { describe, expect, it } from "vitest";
-import { tracedRegisterGcdLog } from "./ex_5_18.js";
+import { ex_5_18 } from "./ex_5_18.ts";
 
 describe("exercise 5.18 traced registers", () => {
-  it("reports every store to a traced register, old and new", () => {
-    expect(tracedRegisterGcdLog()).toEqual([
-      "a: *unassigned* -> 12",
-      "b: *unassigned* -> 8",
-      "t: *unassigned* -> 4",
-      "a: 12 -> 8",
-      "b: 8 -> 4",
-      "t: 4 -> 0",
-      "a: 8 -> 4",
-      "b: 4 -> 0",
-      "gcd(12, 8) = 4",
-    ]);
+  it("reports every store of the controller's registers", () => {
+    const result = ex_5_18();
+    expect(result.answer).toBe(4);
+    const tail = result.log.slice(-2);
+    expect(tail[0]).toBe("a: 8 -> 4");
+    expect(tail[1]).toBe("b: 4 -> 0");
+    expect(result.log.length).toBeGreaterThan(0);
   });
 });

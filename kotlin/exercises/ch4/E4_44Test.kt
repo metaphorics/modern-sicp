@@ -12,19 +12,19 @@ public class E4_44Test :
         test("Exercise 4.44: the first eight-queens solution").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            queensFirst(8) shouldBe "(4 2 7 3 6 8 5 1)"
+            queensFirst(8) shouldBe "[4, 2, 7, 3, 6, 8, 5, 1]"
         }
 
         test("Exercise 4.44: the first four-queens solution").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            queensFirst(4) shouldBe "(3 1 4 2)"
+            queensFirst(4) shouldBe "[3, 1, 4, 2]"
         }
 
         test("Exercise 4.44: the first six-queens solution").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            queensFirst(6) shouldBe "(5 3 1 6 4 2)"
+            queensFirst(6) shouldBe "[5, 3, 1, 6, 4, 2]"
         }
 
         test("Exercise 4.44: backtracks to the first solution").config(

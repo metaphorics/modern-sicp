@@ -3,16 +3,10 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
- * Exercise 2.17: Define a procedure `lastPair` (the book's `last-pair`) that returns
- * the list that contains only the last element of a given (nonempty)
- * list, such as the book's `(23 72 149 34)`.
- *
- * The statement lives in the section 2.2 chapter text.
- *
- * The scaffold returns the printed form of `lastPair` applied to the chain built from
- * `23, 72, 149, 34`.
+ * Exercise 2.17: define `lastPair` to return the one-element suffix containing
+ * the final whole-number datum of a nonempty proper sequence. The scaffold
+ * applies it to values 23, 72, 149, and 34 and asks for the canonical native
+ * rendering of the result.
  */
-public fun ex_2_17(): String = throw PendingSolution()
+public fun ex_2_17(): String = throw PendingExercise()

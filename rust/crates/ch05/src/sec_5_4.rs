@@ -1,1671 +1,1425 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Adapted from the Scheme programs in SICP section 5.4
+//!
+//! Section 5.4: the explicit-control evaluator. The machine is a guest
+//! data structure and a transition function (grammar §9): typed control
+//! states, named registers, and one explicit `Vec` stack over the same
+//! checked object AST the direct evaluator runs. Operand evaluation,
+//! application, and loop control are explicit states with saved
+//! continuations; the direct evaluator shares none of this control
+//! code, and agreement between the two is a conformance observation,
+//! not a shared path.
 
-//! Section 5.4: The explicit-control evaluator.
-//!
-//! The book's register machine that runs the metacircular evaluator's
-//! algorithm directly, as a controller sequence over the
-//! [section 5.2 simulator](crate::sec_5_2): the registers, the
-//! monitored stack, the flag, and the assembler are exactly 5.2's, and
-//! the controller is the book's text in the book's notation, held
-//! here as [`controller_fragments`].
-//!
-//! Machine words. The runtime [`Value`] type is the word type, the 5.3
-//! precedent, so every word rides in a machine register unchanged:
-//! object values are themselves, and the object-language expressions
-//! are the list structure the reader produced, the book's own uniform
-//! representation, so the syntax operations are the 4.1.2 list
-//! procedures the controller names, [`base_operations`]. The
-//! evaluator's own data are tagged words no object-language value can
-//! spell (the reserved `sicp-word:` tag prefix): the environment word
-//! (a handle into the environment table), the procedure words, the
-//! thunk word of exercise 5.25, and the condition words of exercise
-//! 5.30. Labels are the label-name symbols the 5.2 assembler's
-//! `(goto (reg continue))` consumes.
-//!
-//! Nothing raises out of a correct run: the driver loop ends when the
-//! input queue runs dry, through the typed [`Fault::Op`] whose
-//! message is [`INPUT_EXHAUSTED`], and every other failure of the
-//! evaluator stops the machine with a typed fault too. The
-//! [`Evaluator::run`] wrapper reads the queue-dry fault as the run's
-//! normal end.
-
-use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::rc::Rc;
 
-use crate::sec_5_2::{Fault, Machine, OpHandler, make_machine};
-use sicp_runtime::{Env, Value, display_value, read_program};
+use sicp_runtime::host::check::CheckedProgram;
+use sicp_runtime::host::diag::{Diag, Span};
+use sicp_runtime::host::hir::{
+    BinOp, BindId, CtorOp, FormatKind, FunId, HirBlock, HirExpr, HirExprKind, HirPat, MethodOp,
+    PlaceRoot, Proj, Sema, UnOp,
+};
+use sicp_runtime::host::ops::{self, Flow, RunOutcome, TrapReport};
+use sicp_runtime::host::value::{Addr, HostValue, RtProj, Trap};
 
-// The reserved tag prefix of the evaluator's own words is
-// `sicp-word:`: no object-language value carries it, because the
-// object language has no tagged words.
-
-const ENVIRONMENT_TAG: &str = "sicp-word: environment";
-const PRIMITIVE_TAG: &str = "sicp-word: primitive";
-const COMPOUND_TAG: &str = "sicp-word: compound-procedure";
-const THUNK_TAG: &str = "sicp-word: thunk";
-const CONDITION_TAG: &str = "sicp-word: condition";
-
-/// The message whose read fault ends the driver loop when the input
-/// queue runs dry: the edition's stop for the book's unbounded
-/// read-eval-print loop.
-pub const INPUT_EXHAUSTED: &str = "the evaluator's input queue is empty";
-
-/// The registers of the evaluator machine description: the book's
-/// seven. The machine's own `flag` is never named by a controller and
-/// is never allocated as a register.
-const EVALUATOR_REGISTERS: &[&str] = &["exp", "env", "val", "continue", "proc", "argl", "unev"];
-
-/// Builds a `Fault::Op` with the message only; the assembler
-/// decorates the fault with the operation's name and the step.
-fn op_fail(message: impl Into<String>) -> Fault {
-    Fault::Op {
-        op: String::new(),
-        message: message.into(),
-        step: 0,
-    }
+/// One typed control state of the explicit machine.
+#[derive(Debug, Clone)]
+pub enum Control {
+    /// Evaluate the expression register.
+    Eval(HirExpr),
+    /// Execute the statements of a block, then its tail.
+    Exec(HirBlock),
+    /// Write the value register into a binding, then continue with the
+    /// rest of the block.
+    Bind {
+        /// The fresh slot to write.
+        binding: BindId,
+        /// The tuple destructuring slots.
+        destruct: Option<(BindId, BindId)>,
+        /// The statements and tail that follow.
+        rest: HirBlock,
+    },
+    /// Evaluate operands left to right; each finished operand lands in
+    /// `done`, and `after` runs when none are pending.
+    Args {
+        /// The operands still unevaluated.
+        pending: VecDeque<HirExpr>,
+        /// The operands already evaluated, in order.
+        done: Vec<HostValue>,
+        /// What runs once every operand is evaluated.
+        after: Resume,
+    },
+    /// Evaluate the right operand of a binary operator with the left
+    /// operand in the value register.
+    Binop {
+        /// The operator.
+        op: BinOp,
+        /// The right operand.
+        right: Box<HirExpr>,
+    },
+    /// Apply one unary operator to the value register.
+    Unary(UnOp),
+    /// Project one field of the value register.
+    Field(u32),
+    /// The indexed base is evaluated; evaluate the index.
+    IndexBase {
+        /// The index expression.
+        index: Box<HirExpr>,
+    },
+    /// The index is evaluated; read the element of the base.
+    IndexAt {
+        /// The evaluated base (a vector or array).
+        base: HostValue,
+    },
+    /// Store the value register into a resolved place, optionally
+    /// through one compound operator.
+    Assign {
+        /// The destination.
+        addr: Addr,
+        /// The destination projections.
+        projs: Vec<RtProj>,
+        /// The compound operator.
+        op: Option<BinOp>,
+    },
+    /// Try each arm against the value register until one binds.
+    MatchArms {
+        /// The arms, in order.
+        arms: Vec<(HirPat, HirExpr)>,
+    },
+    /// Test one pattern against the value register and branch.
+    TestPattern {
+        /// The pattern to bind.
+        pat: HirPat,
+        /// The state on a successful match.
+        success: Box<Control>,
+        /// The state on a failed match.
+        failure: Box<Control>,
+    },
+    /// Apply the procedure register to the argument register.
+    Apply,
+    /// Wrap the value register in a `return` signal.
+    ReturnValue,
+    /// Wrap the value register in a `break` signal.
+    BreakValue,
+    /// Test the value register for the `Try` early-return lesson.
+    TryTest,
+    /// The `Range` left endpoint is evaluated; evaluate the right one.
+    RangeLeft {
+        /// The right endpoint expression.
+        right: Box<HirExpr>,
+    },
+    /// Both `Range` endpoints are evaluated; build the iterator.
+    RangeEnd {
+        /// The evaluated left endpoint.
+        left: HostValue,
+    },
+    /// The binary left operand is evaluated; evaluate the right one.
+    BinaryRight {
+        /// The operator.
+        op: BinOp,
+        /// The evaluated left operand.
+        left: HostValue,
+    },
+    /// A `while` test is evaluated; branch on its boolean value.
+    WhileCheck {
+        /// The test expression (re-armed on iteration).
+        test: Box<HirExpr>,
+        /// The loop body.
+        body: Box<HirBlock>,
+    },
+    /// A `while let` scrutinee is evaluated; bind it or exit.
+    WhileLetCheck {
+        /// The binding pattern.
+        pat: HirPat,
+        /// The scrutinee expression (re-armed on iteration).
+        value: Box<HirExpr>,
+        /// The loop body.
+        body: Box<HirBlock>,
+    },
+    /// A `for` iterable is evaluated; build the iterator.
+    ForIterable {
+        /// The binding pattern.
+        pat: HirPat,
+        /// The loop body.
+        body: Box<HirBlock>,
+    },
+    /// Resolve one place expression to an address and projections.
+    ResolvePlace {
+        /// The place to resolve.
+        place: sicp_runtime::host::hir::Place,
+        /// What runs once the address is resolved.
+        then: PlaceCont,
+    },
+    /// The referent of a place root is evaluated; continue resolution.
+    PlaceDeref {
+        /// The projections still to resolve.
+        proj: Vec<sicp_runtime::host::hir::Proj>,
+        /// What runs once the address is resolved.
+        then: PlaceCont,
+    },
+    /// One place index is evaluated; push it and continue.
+    PlaceIndex {
+        /// The resolved address so far.
+        addr: Addr,
+        /// The projections resolved so far.
+        projs: Vec<RtProj>,
+        /// The projections still to resolve.
+        rest: Vec<sicp_runtime::host::hir::Proj>,
+        /// What runs once the address is resolved.
+        then: PlaceCont,
+    },
+    /// One loop: its recurrence kind and its body.
+    Loop {
+        /// The recurrence discipline.
+        kind: LoopKind,
+        /// The loop body.
+        body: Box<HirBlock>,
+    },
+    /// One guest function boundary: `return` and fall-off both exit
+    /// the activation and resume the caller; main's boundary halts.
+    FunEnd {
+        /// The caller's frame register, restored on exit.
+        caller_frame: usize,
+    },
+    /// The machine has halted.
+    Halt,
 }
 
-// ---------------------------------------------------------------------------
-// Machine words
-// ---------------------------------------------------------------------------
-
-/// The tag of a tagged word, or nothing for a plain value.
-fn word_tag(word: &Value) -> Option<&str> {
-    match word {
-        Value::Tagged { tag, .. } => Some(tag.as_ref()),
-        _ => None,
-    }
+/// How one [`Control::Loop`] re-enters itself.
+#[derive(Debug, Clone)]
+pub enum LoopKind {
+    /// `loop`: the body repeats until a `break` or `return`.
+    Forever,
+    /// `while TEST BODY`: test before every iteration.
+    While {
+        /// The condition.
+        test: Box<HirExpr>,
+    },
+    /// `while let PAT = VALUE BODY`.
+    WhileLet {
+        /// The matched pattern.
+        pat: HirPat,
+        /// The scrutinee, re-evaluated every iteration.
+        value: Box<HirExpr>,
+    },
+    /// `for PAT in ITERABLE BODY`: the iterator register steps.
+    For {
+        /// The binding pattern.
+        pat: HirPat,
+    },
 }
 
-/// Whether the word carries the given evaluator tag.
-fn is_word_kind(word: &Value, tag: &str) -> bool {
-    word_tag(word) == Some(tag)
+/// What runs once a place resolves to an address and projections.
+#[derive(Debug, Clone)]
+pub enum PlaceCont {
+    /// Read the resolved place into the value register.
+    Read {
+        /// Whether the read moves the value out.
+        mode: sicp_runtime::host::hir::PlaceUse,
+    },
+    /// Evaluate the assigned value, then store it.
+    Assign {
+        /// The compound operator.
+        op: Option<BinOp>,
+        /// The assigned value expression.
+        value: Box<HirExpr>,
+    },
+    /// Evaluate the receiver, then run the method over its arguments.
+    Method {
+        /// The method to run.
+        op: MethodOp,
+        /// The receiver expression.
+        receiver: Box<HirExpr>,
+        /// The argument expressions.
+        args: Vec<HirExpr>,
+    },
+    /// Build the reference value for the resolved place without
+    /// reading it: borrowing aliases the slot.
+    Borrow {
+        /// Whether the borrow is exclusive.
+        mutable: bool,
+    },
 }
 
-/// The environment word: a handle into the environment table, what
-/// the `env` register holds.
-#[must_use]
-pub fn env_word(handle: usize) -> Value {
-    // usize to i128 widens for every handle the table can hold.
-    #[allow(clippy::cast_possible_wrap)]
-    Value::tagged(ENVIRONMENT_TAG, Value::Int(handle as i128))
+/// What the machine does after an operand sequence completes.
+#[derive(Debug, Clone)]
+pub enum Resume {
+    /// Call the resolved top-level function.
+    Call {
+        /// The resolved callee.
+        callee: FunId,
+    },
+    /// Call the evaluated callee value.
+    CallValue,
+    /// Build a struct or tuple-struct literal.
+    Struct {
+        /// The item identity.
+        item: u32,
+    },
+    /// Build an enum variant.
+    Variant {
+        /// The item identity.
+        item: u32,
+        /// The variant index.
+        index: u32,
+    },
+    /// Build a two-element tuple.
+    Tuple,
+    /// Build a vector.
+    VecBuild,
+    /// Run an admitted constructor.
+    Ctor(CtorOp),
+    /// Run an admitted method over the evaluated receiver.
+    Method {
+        /// The method to run.
+        op: MethodOp,
+        /// The receiver's resolved place.
+        place: Option<(Addr, Vec<RtProj>)>,
+    },
+    /// Render one format call.
+    Format {
+        /// The macro's kind.
+        kind: FormatKind,
+        /// The parsed specification.
+        spec: sicp_runtime::host::hir::FormatSpec,
+    },
+    /// Repeat one value for `vec![value; count]`.
+    VecRepeat,
 }
 
-/// The handle an environment word names.
-#[must_use]
-pub fn env_handle(word: &Value) -> Option<usize> {
-    if !is_word_kind(word, ENVIRONMENT_TAG) {
-        return None;
-    }
-    let Value::Tagged { data, .. } = word else {
-        return None;
-    };
-    let Value::Int(handle) = **data else {
-        return None;
-    };
-    usize::try_from(handle).ok()
+/// One signal a control state raises to its saved continuations.
+#[derive(Debug, Clone)]
+pub enum Signal {
+    /// `return`, carrying its value.
+    Return(HostValue),
+    /// `break`, carrying its typed value.
+    Break(HostValue),
+    /// `continue`.
+    Continue,
 }
 
-/// The primitive procedure word: the name into the primitive table.
-#[must_use]
-pub fn primitive_word(name: &str) -> Value {
-    Value::tagged(PRIMITIVE_TAG, Value::sym(name))
+/// The explicit-control evaluator: registers, explicit stacks, and the
+/// shared leaf engine.
+pub struct Eceval {
+    /// The shared leaf semantics.
+    pub engine: ops::Engine,
+    /// The control state register.
+    pub control: Control,
+    /// The saved control states: the machine's `continue` register.
+    pub continues: Vec<Control>,
+    /// The explicit save stack.
+    pub stack: Vec<HostValue>,
+    /// The iterator register, used by `for` loops.
+    pub iterator: Option<HostValue>,
+    /// The value register.
+    pub val: HostValue,
+    /// The procedure register.
+    pub proc: HostValue,
+    /// The argument register.
+    pub argl: Vec<HostValue>,
+    /// The frame register.
+    pub frame: usize,
+    /// The pending signal register.
+    pub signal: Option<Signal>,
+    /// Whether the machine has halted.
+    pub halted: bool,
 }
 
-/// The name a primitive procedure word carries.
-#[must_use]
-pub fn primitive_name(word: &Value) -> Option<&str> {
-    if !is_word_kind(word, PRIMITIVE_TAG) {
-        return None;
-    }
-    let Value::Tagged { data, .. } = word else {
-        return None;
-    };
-    match &**data {
-        Value::Sym(name) => Some(name),
-        _ => None,
-    }
-}
-
-/// The compound procedure word: the parameter list, the body, and the
-/// environment word, the book's `make-procedure` product.
-#[must_use]
-pub fn compound_word(parameters: Value, body: Value, environment: Value) -> Value {
-    Value::tagged(
-        COMPOUND_TAG,
-        Value::list(vec![parameters, body, environment]),
-    )
-}
-
-/// The `(parameters, body, environment)` a compound procedure word
-/// carries.
-#[must_use]
-pub fn compound_parts(word: &Value) -> Option<(Value, Value, Value)> {
-    if !is_word_kind(word, COMPOUND_TAG) {
-        return None;
-    }
-    let Value::Tagged { data, .. } = word else {
-        return None;
-    };
-    let items = data.list_items().ok()?;
-    Some((
-        items.first()?.clone(),
-        items.get(1)?.clone(),
-        items.get(2)?.clone(),
-    ))
-}
-
-/// The thunk word of exercise 5.25: the delayed expression and the
-/// environment it delays over. The base evaluator never builds one.
-#[must_use]
-pub fn thunk_word(expression: Value, environment: Value) -> Value {
-    Value::tagged(THUNK_TAG, Value::list(vec![expression, environment]))
-}
-
-/// Whether the word is a thunk word.
-#[must_use]
-pub fn is_thunk(word: &Value) -> bool {
-    is_word_kind(word, THUNK_TAG)
-}
-
-/// The `(expression, environment)` a thunk word delays.
-#[must_use]
-pub fn thunk_parts(word: &Value) -> Option<(Value, Value)> {
-    if !is_word_kind(word, THUNK_TAG) {
-        return None;
-    }
-    let Value::Tagged { data, .. } = word else {
-        return None;
-    };
-    let items = data.list_items().ok()?;
-    Some((items.first()?.clone(), items.get(1)?.clone()))
-}
-
-/// The condition word of exercise 5.30: a reserved tag no object
-/// value can spell, the condition's name, and the detail
-/// `signal-error` reports.
-#[must_use]
-pub fn condition_word(name: &str, detail: &str) -> Value {
-    Value::tagged(
-        CONDITION_TAG,
-        Value::list(vec![Value::sym(name), Value::string(detail)]),
-    )
-}
-
-/// Whether the word is the condition word of the given name.
-#[must_use]
-pub fn is_condition(word: &Value, name: &str) -> bool {
-    condition_parts(word).is_some_and(|(found, _)| found == name)
-}
-
-/// The `(name, detail)` a condition word carries.
-#[must_use]
-pub fn condition_parts(word: &Value) -> Option<(String, String)> {
-    if !is_word_kind(word, CONDITION_TAG) {
-        return None;
-    }
-    let Value::Tagged { data, .. } = word else {
-        return None;
-    };
-    let items = data.list_items().ok()?;
-    let Value::Sym(name) = items.first()? else {
-        return None;
-    };
-    let Value::Str(detail) = items.get(1)? else {
-        return None;
-    };
-    Some((name.to_string(), detail.to_string()))
-}
-
-/// Renders a word for the transcript: the detail of a condition word,
-/// the word's own name for the evaluator's other words, and the
-/// displayed form of every plain value.
-#[must_use]
-pub fn render_word(word: &Value) -> String {
-    if let Some((_, detail)) = condition_parts(word) {
-        return detail;
-    }
-    match word {
-        _ if env_handle(word).is_some() => "#[environment]".to_owned(),
-        _ => match primitive_name(word) {
-            Some(name) => format!("#[primitive-procedure {name}]"),
-            None if compound_parts(word).is_some() => "#[compound-procedure]".to_owned(),
-            None if is_thunk(word) => "#[thunk]".to_owned(),
-            None => display_value(word),
-        },
-    }
-}
-
-// ---------------------------------------------------------------------------
-// The environment table
-// ---------------------------------------------------------------------------
-
-thread_local! {
-    /// The environment table the environment words name entries in:
-    /// process-wide because the machine's operations are stateless
-    /// closures, and grow-only so a handle never changes meaning.
-    static ENVIRONMENTS: RefCell<Vec<Rc<Env>>> = const { RefCell::new(Vec::new()) };
-}
-
-/// Enters an environment in the table and answers its word.
-fn intern_environment(environment: Rc<Env>) -> Value {
-    ENVIRONMENTS.with(|table| {
-        let mut table = table.borrow_mut();
-        let handle = table.len();
-        table.push(environment);
-        env_word(handle)
-    })
-}
-
-/// Reads the environment a word names, the public shape the
-/// exercise solutions' overridden environment operations use.
-///
-/// # Errors
-/// [`Fault::Op`] when the word is not an environment word or names
-/// no table entry.
-pub fn environment_of(word: &Value, what: &str) -> Result<Rc<Env>, Fault> {
-    lookup_environment(word, what)
-}
-
-/// Enters an environment in the evaluator's table and answers its
-/// word: the public shape the section 5.5 machine's runtime
-/// environment primitives use, so their words are readable by every
-/// base operation.
-#[must_use]
-pub fn intern_env(environment: Rc<Env>) -> Value {
-    intern_environment(environment)
-}
-
-/// Builds one operation over words for an exercise's table: the
-/// public shape the solutions' extra operations use.
-pub fn operation(
-    name: &'static str,
-    f: impl Fn(&[Value]) -> Result<Value, Fault> + 'static,
-) -> (&'static str, OpHandler) {
-    word_op(name, f)
-}
-
-/// Reads the environment a word names.
-fn lookup_environment(word: &Value, what: &str) -> Result<Rc<Env>, Fault> {
-    let handle = env_handle(word).ok_or_else(|| op_fail(format!("{what} needs an environment")))?;
-    ENVIRONMENTS
-        .with(|table| table.borrow().get(handle).cloned())
-        .ok_or_else(|| op_fail(format!("{what} names no environment")))
-}
-
-// ---------------------------------------------------------------------------
-// Word shorthands the operations share
-// ---------------------------------------------------------------------------
-
-fn one(name: &str, args: &[Value]) -> Result<(Value,), Fault> {
-    let [a] = args else {
-        return Err(op_fail(format!("{name}: needs one argument")));
-    };
-    Ok((a.clone(),))
-}
-
-fn two(name: &str, args: &[Value]) -> Result<(Value, Value), Fault> {
-    let [a, b] = args else {
-        return Err(op_fail(format!("{name}: needs two arguments")));
-    };
-    Ok((a.clone(), b.clone()))
-}
-
-fn three(name: &str, args: &[Value]) -> Result<(Value, Value, Value), Fault> {
-    let [a, b, c] = args else {
-        return Err(op_fail(format!("{name}: needs three arguments")));
-    };
-    Ok((a.clone(), b.clone(), c.clone()))
-}
-
-// ---------------------------------------------------------------------------
-// Syntax: the 4.1.2 list procedures over words
-// ---------------------------------------------------------------------------
-
-/// The items of a proper list word, or nothing.
-fn items_of(word: &Value) -> Option<Vec<Value>> {
-    word.list_items().ok()
-}
-
-/// The items when `word` is the tagged list `(tag ...)`.
-fn tagged_items(word: &Value, tag: &str) -> Option<Vec<Value>> {
-    let items = items_of(word)?;
-    if matches!(items.first(), Some(Value::Sym(name)) if name.as_ref() == tag) {
-        Some(items)
-    } else {
-        None
-    }
-}
-
-fn is_symbol(word: &Value) -> bool {
-    matches!(word, Value::Sym(_))
-}
-
-fn symbol_name(word: &Value) -> Option<String> {
-    match word {
-        Value::Sym(name) => Some(name.to_string()),
-        _ => None,
-    }
-}
-
-/// The book's `self-evaluating?`: numbers, strings, and booleans.
-fn is_self_evaluating(word: &Value) -> bool {
-    matches!(
-        word,
-        Value::Int(_) | Value::Real(_) | Value::Str(_) | Value::Bool(_)
-    )
-}
-
-/// The book's `true?`: every value counts as true except `false`.
-#[must_use]
-pub fn object_is_true(value: &Value) -> bool {
-    !matches!(value, Value::Bool(false))
-}
-
-/// Whether a define target names a value (`x`) or a procedure
-/// (`(f args...)`).
-fn is_definition_target(word: &Value) -> bool {
-    matches!(word, Value::Sym(_) | Value::Pair(_))
-}
-
-/// Builds the lambda a procedure-form define names:
-/// `(lambda parameters body...)`.
-fn lambda_form(parameters: Value, body: &[Value]) -> Value {
-    let mut form = vec![Value::sym("lambda"), parameters];
-    form.extend(body.iter().cloned());
-    Value::list(form)
-}
-
-/// The operand list word: the book's `adjoin-arg` appends at the end,
-/// the book's order.
-fn adjoin_arg(word: Value, argl: &Value) -> Result<Value, Fault> {
-    let mut items = argl
-        .list_items()
-        .map_err(|_| op_fail("adjoin-arg needs an operand list"))?;
-    items.push(word);
-    Ok(Value::list(items))
-}
-
-/// Whether a sequence word is empty and whether it is down to its
-/// last expression.
-fn sequence_flags(name: &str, word: &Value) -> Result<(bool, bool), Fault> {
-    let items = items_of(word).ok_or_else(|| op_fail(format!("{name} needs a sequence")))?;
-    Ok((items.is_empty(), items.len() == 1))
-}
-
-// ---------------------------------------------------------------------------
-// The object-language primitives
-// ---------------------------------------------------------------------------
-
-/// The exact integer a primitive argument must carry.
-fn number_of(name: &str, word: &Value) -> Result<i128, Fault> {
-    match word {
-        Value::Int(n) => Ok(*n),
-        other => Err(op_fail(format!(
-            "{name}: needs a number, got {}",
-            display_value(other)
-        ))),
-    }
-}
-
-fn int_pair(name: &str, args: &[Value]) -> Result<(i128, i128), Fault> {
-    let (a, b) = two(name, args)?;
-    Ok((number_of(name, &a)?, number_of(name, &b)?))
-}
-
-/// The object language's `eq?`: identity on pairs, content on
-/// numbers, symbols, strings, booleans, and the empty list.
-fn eq_values(a: &Value, b: &Value) -> bool {
-    if let (Value::Pair(x), Value::Pair(y)) = (a, b) {
-        return Rc::ptr_eq(x, y);
-    }
-    a == b
-}
-
-/// The object-language arithmetic: `+`, `-`, and `*` fold n-ary over
-/// exact integers with the `+` and `*` identities and unary `-` as
-/// the negation; `/` answers an exact quotient when the division is
-/// exact and a real otherwise, and a zero divisor is the division
-/// failure that exercise 5.30 turns into a condition code.
-fn arith(name: &str, args: &[Value]) -> Result<Value, Fault> {
-    let overflow = || op_fail("arithmetic overflow");
-    let mut acc = number_of(name, args.first().unwrap_or(&Value::Nil))?;
-    for word in args.iter().skip(1) {
-        let next = number_of(name, word)?;
-        acc = match name {
-            "+" => acc.checked_add(next).ok_or_else(overflow)?,
-            "-" => acc.checked_sub(next).ok_or_else(overflow)?,
-            "*" => acc.checked_mul(next).ok_or_else(overflow)?,
-            _ => return Err(op_fail(format!("{name}: is not arithmetic"))),
-        };
-    }
-    Ok(Value::Int(acc))
-}
-
-fn comparison(name: &str, args: &[Value], pick: fn(i128, i128) -> bool) -> Result<Value, Fault> {
-    let (a, b) = int_pair(name, args)?;
-    Ok(Value::boolean(pick(a, b)))
-}
-
-/// The names of the object primitives the evaluator's global
-/// environment binds: the public shape the section 5.5 machine's
-/// runtime table extends.
-#[must_use]
-pub fn object_primitive_names() -> &'static [&'static str] {
-    OBJECT_PRIMITIVES
-}
-
-/// Applies the object-language primitive `name` to the values `args`:
-/// the evaluator's `apply-primitive-procedure` calls it with `proc`'s
-/// name, and the error-signaling exercise wraps its failures in
-/// condition words.
-///
-/// # Errors
-/// [`Fault::Op`] carrying the primitive's own message; an unknown
-/// name is the unknown-operation fault.
-pub fn apply_object_primitive(name: &str, args: &[Value]) -> Result<Value, Fault> {
-    match name {
-        "cons" => {
-            let (a, b) = two(name, args)?;
-            Ok(Value::Pair(sicp_runtime::cons_cell(a, b)))
-        }
-        "car" => match one(name, args)?.0 {
-            Value::Pair(pair) => Ok(pair.car.borrow().clone()),
-            other => Err(op_fail(format!(
-                "car: not a pair: {}",
-                display_value(&other)
-            ))),
-        },
-        "cdr" => match one(name, args)?.0 {
-            Value::Pair(pair) => Ok(pair.cdr.borrow().clone()),
-            other => Err(op_fail(format!(
-                "cdr: not a pair: {}",
-                display_value(&other)
-            ))),
-        },
-        "null?" => Ok(Value::boolean(one(name, args)?.0.is_nil())),
-        "pair?" => Ok(Value::boolean(matches!(one(name, args)?.0, Value::Pair(_)))),
-        "symbol?" => Ok(Value::boolean(matches!(one(name, args)?.0, Value::Sym(_)))),
-        "number?" => Ok(Value::boolean(matches!(
-            one(name, args)?.0,
-            Value::Int(_) | Value::Real(_)
-        ))),
-        "string?" => Ok(Value::boolean(matches!(one(name, args)?.0, Value::Str(_)))),
-        "not" => Ok(Value::boolean(!object_is_true(&one(name, args)?.0))),
-        "eq?" => {
-            let (a, b) = two(name, args)?;
-            Ok(Value::boolean(eq_values(&a, &b)))
-        }
-        "equal?" => {
-            let (a, b) = two(name, args)?;
-            Ok(Value::boolean(a == b))
-        }
-        "list" => Ok(Value::list(args.to_vec())),
-        "+" | "*" => arith(name, args),
-        "-" => unary_or_fold(name, args, i128::checked_neg),
-        "/" => divide(args),
-        "=" => comparison(name, args, |a, b| a == b),
-        "<" => comparison(name, args, |a, b| a < b),
-        ">" => comparison(name, args, |a, b| a > b),
-        "remainder" => {
-            let (a, b) = int_pair(name, args)?;
-            if b == 0 {
-                return Err(op_fail("division by zero"));
-            }
-            Ok(Value::Int(a.wrapping_rem(b)))
-        }
-        other => Err(Fault::UnknownOperation {
-            op: other.to_owned(),
-        }),
-    }
-}
-
-/// The negation of one argument, or the n-ary subtraction.
-fn unary_or_fold(
-    name: &str,
-    args: &[Value],
-    negate: fn(i128) -> Option<i128>,
-) -> Result<Value, Fault> {
-    let first = number_of(name, args.first().unwrap_or(&Value::Nil))?;
-    if args.len() == 1 {
-        let negated = negate(first).ok_or_else(|| op_fail("arithmetic overflow"))?;
-        return Ok(Value::Int(negated));
-    }
-    arith(name, args)
-}
-
-/// The quotient: exact when the division divides evenly, a real
-/// otherwise, and the division failure on a zero divisor.
-fn divide(args: &[Value]) -> Result<Value, Fault> {
-    let mut acc = number_of("/", args.first().unwrap_or(&Value::Nil))?;
-    for word in args.iter().skip(1) {
-        let divisor = number_of("/", word)?;
-        if divisor == 0 {
-            return Err(op_fail("division by zero"));
-        }
-        if acc % divisor == 0 {
-            acc /= divisor;
-        } else {
-            #[expect(
-                clippy::cast_precision_loss,
-                reason = "the section's quotients are far below f64's exact range, \
-                          so the lossy widening is wanted here"
-            )]
-            let exact = acc as f64 / divisor as f64;
-            return Ok(Value::Real(exact));
-        }
-    }
-    Ok(Value::Int(acc))
-}
-
-// ---------------------------------------------------------------------------
-// The base operations table
-// ---------------------------------------------------------------------------
-
-/// One operation over words: the shape the simulator's
-/// [`OpHandler`] expects, with the word-level errors the evaluator
-/// raises.
-fn word_op(
-    name: &'static str,
-    f: impl Fn(&[Value]) -> Result<Value, Fault> + 'static,
-) -> (&'static str, OpHandler) {
-    let handler: OpHandler = Rc::new(move |_, args| f(args));
-    (name, handler)
-}
-
-/// One action under `perform`.
-fn word_action(
-    name: &'static str,
-    f: impl Fn(&[Value]) -> Result<(), Fault> + 'static,
-) -> (&'static str, OpHandler) {
-    let handler: OpHandler = Rc::new(move |_, args| f(args).map(|()| Value::sym("done")));
-    (name, handler)
-}
-
-/// Reads one environment word argument.
-fn environment_arg(args: &[Value], at: usize, what: &str) -> Result<Rc<Env>, Fault> {
-    let word = args
-        .get(at)
-        .ok_or_else(|| op_fail(format!("{what}: missing an argument")))?;
-    lookup_environment(word, what)
-}
-
-fn variable_arg(args: &[Value], at: usize, what: &str) -> Result<String, Fault> {
-    let word = args
-        .get(at)
-        .ok_or_else(|| op_fail(format!("{what}: missing an argument")))?;
-    symbol_name(word).ok_or_else(|| op_fail(format!("{what} needs a variable")))
-}
-
-fn selector(
-    name: &'static str,
-    tag: &'static str,
-    at: usize,
-    missing: &'static str,
-) -> (&'static str, OpHandler) {
-    word_op(name, move |args| {
-        let (word,) = one(name, args)?;
-        tagged_items(&word, tag)
-            .and_then(|items| items.get(at).cloned())
-            .ok_or_else(|| op_fail(missing))
-    })
-}
-
-/// The syntax, sequence, operand-list, procedure, and environment
-/// operations of 4.1 the controller names, typed over words. The
-/// driver's own operations (the input queue, the transcript, and the
-/// global environment) are installed by [`make_evaluator`], which
-/// lets an exercise's `operations` override any name here.
-/// The table is the section's one operations listing; splitting it
-/// would scatter the book's single table over artificial helpers.
-#[expect(
-    clippy::too_many_lines,
-    reason = "the table is the section's operations verbatim"
-)]
-#[must_use]
-pub fn base_operations() -> Vec<(&'static str, OpHandler)> {
-    vec![
-        // -- the dispatch predicates --
-        word_op("self-evaluating?", |args| {
-            Ok(Value::boolean(is_self_evaluating(
-                &one("self-evaluating?", args)?.0,
-            )))
-        }),
-        word_op("variable?", |args| {
-            Ok(Value::boolean(is_symbol(&one("variable?", args)?.0)))
-        }),
-        word_op("quoted?", |args| {
-            Ok(Value::boolean(
-                tagged_items(&one("quoted?", args)?.0, "quote")
-                    .is_some_and(|items| items.len() == 2),
-            ))
-        }),
-        word_op("assignment?", |args| {
-            Ok(Value::boolean(
-                tagged_items(&one("assignment?", args)?.0, "set!")
-                    .is_some_and(|items| items.len() == 3),
-            ))
-        }),
-        word_op("definition?", |args| {
-            let word = one("definition?", args)?.0;
-            let shaped = tagged_items(&word, "define")
-                .is_some_and(|items| items.len() >= 3 && is_definition_target(&items[1]));
-            Ok(Value::boolean(shaped))
-        }),
-        word_op("if?", |args| {
-            Ok(Value::boolean(
-                tagged_items(&one("if?", args)?.0, "if")
-                    .is_some_and(|items| items.len() == 3 || items.len() == 4),
-            ))
-        }),
-        word_op("lambda?", |args| {
-            Ok(Value::boolean(
-                tagged_items(&one("lambda?", args)?.0, "lambda")
-                    .is_some_and(|items| items.len() >= 3),
-            ))
-        }),
-        word_op("begin?", |args| {
-            Ok(Value::boolean(
-                tagged_items(&one("begin?", args)?.0, "begin")
-                    .is_some_and(|items| items.len() >= 2),
-            ))
-        }),
-        word_op("application?", |args| {
-            Ok(Value::boolean(matches!(
-                one("application?", args)?.0,
-                Value::Pair(_)
-            )))
-        }),
-        // -- simple expressions --
-        selector(
-            "text-of-quotation",
-            "quote",
-            1,
-            "text-of-quotation needs a quotation",
-        ),
-        selector(
-            "lambda-parameters",
-            "lambda",
-            1,
-            "lambda-parameters needs a lambda",
-        ),
-        word_op("lambda-body", |args| {
-            let items = tagged_items(&one("lambda?", args)?.0, "lambda")
-                .ok_or_else(|| op_fail("lambda-body needs a lambda"))?;
-            Ok(Value::list(items.into_iter().skip(2).collect()))
-        }),
-        // -- applications --
-        word_op("operator", |args| {
-            let items = items_of(&one("operator", args)?.0)
-                .ok_or_else(|| op_fail("operator needs an application"))?;
-            items
-                .first()
-                .cloned()
-                .ok_or_else(|| op_fail("operator of an empty combination"))
-        }),
-        word_op("operands", |args| {
-            let items = items_of(&one("operands", args)?.0)
-                .ok_or_else(|| op_fail("operands needs an application"))?;
-            Ok(Value::list(items.into_iter().skip(1).collect()))
-        }),
-        word_op("no-operands?", |args| {
-            let (empty, _) = sequence_flags("no-operands?", &one("no-operands?", args)?.0)?;
-            Ok(Value::boolean(empty))
-        }),
-        word_op("first-operand", |args| {
-            let items = items_of(&one("first-operand", args)?.0)
-                .ok_or_else(|| op_fail("first-operand needs a list"))?;
-            items
-                .first()
-                .cloned()
-                .ok_or_else(|| op_fail("first-operand of an empty list"))
-        }),
-        word_op("rest-operands", |args| {
-            let items = items_of(&one("rest-operands", args)?.0)
-                .ok_or_else(|| op_fail("rest-operands needs a list"))?;
-            Ok(Value::list(items.into_iter().skip(1).collect()))
-        }),
-        word_op("last-operand?", |args| {
-            let (_, last) = sequence_flags("last-operand?", &one("last-operand?", args)?.0)?;
-            Ok(Value::boolean(last))
-        }),
-        word_op("empty-arglist", |_| Ok(Value::Nil)),
-        word_op("adjoin-arg", |args| {
-            let (word, argl) = two("adjoin-arg", args)?;
-            adjoin_arg(word, &argl)
-        }),
-        // -- procedure application --
-        word_op("primitive-procedure?", |args| {
-            Ok(Value::boolean(
-                primitive_name(&one("primitive-procedure?", args)?.0).is_some(),
-            ))
-        }),
-        word_op("compound-procedure?", |args| {
-            Ok(Value::boolean(
-                compound_parts(&one("compound-procedure?", args)?.0).is_some(),
-            ))
-        }),
-        word_op("apply-primitive-procedure", |args| {
-            let (proc, argl) = two("apply-primitive-procedure", args)?;
-            let name = primitive_name(&proc)
-                .ok_or_else(|| op_fail("apply-primitive-procedure needs a primitive procedure"))?
-                .to_owned();
-            let values = argl
-                .list_items()
-                .map_err(|_| op_fail("apply-primitive-procedure needs an operand list"))?;
-            apply_object_primitive(&name, &values)
-        }),
-        word_op("make-procedure", |args| {
-            let (params, body, base) = three("make-procedure", args)?;
-            lookup_environment(&base, "make-procedure")?;
-            items_of(&params).ok_or_else(|| op_fail("make-procedure needs a parameter list"))?;
-            items_of(&body).ok_or_else(|| op_fail("make-procedure needs a body"))?;
-            Ok(compound_word(params, body, base))
-        }),
-        word_op("procedure-parameters", |args| {
-            Ok(compound_parts(&one("compound-procedure?", args)?.0)
-                .ok_or_else(|| op_fail("procedure-parameters needs a compound procedure"))?
-                .0)
-        }),
-        word_op("procedure-body", |args| {
-            Ok(compound_parts(&one("compound-procedure?", args)?.0)
-                .ok_or_else(|| op_fail("procedure-body needs a compound procedure"))?
-                .1)
-        }),
-        word_op("procedure-environment", |args| {
-            Ok(compound_parts(&one("compound-procedure?", args)?.0)
-                .ok_or_else(|| op_fail("procedure-environment needs a compound procedure"))?
-                .2)
-        }),
-        // -- environments --
-        word_op("extend-environment", |args| {
-            let (params, argl, base) = three("extend-environment", args)?;
-            let base = lookup_environment(&base, "extend-environment")?;
-            let names: Vec<String> = items_of(&params)
-                .ok_or_else(|| op_fail("extend-environment needs a parameter list"))?
-                .iter()
-                .map(|word| {
-                    symbol_name(word).ok_or_else(|| op_fail("a parameter is written as a variable"))
-                })
-                .collect::<Result<_, _>>()?;
-            let values = items_of(&argl)
-                .ok_or_else(|| op_fail("extend-environment needs an operand list"))?;
-            if names.len() != values.len() {
-                return Err(op_fail(format!(
-                    "extend-environment: the procedure wants {} arguments, got {}",
-                    names.len(),
-                    values.len()
-                )));
-            }
-            let frame = Env::child(&base);
-            for (name, value) in names.into_iter().zip(values) {
-                frame.define(name.into(), value);
-            }
-            Ok(intern_environment(frame))
-        }),
-        word_op("lookup-variable-value", |args| {
-            let (word, base) = two("lookup-variable-value", args)?;
-            let name = variable_arg(std::slice::from_ref(&word), 0, "lookup-variable-value")?;
-            let base = lookup_environment(&base, "lookup-variable-value")?;
-            base.lookup(&name)
-                .map_err(|_| op_fail(format!("unbound variable: {name}")))
-        }),
-        word_action("set-variable-value!", |args| {
-            let name = variable_arg(args, 0, "set-variable-value!")?;
-            let value = args
-                .get(1)
-                .cloned()
-                .ok_or_else(|| op_fail("set-variable-value!: missing a value"))?;
-            let base = environment_arg(args, 2, "set-variable-value!")?;
-            base.set(&name, value)
-                .map_err(|_| op_fail(format!("unbound variable -- set!: {name}")))
-        }),
-        word_action("define-variable!", |args| {
-            let name = variable_arg(args, 0, "define-variable!")?;
-            let value = args
-                .get(1)
-                .cloned()
-                .ok_or_else(|| op_fail("define-variable!: missing a value"))?;
-            let base = environment_arg(args, 2, "define-variable!")?;
-            base.define(name.into(), value);
-            Ok(())
-        }),
-        // -- conditionals and sequences --
-        word_op("true?", |args| {
-            Ok(Value::boolean(object_is_true(&one("true?", args)?.0)))
-        }),
-        selector("if-predicate", "if", 1, "if-predicate needs an if"),
-        selector("if-consequent", "if", 2, "if-consequent needs an if"),
-        word_op("if-alternative", |args| {
-            let items = tagged_items(&one("if?", args)?.0, "if")
-                .ok_or_else(|| op_fail("if-alternative needs an if"))?;
-            Ok(items.get(3).cloned().unwrap_or_else(|| Value::sym("false")))
-        }),
-        word_op("begin-actions", |args| {
-            let items = tagged_items(&one("begin?", args)?.0, "begin")
-                .ok_or_else(|| op_fail("begin-actions needs a begin"))?;
-            Ok(Value::list(items.into_iter().skip(1).collect()))
-        }),
-        word_op("first-exp", |args| {
-            let items = items_of(&one("first-exp", args)?.0)
-                .ok_or_else(|| op_fail("first-exp needs a sequence"))?;
-            items
-                .first()
-                .cloned()
-                .ok_or_else(|| op_fail("first-exp of an empty sequence"))
-        }),
-        word_op("rest-exps", |args| {
-            let items = items_of(&one("rest-exps", args)?.0)
-                .ok_or_else(|| op_fail("rest-exps needs a sequence"))?;
-            Ok(Value::list(items.into_iter().skip(1).collect()))
-        }),
-        word_op("last-exp?", |args| {
-            let (_, last) = sequence_flags("last-exp?", &one("last-exp?", args)?.0)?;
-            Ok(Value::boolean(last))
-        }),
-        word_op("no-more-exps?", |args| {
-            let (empty, _) = sequence_flags("no-more-exps?", &one("no-more-exps?", args)?.0)?;
-            Ok(Value::boolean(empty))
-        }),
-        // -- assignments and definitions --
-        selector(
-            "assignment-variable",
-            "set!",
-            1,
-            "assignment-variable needs an assignment",
-        ),
-        selector(
-            "assignment-value",
-            "set!",
-            2,
-            "assignment-value needs an assignment",
-        ),
-        word_op("definition-variable", |args| {
-            let items = tagged_items(&one("definition-variable", args)?.0, "define")
-                .ok_or_else(|| op_fail("definition-variable needs a definition"))?;
-            let target = items.get(1).cloned().unwrap_or(Value::Nil);
-            let Value::Pair(_) = target else {
-                return Ok(target);
-            };
-            items_of(&target)
-                .and_then(|inner| inner.first().cloned())
-                .ok_or_else(|| op_fail("definition-variable needs a name"))
-        }),
-        word_op("definition-value", |args| {
-            let items = tagged_items(&one("definition-value", args)?.0, "define")
-                .ok_or_else(|| op_fail("definition-value needs a definition"))?;
-            let target = items.get(1).cloned().unwrap_or(Value::Nil);
-            let body: Vec<Value> = items.into_iter().skip(2).collect();
-            let Value::Pair(_) = target else {
-                return body
-                    .into_iter()
-                    .next()
-                    .ok_or_else(|| op_fail("definition-value needs a value"));
-            };
-            let inner = items_of(&target)
-                .ok_or_else(|| op_fail("definition-value needs a procedure form"))?;
-            let parameters = inner
-                .get(1..)
-                .map(|slice| Value::list(slice.to_vec()))
-                .ok_or_else(|| op_fail("definition-value needs parameters"))?;
-            Ok(lambda_form(parameters, &body))
-        }),
-    ]
-}
-
-// ---------------------------------------------------------------------------
-// The controller text, in the book's fragments
-// ---------------------------------------------------------------------------
-
-/// The controller fragments of the base evaluator, in printed order:
-/// each pair is the fragment's name and its controller text, the
-/// book's text in the book's notation. The base controller is their
-/// concatenation; an exercise replaces a fragment with
-/// [`compose_controller`] or splices new entries in with
-/// [`splice_controller`] and hands the composed text to
-/// [`make_evaluator`].
-/// The fragments are the book's controller text verbatim; a shorter
-/// listing would no longer be the book's controller.
-#[expect(
-    clippy::too_many_lines,
-    reason = "the fragments are the book's controller text verbatim"
-)]
-#[must_use]
-pub fn controller_fragments() -> &'static [(&'static str, &'static str)] {
-    &[
-        (
-            "driver",
-            "read-eval-print-loop
-  (perform (op initialize-stack))
-  (perform (op prompt-for-input)
-           (const \";;; EC-Eval input:\"))
-  (assign exp (op read))
-  (assign env (op get-global-environment))
-  (assign continue (label print-result))
-  (goto (label eval-dispatch))
-print-result
-  (perform (op announce-output)
-           (const \";;; EC-Eval value:\"))
-  (perform (op user-print) (reg val))
-  (goto (label read-eval-print-loop))",
-        ),
-        (
-            "eval-dispatch",
-            "eval-dispatch
-  (test (op self-evaluating?) (reg exp))
-  (branch (label ev-self-eval))
-  (test (op variable?) (reg exp))
-  (branch (label ev-variable))
-  (test (op quoted?) (reg exp))
-  (branch (label ev-quoted))
-  (test (op assignment?) (reg exp))
-  (branch (label ev-assignment))
-  (test (op definition?) (reg exp))
-  (branch (label ev-definition))
-  (test (op if?) (reg exp))
-  (branch (label ev-if))
-  (test (op lambda?) (reg exp))
-  (branch (label ev-lambda))
-  (test (op begin?) (reg exp))
-  (branch (label ev-begin))
-  (test (op application?) (reg exp))
-  (branch (label ev-application))
-  (goto (label unknown-expression-type))",
-        ),
-        (
-            "ev-self-eval",
-            "ev-self-eval
-  (assign val (reg exp))
-  (goto (reg continue))",
-        ),
-        (
-            "ev-variable",
-            "ev-variable
-  (assign val
-          (op lookup-variable-value)
-          (reg exp)
-          (reg env))
-  (goto (reg continue))",
-        ),
-        (
-            "ev-quoted",
-            "ev-quoted
-  (assign val
-          (op text-of-quotation)
-          (reg exp))
-  (goto (reg continue))",
-        ),
-        (
-            "ev-lambda",
-            "ev-lambda
-  (assign unev
-          (op lambda-parameters)
-          (reg exp))
-  (assign exp
-          (op lambda-body)
-          (reg exp))
-  (assign val
-          (op make-procedure)
-          (reg unev)
-          (reg exp)
-          (reg env))
-  (goto (reg continue))",
-        ),
-        (
-            "ev-application",
-            "ev-application
-  (save continue)
-  (save env)
-  (assign unev (op operands) (reg exp))
-  (save unev)
-  (assign exp (op operator) (reg exp))
-  (assign
-   continue (label ev-appl-did-operator))
-  (goto (label eval-dispatch))",
-        ),
-        (
-            "ev-appl-did-operator",
-            "ev-appl-did-operator
-  (restore unev)
-  (restore env)
-  (assign argl (op empty-arglist))
-  (assign proc (reg val))
-  (test (op no-operands?) (reg unev))
-  (branch (label apply-dispatch))
-  (save proc)",
-        ),
-        (
-            "argument-loop",
-            "ev-appl-operand-loop
-  (save argl)
-  (assign exp
-          (op first-operand)
-          (reg unev))
-  (test (op last-operand?) (reg unev))
-  (branch (label ev-appl-last-arg))
-  (save env)
-  (save unev)
-  (assign continue
-          (label ev-appl-accumulate-arg))
-  (goto (label eval-dispatch))
-ev-appl-accumulate-arg
-  (restore unev)
-  (restore env)
-  (restore argl)
-  (assign argl
-          (op adjoin-arg)
-          (reg val)
-          (reg argl))
-  (assign unev
-          (op rest-operands)
-          (reg unev))
-  (goto (label ev-appl-operand-loop))
-ev-appl-last-arg
-  (assign continue
-          (label ev-appl-accum-last-arg))
-  (goto (label eval-dispatch))
-ev-appl-accum-last-arg
-  (restore argl)
-  (assign argl
-          (op adjoin-arg)
-          (reg val)
-          (reg argl))
-  (restore proc)
-  (goto (label apply-dispatch))",
-        ),
-        (
-            "apply-dispatch",
-            "apply-dispatch
-  (test (op primitive-procedure?) (reg proc))
-  (branch (label primitive-apply))
-  (test (op compound-procedure?) (reg proc))
-  (branch (label compound-apply))
-  (goto (label unknown-procedure-type))",
-        ),
-        (
-            "primitive-apply",
-            "primitive-apply
-  (assign val (op apply-primitive-procedure)
-              (reg proc)
-              (reg argl))
-  (restore continue)
-  (goto (reg continue))",
-        ),
-        (
-            "compound-apply",
-            "compound-apply
-  (assign unev
-          (op procedure-parameters)
-          (reg proc))
-  (assign env
-          (op procedure-environment)
-          (reg proc))
-  (assign env
-          (op extend-environment)
-          (reg unev)
-          (reg argl)
-          (reg env))
-  (assign unev
-          (op procedure-body)
-          (reg proc))
-  (goto (label ev-sequence))",
-        ),
-        (
-            "begin",
-            "ev-begin
-  (assign unev
-          (op begin-actions)
-          (reg exp))
-  (save continue)
-  (goto (label ev-sequence))",
-        ),
-        (
-            "ev-sequence",
-            "ev-sequence
-  (assign exp (op first-exp) (reg unev))
-  (test (op last-exp?) (reg unev))
-  (branch (label ev-sequence-last-exp))
-  (save unev)
-  (save env)
-  (assign continue
-          (label ev-sequence-continue))
-  (goto (label eval-dispatch))
-ev-sequence-continue
-  (restore env)
-  (restore unev)
-  (assign unev
-          (op rest-exps)
-          (reg unev))
-  (goto (label ev-sequence))
-ev-sequence-last-exp
-  (restore continue)
-  (goto (label eval-dispatch))",
-        ),
-        (
-            "if",
-            "ev-if
-  (save exp)
-  (save env)
-  (save continue)
-  (assign continue (label ev-if-decide))
-  (assign exp (op if-predicate) (reg exp))
-  (goto (label eval-dispatch))
-ev-if-decide
-  (restore continue)
-  (restore env)
-  (restore exp)
-  (test (op true?) (reg val))
-  (branch (label ev-if-consequent))
-ev-if-alternative
-  (assign exp (op if-alternative) (reg exp))
-  (goto (label eval-dispatch))
-ev-if-consequent
-  (assign exp (op if-consequent) (reg exp))
-  (goto (label eval-dispatch))",
-        ),
-        (
-            "assignment",
-            "ev-assignment
-  (assign unev
-          (op assignment-variable)
-          (reg exp))
-  (save unev)
-  (assign exp
-          (op assignment-value)
-          (reg exp))
-  (save env)
-  (save continue)
-  (assign continue
-          (label ev-assignment-1))
-  (goto (label eval-dispatch))
-ev-assignment-1
-  (restore continue)
-  (restore env)
-  (restore unev)
-  (perform
-   (op set-variable-value!)
-   (reg unev)
-   (reg val)
-   (reg env))
-  (assign val
-          (const ok))
-  (goto (reg continue))",
-        ),
-        (
-            "definition",
-            "ev-definition
-  (assign unev
-          (op definition-variable)
-          (reg exp))
-  (save unev)
-  (assign exp
-          (op definition-value)
-          (reg exp))
-  (save env)
-  (save continue)
-  (assign continue (label ev-definition-1))
-  (goto (label eval-dispatch))
-ev-definition-1
-  (restore continue)
-  (restore env)
-  (restore unev)
-  (perform
-   (op define-variable!)
-   (reg unev)
-   (reg val)
-   (reg env))
-  (assign val (const ok))
-  (goto (reg continue))",
-        ),
-        (
-            "errors",
-            "unknown-expression-type
-  (assign val (const unknown-expression-type-error))
-  (goto (label signal-error))
-unknown-procedure-type
-  (restore continue)
-  (assign val (const unknown-procedure-type-error))
-  (goto (label signal-error))
-signal-error
-  (perform (op user-print) (reg val))
-  (goto (label read-eval-print-loop))",
-        ),
-    ]
-}
-
-/// The base controller: the fragments in printed order.
-#[must_use]
-pub fn base_controller() -> String {
-    controller_fragments()
-        .iter()
-        .map(|(_, text)| *text)
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-/// The base controller with whole fragments replaced by name: the
-/// composition the monitored driver of 5.4.4 and the exercises'
-/// variants use.
-#[must_use]
-pub fn compose_controller(replacements: &[(&str, &str)]) -> String {
-    controller_fragments()
-        .iter()
-        .map(|(name, text)| {
-            replacements
-                .iter()
-                .find(|(replace, _)| replace == name)
-                .map_or(*text, |(_, replacement)| *replacement)
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-/// Splices new controller text into a composed controller: the
-/// dispatch tests go ahead of the application test, which a
-/// pair-shaped derived form or basic `cond` would otherwise swallow,
-/// and the new entry points go ahead of the error entries. Exercise
-/// 5.23's derived forms and 5.24's basic cond compose this way.
-#[must_use]
-pub fn splice_controller(controller: &str, dispatch_tests: &str, entries: &str) -> String {
-    let application_test = "  (test (op application?) (reg exp))";
-    let (before, after) = controller
-        .split_once(application_test)
-        .unwrap_or((controller, ""));
-    let with_tests = format!("{before}{dispatch_tests}\n{application_test}{after}");
-    let errors_label = "unknown-expression-type\n";
-    let (before, after) = with_tests
-        .split_once(errors_label)
-        .unwrap_or((with_tests.as_str(), ""));
-    format!("{before}{entries}\n{errors_label}{after}")
-}
-
-// ---------------------------------------------------------------------------
-// Building and running the evaluator
-// ---------------------------------------------------------------------------
-
-/// The section's evaluator: the assembled machine over the book's
-/// controller plus the transcript the driver operations write.
-pub struct Evaluator {
-    machine: Machine,
-    output: Rc<RefCell<Vec<String>>>,
-}
-
-/// One operation over the machine itself: the shape the driver's
-/// stack-statistics op needs.
-fn machine_op(
-    name: &'static str,
-    f: impl Fn(&mut Machine, &[Value]) -> Result<Value, Fault> + 'static,
-) -> (&'static str, OpHandler) {
-    let handler: OpHandler = Rc::new(move |machine, args| f(machine, args));
-    (name, handler)
-}
-
-fn driver_operations(
-    output: &Rc<RefCell<Vec<String>>>,
-    input: &Rc<RefCell<VecDeque<Value>>>,
-    global: &Value,
-) -> Vec<(&'static str, OpHandler)> {
-    let global = global.clone();
-    let get_global = word_op("get-global-environment", move |_| Ok(global.clone()));
-    let prompt = announce_op("prompt-for-input", output, display_value);
-    let announce_output = announce_op("announce-output", output, display_value);
-    let user_print = announce_op("user-print", output, render_word);
-    let read = word_op("read", {
-        let input = Rc::clone(input);
-        move |_| {
-            input
-                .borrow_mut()
-                .pop_front()
-                .ok_or_else(|| op_fail(INPUT_EXHAUSTED))
-        }
-    });
-    // The simulator installs its own print-stack-statistics into the
-    // machine transcript; the evaluator's version prints into the
-    // driver transcript, so one transcript holds a session.
-    let statistics = machine_op("print-stack-statistics", {
-        let output = Rc::clone(output);
-        move |machine, _| {
-            let (pushes, depth) = machine.stack_statistics();
-            let line = format!("(total-pushes = {pushes} maximum-depth = {depth})");
-            announce(&output, line);
-            Ok(Value::sym("done"))
-        }
-    });
-    vec![
-        get_global,
-        prompt,
-        announce_output,
-        read,
-        user_print,
-        statistics,
-    ]
-}
-
-/// One operation that announces one word: the prompt, the value
-/// banner, and the printed value of the book's driver loop.
-fn announce_op(
-    name: &'static str,
-    output: &Rc<RefCell<Vec<String>>>,
-    render: impl Fn(&Value) -> String + 'static,
-) -> (&'static str, OpHandler) {
-    let output = Rc::clone(output);
-    word_op(name, move |args| {
-        announce(&output, render(&first_arg(args)));
-        Ok(Value::sym("done"))
-    })
-}
-
-fn first_arg(args: &[Value]) -> Value {
-    args.first().cloned().unwrap_or(Value::Nil)
-}
-
-fn announce(output: &RefCell<Vec<String>>, line: String) {
-    output.borrow_mut().push(line);
-}
-
-/// The object primitives of the global environment, the book's
-/// eceval list trimmed to the subset the section's sessions use.
-const OBJECT_PRIMITIVES: &[&str] = &[
-    "cons",
-    "car",
-    "cdr",
-    "null?",
-    "pair?",
-    "symbol?",
-    "number?",
-    "string?",
-    "not",
-    "eq?",
-    "equal?",
-    "list",
-    "+",
-    "-",
-    "*",
-    "/",
-    "=",
-    "<",
-    ">",
-    "remainder",
-];
-
-/// Builds the section's evaluator: the controller text (the book's,
-/// or a composed exercise variant) is assembled by the 5.2 simulator,
-/// the operations table is [`base_operations`], then the driver
-/// operations, then the extra `operations` last so they override on a
-/// name collision, and the object program `source` is read into the
-/// input queue. The global environment is the book's setup: `true`,
-/// `false`, and the object-language primitives.
-///
-/// # Errors
-/// [`Fault::Parse`] when the controller or the source is unreadable,
-/// plus the assembly faults of [`Fault`] when an operation is unknown
-/// or an instruction shape is wrong.
-pub fn make_evaluator(
-    controller: &str,
-    operations: &[(&'static str, OpHandler)],
-    source: &str,
-) -> Result<Evaluator, Fault> {
-    let forms = read_program(source).map_err(|error| Fault::Parse(error.to_string()))?;
-    let output = Rc::new(RefCell::new(Vec::new()));
-    let input = Rc::new(RefCell::new(VecDeque::from(forms)));
-    let global_env = Env::global();
-    global_env.define("true".into(), Value::boolean(true));
-    global_env.define("false".into(), Value::boolean(false));
-    for name in OBJECT_PRIMITIVES {
-        global_env.define((*name).into(), primitive_word(name));
-    }
-    let global = intern_environment(global_env);
-    let mut table: Vec<(&'static str, OpHandler)> = base_operations();
-    table.extend(driver_operations(&output, &input, &global));
-    table.extend(operations.iter().cloned());
-    let machine = make_machine(EVALUATOR_REGISTERS, &table, controller)?;
-    Ok(Evaluator { machine, output })
-}
-
-impl Evaluator {
-    /// The machine, for the monitoring extensions the exercises use:
-    /// the instruction budget, the trace, and the breakpoints.
+impl Eceval {
+    /// Builds the machine over one checked program and runs its
+    /// `main`, answering the observable outcome.
     #[must_use]
-    pub fn machine(&self) -> &Machine {
-        &self.machine
+    pub fn run(program: &CheckedProgram) -> RunOutcome {
+        let mut machine = Self::new(program.sema.clone());
+        match machine.execute_main() {
+            Ok(()) => RunOutcome {
+                stdout: machine.engine.effects.stdout,
+                trap: None,
+            },
+            Err(report) => RunOutcome {
+                stdout: machine.engine.effects.stdout,
+                trap: Some(report),
+            },
+        }
     }
 
-    /// The machine, mutable.
-    pub fn machine_mut(&mut self) -> &mut Machine {
-        &mut self.machine
+    fn new(sema: Sema) -> Self {
+        Self {
+            engine: ops::Engine::new(sema),
+            control: Control::Halt,
+            continues: Vec::new(),
+            stack: Vec::new(),
+            iterator: None,
+            val: HostValue::Unit,
+            proc: HostValue::Unit,
+            argl: Vec::new(),
+            frame: 0,
+            signal: None,
+            halted: false,
+        }
     }
 
-    /// Runs the evaluator until the input queue runs dry, the book's
-    /// read-eval-print loop.
+    fn execute_main(&mut self) -> Result<(), TrapReport> {
+        let main = self.engine.sema.main;
+        let body = self.engine.sema.funs[main.0 as usize].body.clone();
+        self.enter_function(main, Vec::new(), &body)?;
+        self.drive()
+    }
+
+    fn enter_function(
+        &mut self,
+        fun: FunId,
+        args: Vec<HostValue>,
+        body: &HirBlock,
+    ) -> Result<(), TrapReport> {
+        let def = self.engine.sema.funs[fun.0 as usize].clone();
+        let frame = self
+            .engine
+            .push_activation(def.bind_base, def.frame_slots, Vec::new());
+        for ((binding, _), value) in def.params.iter().zip(args) {
+            self.engine
+                .write_local(*binding, value)
+                .map_err(Self::trap)?;
+        }
+        let caller_frame = self.frame;
+        self.frame = frame;
+        self.continues.push(Control::FunEnd { caller_frame });
+        self.control = Control::Exec(body.clone());
+        Ok(())
+    }
+
+    /// Runs the machine until it halts.
     ///
     /// # Errors
-    /// Any fault of the machine except the queue-dry read, which is
-    /// the run's normal end.
-    pub fn run(&mut self) -> Result<(), Fault> {
-        match self.machine.start() {
-            Ok(_) => Ok(()),
-            Err(Fault::Op { op, message, .. }) if op == "read" && message == INPUT_EXHAUSTED => {
+    /// The first [`TrapReport`] the machine raises.
+    pub fn drive(&mut self) -> Result<(), TrapReport> {
+        while !self.halted {
+            self.step()?;
+        }
+        Ok(())
+    }
+
+    /// Executes one transition of the machine.
+    ///
+    /// # Errors
+    /// The first [`TrapReport`] the transition raises.
+    // Keep this exhaustive transition dispatch aligned with `Control`.
+    #[allow(clippy::too_many_lines)]
+    pub fn step(&mut self) -> Result<(), TrapReport> {
+        let control = std::mem::replace(&mut self.control, Control::Halt);
+        match control {
+            Control::Eval(expr) => self.step_eval(expr),
+            Control::Exec(block) => {
+                self.step_exec(block);
                 Ok(())
             }
-            Err(fault) => Err(fault),
+            Control::Bind {
+                binding,
+                destruct,
+                rest,
+            } => self.step_bind(binding, destruct, rest),
+            Control::Args {
+                pending,
+                done,
+                after,
+            } => self.step_args(pending, done, after),
+            Control::Binop { op, right } => self.step_binop(op, *right),
+            Control::Unary(op) => self.step_unary(op),
+            Control::Field(index) => self.step_field(index),
+            Control::Assign { addr, projs, op } => self.step_assign(addr, &projs, op),
+            Control::MatchArms { arms } => self.step_match(arms),
+            Control::TestPattern {
+                pat,
+                success,
+                failure,
+            } => self.step_test_pattern(&pat, *success, *failure),
+            Control::Apply => self.step_apply(),
+            Control::ReturnValue => {
+                self.signal = Some(Signal::Return(std::mem::replace(
+                    &mut self.val,
+                    HostValue::Unit,
+                )));
+                self.unwind();
+                Ok(())
+            }
+            Control::BreakValue => {
+                self.signal = Some(Signal::Break(std::mem::replace(
+                    &mut self.val,
+                    HostValue::Unit,
+                )));
+                self.unwind();
+                Ok(())
+            }
+            Control::TryTest => {
+                let tested = std::mem::replace(&mut self.val, HostValue::Unit);
+                match ops::builtin_variant(&tested) {
+                    Some((0, payload)) if payload.len() == 1 => {
+                        self.val = payload[0].clone();
+                        self.unwind();
+                    }
+                    Some((1, _)) => {
+                        self.signal = Some(Signal::Return(tested));
+                        self.unwind();
+                    }
+                    _ => return Err(Self::trap(Trap::Dangling)),
+                }
+                Ok(())
+            }
+            Control::RangeLeft { right } => {
+                let left = std::mem::replace(&mut self.val, HostValue::Unit);
+                self.continues.push(Control::RangeEnd { left });
+                self.control = Control::Eval(*right);
+                Ok(())
+            }
+            Control::RangeEnd { left } => {
+                let end = std::mem::replace(&mut self.val, HostValue::Unit);
+                self.val = ops::range_of(&left, &end).map_err(Self::trap)?;
+                self.unwind();
+                Ok(())
+            }
+            Control::IndexBase { index } => {
+                let base = std::mem::replace(&mut self.val, HostValue::Unit);
+                let base = self.through_ref(base)?;
+                self.continues.push(Control::IndexAt { base });
+                self.control = Control::Eval(*index);
+                Ok(())
+            }
+            Control::IndexAt { base } => {
+                let index = std::mem::replace(&mut self.val, HostValue::Unit);
+                let at = ops::index_position(&index).map_err(Self::trap)?;
+                self.val = index_value(&base, at).map_err(Self::trap)?;
+                self.unwind();
+                Ok(())
+            }
+            Control::BinaryRight { op, left } => {
+                let right = std::mem::replace(&mut self.val, HostValue::Unit);
+                self.val = ops::checked_binary(op, &left, &right).map_err(Self::trap)?;
+                self.unwind();
+                Ok(())
+            }
+            Control::WhileCheck { test, body } => {
+                let HostValue::Bool(decision) = std::mem::replace(&mut self.val, HostValue::Unit)
+                else {
+                    return Err(Self::trap(Trap::Dangling));
+                };
+                if decision {
+                    self.continues.push(Control::Loop {
+                        kind: LoopKind::While { test },
+                        body: body.clone(),
+                    });
+                    self.control = Control::Exec(*body);
+                } else {
+                    self.val = HostValue::Unit;
+                    self.unwind();
+                }
+                Ok(())
+            }
+            Control::WhileLetCheck { pat, value, body } => {
+                let tested = std::mem::replace(&mut self.val, HostValue::Unit);
+                if self.bind_pattern(&pat, &tested)? {
+                    self.continues.push(Control::Loop {
+                        kind: LoopKind::WhileLet { pat, value },
+                        body: body.clone(),
+                    });
+                    self.control = Control::Exec(*body);
+                } else {
+                    self.val = HostValue::Unit;
+                    self.unwind();
+                }
+                Ok(())
+            }
+            Control::ForIterable { pat, body } => {
+                let value = std::mem::replace(&mut self.val, HostValue::Unit);
+                match value {
+                    HostValue::Iter(_) => {
+                        self.iterator = Some(value);
+                    }
+                    HostValue::Ref {
+                        addr,
+                        projs,
+                        mutable,
+                        ..
+                    } => {
+                        let collection = self.engine.read_at(addr, &projs).map_err(Self::trap)?;
+                        let len = match collection {
+                            HostValue::Vec(items) | HostValue::Array(items) => items.len(),
+                            _ => return Err(Self::trap(Trap::Dangling)),
+                        };
+                        self.iterator = Some(ops::refs_iterator(addr, projs, len, mutable));
+                    }
+                    HostValue::Vec(items) | HostValue::Array(items) => {
+                        self.iterator = Some(ops::items_iterator(items));
+                    }
+                    _ => return Err(Self::trap(Trap::Dangling)),
+                }
+                self.control = Control::Loop {
+                    kind: LoopKind::For { pat },
+                    body,
+                };
+                Ok(())
+            }
+            Control::ResolvePlace { place, then } => self.step_resolve_place(place, then),
+            Control::PlaceDeref { proj, then } => {
+                let HostValue::Ref { addr, projs, .. } =
+                    std::mem::replace(&mut self.val, HostValue::Unit)
+                else {
+                    return Err(Self::trap(Trap::Dangling));
+                };
+                self.fold_place_projs(addr, projs, proj.into_iter(), then)
+            }
+            Control::PlaceIndex {
+                addr,
+                mut projs,
+                rest,
+                then,
+            } => {
+                let index = std::mem::replace(&mut self.val, HostValue::Unit);
+                let at = ops::index_position(&index).map_err(Self::trap)?;
+                projs.push(RtProj::Index(at));
+                self.fold_place_projs(addr, projs, rest.into_iter(), then)
+            }
+            Control::Loop { kind, body } => self.step_loop(kind, *body),
+            Control::FunEnd { caller_frame } => {
+                self.engine.pop_activation();
+                self.frame = caller_frame;
+                // The tail value (or Unit from a tail-less block) is
+                // already in the value register: it becomes the
+                // caller's result.
+                match self.continues.pop() {
+                    Some(next) => self.control = next,
+                    None => self.halted = true,
+                }
+                Ok(())
+            }
+            Control::Halt => {
+                self.halted = true;
+                Ok(())
+            }
         }
     }
 
-    /// The lines the driver printed: the prompts, the stack
-    /// statistics of a monitored driver, and the values, in order.
-    #[must_use]
-    pub fn transcript(&self) -> Vec<String> {
-        self.output.borrow().clone()
+    /// Resumes the saved continuations, absorbing loop signals at
+    /// their loop boundaries.
+    fn unwind(&mut self) {
+        loop {
+            match (&self.signal, self.continues.last()) {
+                (Some(Signal::Return(_)), _) => {
+                    // Pop to this activation's function boundary, then
+                    // resume the caller with the returned value.
+                    loop {
+                        match self.continues.pop() {
+                            Some(Control::FunEnd { caller_frame }) => {
+                                self.frame = caller_frame;
+                                break;
+                            }
+                            Some(_) => {}
+                            None => {
+                                self.halted = true;
+                                return;
+                            }
+                        }
+                    }
+                    self.engine.pop_activation();
+                    if let Some(Signal::Return(value)) = self.signal.take() {
+                        self.val = value;
+                    }
+                    match self.continues.pop() {
+                        Some(next) => self.control = next,
+                        None => self.halted = true,
+                    }
+                    return;
+                }
+                (Some(Signal::Break(value)), Some(Control::Loop { .. })) => {
+                    self.val = value.clone();
+                    self.signal = None;
+                    self.continues.pop();
+                }
+                (Some(Signal::Continue), Some(Control::Loop { .. })) => {
+                    self.signal = None;
+                    if let Some(loop_state) = self.continues.pop() {
+                        self.control = loop_state;
+                    }
+                    return;
+                }
+                (Some(_), Some(_)) => {
+                    self.continues.pop();
+                }
+                (Some(_) | None, None) => {
+                    self.halted = true;
+                    return;
+                }
+                (None, Some(_)) => {
+                    if let Some(next) = self.continues.pop() {
+                        self.control = next;
+                    }
+                    return;
+                }
+            }
+        }
     }
 
-    /// The machine's stack counters `(total-pushes, maximum-depth)`.
-    #[must_use]
-    pub fn stack_statistics(&self) -> (u64, u64) {
-        self.machine.stack_statistics()
+    fn step_exec(&mut self, block: HirBlock) {
+        let HirBlock { stmts, tail } = block;
+        let mut stmts = stmts.into_iter();
+        match stmts.next() {
+            Some(sicp_runtime::host::hir::HirStmt::Let {
+                binding,
+                destruct,
+                value,
+            }) => {
+                let rest = HirBlock {
+                    stmts: stmts.collect(),
+                    tail,
+                };
+                self.continues.push(Control::Bind {
+                    binding,
+                    destruct,
+                    rest,
+                });
+                self.control = Control::Eval(value);
+            }
+            Some(sicp_runtime::host::hir::HirStmt::Expr(expr)) => {
+                let rest = HirBlock {
+                    stmts: stmts.collect(),
+                    tail,
+                };
+                self.continues.push(Control::Exec(rest));
+                self.control = Control::Eval(expr);
+            }
+            None => {
+                if let Some(tail) = tail {
+                    self.control = Control::Eval(*tail);
+                } else {
+                    self.val = HostValue::Unit;
+                    self.unwind();
+                }
+            }
+        }
     }
 
-    /// Reads a register's contents.
-    ///
-    /// # Errors
-    /// [`Fault::UnknownRegister`] when the machine has no such
-    /// register.
-    pub fn get_register(&self, name: &str) -> Result<Value, Fault> {
-        self.machine.get_register(name)
+    fn step_bind(
+        &mut self,
+        binding: BindId,
+        destruct: Option<(BindId, BindId)>,
+        rest: HirBlock,
+    ) -> Result<(), TrapReport> {
+        if let Some((left, right)) = destruct {
+            if let HostValue::Tuple(a, b) = self.val.clone() {
+                self.engine.write_local(left, *a).map_err(Self::trap)?;
+                self.engine.write_local(right, *b).map_err(Self::trap)?;
+            }
+        } else {
+            let value = std::mem::replace(&mut self.val, HostValue::Unit);
+            self.engine
+                .write_local(binding, value)
+                .map_err(Self::trap)?;
+        }
+        self.control = Control::Exec(rest);
+        Ok(())
     }
 
-    /// The instruction count of the run so far.
-    #[must_use]
-    pub fn instruction_count(&self) -> u64 {
-        self.machine.instruction_count()
+    // Keep HIR expression routing in one exhaustive transition dispatch.
+    #[allow(clippy::too_many_lines)]
+    fn step_eval(&mut self, expr: HirExpr) -> Result<(), TrapReport> {
+        let span = expr.span;
+        match expr.kind {
+            HirExprKind::I64(value) => {
+                self.val = HostValue::Int(value);
+                self.unwind();
+            }
+            HirExprKind::Usize(value) => {
+                self.val = HostValue::Usize(value);
+                self.unwind();
+            }
+            HirExprKind::Bool(value) => {
+                self.val = HostValue::Bool(value);
+                self.unwind();
+            }
+            HirExprKind::Unit => {
+                self.val = HostValue::Unit;
+                self.unwind();
+            }
+            HirExprKind::Str(text) => {
+                self.val = HostValue::Text(text);
+                self.unwind();
+            }
+            HirExprKind::FunRef(fun) => {
+                self.val = HostValue::FnPtr(fun);
+                self.unwind();
+            }
+            HirExprKind::Place { place, mode } => {
+                self.control = Control::ResolvePlace {
+                    place,
+                    then: PlaceCont::Read { mode },
+                };
+            }
+            HirExprKind::Call { callee, args } => {
+                self.start_args(args, Resume::Call { callee })?;
+            }
+            HirExprKind::IndirectCall { callee, args } => {
+                self.continues.push(Control::Args {
+                    pending: args.into(),
+                    done: Vec::new(),
+                    after: Resume::CallValue,
+                });
+                self.control = Control::Eval(*callee);
+            }
+            HirExprKind::Ctor(op, args) => self.start_args(args, Resume::Ctor(op))?,
+            HirExprKind::StructLit(id, fields) | HirExprKind::TupleStructLit(id, fields) => {
+                self.start_args(fields, Resume::Struct { item: id.0 })?;
+            }
+            HirExprKind::VariantLit(id, index, payload) => {
+                self.start_args(payload, Resume::Variant { item: id.0, index })?;
+            }
+            HirExprKind::Tuple(left, right) => {
+                self.start_args(vec![*left, *right], Resume::Tuple)?;
+            }
+            HirExprKind::Array(items) | HirExprKind::VecList(items) => {
+                self.start_args(items, Resume::VecBuild)?;
+            }
+            HirExprKind::VecRepeat(value, count) => {
+                self.start_args(vec![*value, *count], Resume::VecRepeat)?;
+            }
+            HirExprKind::Format { kind, spec, args } => {
+                self.start_args(args, Resume::Format { kind, spec })?;
+            }
+            HirExprKind::Field { base, index } => {
+                self.continues.push(Control::Field(index));
+                self.control = Control::Eval(*base);
+            }
+            HirExprKind::Index { base, index } => {
+                self.continues.push(Control::IndexBase { index });
+                self.control = Control::Eval(*base);
+            }
+            HirExprKind::Binary { op, left, right } => {
+                self.continues.push(Control::Binop { op, right });
+                self.control = Control::Eval(*left);
+            }
+            HirExprKind::Unary { op, operand } => {
+                if let (UnOp::Ref | UnOp::RefMut, HirExprKind::Place { place, .. }) =
+                    (op, &operand.kind)
+                {
+                    // Borrowing names the place's address without
+                    // reading it, so the reference aliases the slot.
+                    self.control = Control::ResolvePlace {
+                        place: place.clone(),
+                        then: PlaceCont::Borrow {
+                            mutable: op == UnOp::RefMut,
+                        },
+                    };
+                    return Ok(());
+                }
+                self.continues.push(Control::Unary(op));
+                self.control = Control::Eval(*operand);
+            }
+            HirExprKind::Method {
+                op,
+                receiver,
+                receiver_place,
+                args,
+            } => {
+                // The receiver's place resolves through its own
+                // control frames before the receiver evaluates.
+                if let Some(place) = receiver_place {
+                    self.control = Control::ResolvePlace {
+                        place,
+                        then: PlaceCont::Method { op, receiver, args },
+                    };
+                } else {
+                    self.continues.push(Control::Args {
+                        pending: args.into(),
+                        done: Vec::new(),
+                        after: Resume::Method { op, place: None },
+                    });
+                    self.control = Control::Eval(*receiver);
+                }
+            }
+            HirExprKind::Assign { op, target, value } => {
+                self.control = Control::ResolvePlace {
+                    place: target,
+                    then: PlaceCont::Assign { op, value },
+                };
+            }
+            HirExprKind::If {
+                test,
+                then,
+                else_branch,
+            } => {
+                self.continues.push(Control::TestPattern {
+                    pat: HirPat {
+                        kind: sicp_runtime::host::hir::HirPatKind::Bool(true),
+                        span,
+                    },
+                    success: Box::new(Control::Eval(*then)),
+                    failure: Box::new(Control::Eval(*else_branch)),
+                });
+                self.control = Control::Eval(*test);
+            }
+            HirExprKind::IfLet {
+                pat,
+                value,
+                then,
+                else_branch,
+            } => {
+                self.continues.push(Control::TestPattern {
+                    pat,
+                    success: Box::new(Control::Eval(*then)),
+                    failure: Box::new(Control::Eval(*else_branch)),
+                });
+                self.control = Control::Eval(*value);
+            }
+            HirExprKind::Match { scrutinee, arms } => {
+                self.continues.push(Control::MatchArms { arms });
+                self.control = Control::Eval(*scrutinee);
+            }
+            HirExprKind::Block(block) => self.control = Control::Exec(block),
+            HirExprKind::Loop { body, .. } => {
+                self.control = Control::Loop {
+                    kind: LoopKind::Forever,
+                    body: Box::new(body),
+                };
+            }
+            HirExprKind::While { test, body } => {
+                self.control = Control::Loop {
+                    kind: LoopKind::While { test },
+                    body: Box::new(body),
+                };
+            }
+            HirExprKind::WhileLet { pat, value, body } => {
+                self.control = Control::Loop {
+                    kind: LoopKind::WhileLet { pat, value },
+                    body: Box::new(body),
+                };
+            }
+            HirExprKind::For {
+                pat,
+                iterable,
+                body,
+            } => {
+                self.continues.push(Control::ForIterable {
+                    pat,
+                    body: Box::new(body),
+                });
+                self.control = Control::Eval(*iterable);
+            }
+            HirExprKind::Closure(closure) => {
+                let mut captures = Vec::with_capacity(closure.captures.len());
+                for capture in &closure.captures {
+                    let value = self
+                        .engine
+                        .capture_value(capture.binding, capture.mode)
+                        .map_err(Self::trap)?;
+                    captures.push((capture.binding, capture.mode, value));
+                }
+                self.val = ops::closure_value(
+                    closure.kind,
+                    std::sync::Arc::new(closure.body.clone()),
+                    closure.params.clone(),
+                    captures,
+                    closure.ret.clone(),
+                    closure.frame_slots,
+                    closure.bind_base,
+                );
+                self.unwind();
+            }
+            HirExprKind::Return(value) => {
+                if let Some(value) = value {
+                    self.continues.push(Control::ReturnValue);
+                    self.control = Control::Eval(*value);
+                } else {
+                    self.signal = Some(Signal::Return(HostValue::Unit));
+                    self.unwind();
+                }
+            }
+            HirExprKind::Break(value) => {
+                if let Some(value) = value {
+                    self.continues.push(Control::BreakValue);
+                    self.control = Control::Eval(*value);
+                } else {
+                    self.signal = Some(Signal::Break(HostValue::Unit));
+                    self.unwind();
+                }
+            }
+            HirExprKind::Continue => {
+                self.signal = Some(Signal::Continue);
+                self.unwind();
+            }
+            HirExprKind::Try(inner) => {
+                self.continues.push(Control::TryTest);
+                self.control = Control::Eval(*inner);
+            }
+            HirExprKind::Range(left, right) => {
+                self.continues.push(Control::RangeLeft { right });
+                self.control = Control::Eval(*left);
+            }
+        }
+        Ok(())
+    }
+
+    fn start_args(&mut self, args: Vec<HirExpr>, after: Resume) -> Result<(), TrapReport> {
+        let mut pending: VecDeque<HirExpr> = args.into();
+        match pending.pop_front() {
+            Some(first) => {
+                self.continues.push(Control::Args {
+                    pending,
+                    done: Vec::new(),
+                    after,
+                });
+                self.control = Control::Eval(first);
+            }
+            None => self.finish_args(Vec::new(), after)?,
+        }
+        Ok(())
+    }
+
+    fn step_args(
+        &mut self,
+        mut pending: VecDeque<HirExpr>,
+        mut done: Vec<HostValue>,
+        after: Resume,
+    ) -> Result<(), TrapReport> {
+        done.push(std::mem::replace(&mut self.val, HostValue::Unit));
+        match pending.pop_front() {
+            Some(next) => {
+                self.continues.push(Control::Args {
+                    pending,
+                    done,
+                    after,
+                });
+                self.control = Control::Eval(next);
+            }
+            None => self.finish_args(done, after)?,
+        }
+        Ok(())
+    }
+
+    fn finish_args(&mut self, values: Vec<HostValue>, after: Resume) -> Result<(), TrapReport> {
+        match after {
+            Resume::Call { callee } => {
+                let def = self.engine.sema.funs[callee.0 as usize].clone();
+                let body = def.body.clone();
+                self.enter_function(callee, values, &body)?;
+            }
+            Resume::CallValue => {
+                // The callee was evaluated first, like a method
+                // receiver: it leads the evaluated values.
+                let mut values = values.into_iter();
+                self.proc = values.next().unwrap_or(HostValue::Unit);
+                self.argl = values.collect();
+                self.control = Control::Apply;
+            }
+            Resume::Struct { item } => {
+                self.val = HostValue::Struct(item, values);
+                self.unwind();
+            }
+            Resume::Variant { item, index } => {
+                self.val = HostValue::Variant(item, index, values);
+                self.unwind();
+            }
+            Resume::Tuple => {
+                if let [a, b] = &values[..] {
+                    self.val = HostValue::Tuple(Box::new(a.clone()), Box::new(b.clone()));
+                }
+                self.unwind();
+            }
+            Resume::VecBuild => {
+                self.val = HostValue::Vec(values);
+                self.unwind();
+            }
+            Resume::Ctor(op) => {
+                self.val = ops::construct(op, &values).map_err(Self::trap)?;
+                self.unwind();
+            }
+            Resume::Method { op, place } => {
+                let mut values = values.into_iter();
+                // Method bodies match on owned shapes: a borrowed
+                // receiver reads through to its referent first.
+                let receiver = self.through_ref(values.next().unwrap_or(HostValue::Unit))?;
+                let args: Vec<HostValue> = values.collect();
+                let (result, updated) =
+                    ops::apply_method(op, receiver, place.clone(), &args).map_err(Self::trap)?;
+                if let (Some(updated), Some((addr, projs))) = (updated, place) {
+                    self.engine
+                        .write_at(addr, &projs, updated)
+                        .map_err(Self::trap)?;
+                }
+                self.val = result;
+                self.unwind();
+            }
+            Resume::Format { kind, spec } => {
+                let rendered =
+                    ops::render_format(&spec, &values, &self.engine.store, &self.engine.sema.items)
+                        .map_err(Self::trap)?;
+                self.val = match kind {
+                    FormatKind::Format => HostValue::Text(rendered),
+                    FormatKind::Print => {
+                        self.engine.effects.push_text(&rendered);
+                        HostValue::Unit
+                    }
+                    FormatKind::Println => {
+                        self.engine.effects.push_line(&rendered);
+                        HostValue::Unit
+                    }
+                };
+                self.unwind();
+            }
+            Resume::VecRepeat => {
+                if let [item, times] = &values[..] {
+                    let count = match times {
+                        HostValue::Int(n) => usize::try_from(*n).unwrap_or(0),
+                        HostValue::Usize(n) => usize::try_from(*n).unwrap_or(0),
+                        _ => 0,
+                    };
+                    self.val = HostValue::Vec(vec![item.clone(); count]);
+                }
+                self.unwind();
+            }
+        }
+        Ok(())
+    }
+
+    fn step_binop(&mut self, op: BinOp, right: HirExpr) -> Result<(), TrapReport> {
+        if matches!(op, BinOp::And | BinOp::Or) {
+            let HostValue::Bool(first) = self.val.clone() else {
+                return Err(Self::trap(Trap::Dangling));
+            };
+            let short = (op == BinOp::And && !first) || (op == BinOp::Or && first);
+            if short {
+                self.val = HostValue::Bool(op == BinOp::Or);
+                self.unwind();
+                return Ok(());
+            }
+            self.control = Control::Eval(right);
+            return Ok(());
+        }
+        let left = std::mem::replace(&mut self.val, HostValue::Unit);
+        self.continues.push(Control::BinaryRight { op, left });
+        self.control = Control::Eval(right);
+        Ok(())
+    }
+
+    fn step_unary(&mut self, op: UnOp) -> Result<(), TrapReport> {
+        let operand = std::mem::replace(&mut self.val, HostValue::Unit);
+        self.val = ops::checked_unary(op, &operand).map_err(Self::trap)?;
+        self.unwind();
+        Ok(())
+    }
+
+    fn step_field(&mut self, index: u32) -> Result<(), TrapReport> {
+        let base = std::mem::replace(&mut self.val, HostValue::Unit);
+        let base = self.through_ref(base)?;
+        self.val = project_value(&base, index).map_err(Self::trap)?;
+        self.unwind();
+        Ok(())
+    }
+
+    fn step_assign(
+        &mut self,
+        addr: Addr,
+        projs: &[RtProj],
+        op: Option<BinOp>,
+    ) -> Result<(), TrapReport> {
+        let produced = std::mem::replace(&mut self.val, HostValue::Unit);
+        let final_value = match op {
+            None => produced,
+            Some(binop) => {
+                let current = self.engine.read_at(addr, projs).map_err(Self::trap)?;
+                ops::checked_binary(binop, &current, &produced).map_err(Self::trap)?
+            }
+        };
+        self.engine
+            .write_at(addr, projs, final_value)
+            .map_err(Self::trap)?;
+        self.val = HostValue::Unit;
+        self.unwind();
+        Ok(())
+    }
+
+    fn step_match(&mut self, arms: Vec<(HirPat, HirExpr)>) -> Result<(), TrapReport> {
+        let tested = std::mem::replace(&mut self.val, HostValue::Unit);
+        for (pat, body) in arms {
+            if self.bind_pattern(&pat, &tested)? {
+                self.control = Control::Eval(body);
+                return Ok(());
+            }
+        }
+        Err(Self::trap(Trap::Dangling))
+    }
+
+    fn step_test_pattern(
+        &mut self,
+        pat: &HirPat,
+        success: Control,
+        failure: Control,
+    ) -> Result<(), TrapReport> {
+        let tested = std::mem::replace(&mut self.val, HostValue::Unit);
+        if self.bind_pattern(pat, &tested)? {
+            self.control = success;
+        } else {
+            self.control = failure;
+        }
+        Ok(())
+    }
+
+    fn step_loop(&mut self, kind: LoopKind, body: HirBlock) -> Result<(), TrapReport> {
+        match kind {
+            LoopKind::Forever => {
+                self.continues.push(Control::Loop {
+                    kind: LoopKind::Forever,
+                    body: Box::new(body.clone()),
+                });
+                self.control = Control::Exec(body);
+            }
+            LoopKind::While { test } => {
+                self.continues.push(Control::WhileCheck {
+                    test: test.clone(),
+                    body: Box::new(body),
+                });
+                self.control = Control::Eval(*test);
+            }
+            LoopKind::WhileLet { pat, value } => {
+                self.continues.push(Control::WhileLetCheck {
+                    pat,
+                    value: value.clone(),
+                    body: Box::new(body),
+                });
+                self.control = Control::Eval(*value);
+            }
+            LoopKind::For { pat } => {
+                let Some(mut iterator) = self.iterator.take() else {
+                    self.val = HostValue::Unit;
+                    self.unwind();
+                    return Ok(());
+                };
+                let step = ops::iterator_next(&mut iterator).map_err(Self::trap)?;
+                self.iterator = Some(iterator);
+                let item = match ops::builtin_variant(&step) {
+                    Some((0, payload)) if payload.len() == 1 => payload[0].clone(),
+                    _ => {
+                        self.val = HostValue::Unit;
+                        self.unwind();
+                        return Ok(());
+                    }
+                };
+                let recur = Control::Loop {
+                    kind: LoopKind::For { pat: pat.clone() },
+                    body: Box::new(body.clone()),
+                };
+                self.continues.push(recur);
+                if self.bind_pattern(&pat, &item)? {
+                    self.control = Control::Exec(body);
+                } else {
+                    self.unwind();
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn step_apply(&mut self) -> Result<(), TrapReport> {
+        let callee = std::mem::replace(&mut self.proc, HostValue::Unit);
+        let args = std::mem::take(&mut self.argl);
+        match callee {
+            HostValue::FnPtr(fun) => {
+                let def = self.engine.sema.funs[fun.0 as usize].clone();
+                let body = def.body.clone();
+                self.enter_function(fun, args, &body)?;
+            }
+            HostValue::Closure(closure) => {
+                let body = closure.body.clone();
+                let captures = closure.captures.clone();
+                let params = closure.params.clone();
+                let frame =
+                    self.engine
+                        .push_activation(closure.bind_base, closure.frame_slots, captures);
+                for ((binding, _), value) in params.iter().zip(args) {
+                    self.engine
+                        .write_local(*binding, value)
+                        .map_err(Self::trap)?;
+                }
+                let caller_frame = self.frame;
+                self.frame = frame;
+                self.continues.push(Control::FunEnd { caller_frame });
+                self.control = Control::Exec((*body).clone());
+            }
+            HostValue::Box(inner) => {
+                self.proc = *inner;
+                self.argl = args;
+                self.control = Control::Apply;
+            }
+            _ => return Err(Self::trap(Trap::Dangling)),
+        }
+        Ok(())
+    }
+
+    fn bind_pattern(&mut self, pat: &HirPat, value: &HostValue) -> Result<bool, TrapReport> {
+        let bound = ops::bind_pattern(&self.engine, pat, value).map_err(Self::trap)?;
+        let Some(bound) = bound else {
+            return Ok(false);
+        };
+        for (binding, bound_value) in bound {
+            self.engine
+                .write_local(binding, bound_value)
+                .map_err(Self::trap)?;
+        }
+        Ok(true)
+    }
+
+    fn step_resolve_place(
+        &mut self,
+        place: sicp_runtime::host::hir::Place,
+        then: PlaceCont,
+    ) -> Result<(), TrapReport> {
+        match place.root {
+            PlaceRoot::Local(bind) => {
+                let (addr, projs) = self.engine.local_place(bind).map_err(Self::trap)?;
+                // A projection or method through a borrowed slot addresses
+                // the referent, like the native autoref adjustment; a bare
+                // read, store, or borrow keeps the slot itself.
+                let see_through =
+                    !place.proj.is_empty() || matches!(then, PlaceCont::Method { .. });
+                let (addr, projs) = match self.engine.read_at(addr, &projs) {
+                    Ok(HostValue::Ref {
+                        addr: base,
+                        projs: mut base_projs,
+                        ..
+                    }) if see_through => {
+                        base_projs.extend(projs);
+                        (base, base_projs)
+                    }
+                    Err(trap) if see_through => return Err(Self::trap(trap)),
+                    _ => (addr, projs),
+                };
+                self.fold_place_projs(addr, projs, place.proj.into_iter(), then)
+            }
+            PlaceRoot::Deref(inner) => {
+                self.continues.push(Control::PlaceDeref {
+                    proj: place.proj,
+                    then,
+                });
+                self.control = Control::Eval(*inner);
+                Ok(())
+            }
+        }
+    }
+
+    fn fold_place_projs(
+        &mut self,
+        addr: Addr,
+        mut projs: Vec<RtProj>,
+        mut rest: std::vec::IntoIter<sicp_runtime::host::hir::Proj>,
+        then: PlaceCont,
+    ) -> Result<(), TrapReport> {
+        loop {
+            match rest.next() {
+                None => return self.finish_place(addr, projs, then),
+                Some(Proj::Field(index)) => projs.push(RtProj::Field(index)),
+                Some(Proj::BoxDeref) => projs.push(RtProj::BoxDeref),
+                Some(Proj::Index(expr)) => {
+                    self.continues.push(Control::PlaceIndex {
+                        addr,
+                        projs,
+                        rest: rest.collect(),
+                        then,
+                    });
+                    self.control = Control::Eval(*expr);
+                    return Ok(());
+                }
+            }
+        }
+    }
+
+    fn finish_place(
+        &mut self,
+        addr: Addr,
+        projs: Vec<RtProj>,
+        then: PlaceCont,
+    ) -> Result<(), TrapReport> {
+        match then {
+            PlaceCont::Read { mode } => {
+                let moved = mode == sicp_runtime::host::hir::PlaceUse::Move;
+                self.val = if moved {
+                    self.engine.take_at(addr, &projs)
+                } else {
+                    self.engine.read_at(addr, &projs)
+                }
+                .map_err(Self::trap)?;
+                self.unwind();
+            }
+            PlaceCont::Assign { op, value } => {
+                self.continues.push(Control::Assign { addr, projs, op });
+                self.control = Control::Eval(*value);
+            }
+            PlaceCont::Method { op, receiver, args } => {
+                let place = Some((addr, projs));
+                self.continues.push(Control::Args {
+                    pending: args.into(),
+                    done: Vec::new(),
+                    after: Resume::Method { op, place },
+                });
+                self.control = Control::Eval(*receiver);
+            }
+            PlaceCont::Borrow { mutable } => {
+                self.val = HostValue::Ref {
+                    addr,
+                    projs,
+                    mutable,
+                };
+                self.unwind();
+            }
+        }
+        Ok(())
+    }
+    /// Reads through a borrowed field or index base, like the native
+    /// autoref adjustment; other values pass through unchanged.
+    fn through_ref(&self, value: HostValue) -> Result<HostValue, TrapReport> {
+        if matches!(value, HostValue::Ref { .. }) {
+            return self.engine.deref_value(&value).map_err(Self::trap);
+        }
+        Ok(value)
+    }
+
+    fn trap(trap: Trap) -> TrapReport {
+        TrapReport {
+            trap,
+            span: Span::default(),
+        }
     }
 }
 
-/// Builds the base evaluator over `source`, runs it to the end of the
-/// queue, and answers the driver's transcript.
+fn index_value(value: &HostValue, at: i64) -> Result<HostValue, Trap> {
+    let (HostValue::Vec(items) | HostValue::Array(items)) = value else {
+        return Err(Trap::Dangling);
+    };
+    let at = usize::try_from(at).map_err(|_| Trap::IndexOutOfBounds)?;
+    items.get(at).cloned().ok_or(Trap::IndexOutOfBounds)
+}
+
+fn project_value(value: &HostValue, index: u32) -> Result<HostValue, Trap> {
+    match value {
+        HostValue::Struct(_, fields) | HostValue::Variant(_, _, fields) => fields
+            .get(index as usize)
+            .cloned()
+            .ok_or(Trap::IndexOutOfBounds),
+        HostValue::Tuple(left, right) => {
+            if index == 0 {
+                Ok((**left).clone())
+            } else {
+                Ok((**right).clone())
+            }
+        }
+        _ => Err(Trap::Dangling),
+    }
+}
+
+/// The explicit-control entry point every conformance gate names.
 ///
 /// # Errors
-/// [`Fault::Parse`] when the source is unreadable, and any fault of
-/// the run except the queue-dry read.
-pub fn run_session(source: &str) -> Result<Vec<String>, Fault> {
-    let mut evaluator = make_evaluator(&base_controller(), &[], source)?;
-    evaluator.run()?;
-    Ok(evaluator.transcript())
+/// The admission [`Diag`] when the source is rejected before any
+/// effect.
+pub fn run_session(source: &str) -> Result<RunOutcome, Diag> {
+    let program = sicp_runtime::host::admit(source)?;
+    Ok(Eceval::run(&program))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The monitored driver of 5.4.4: the statistics printed before
-    /// the value.
-    fn monitored_controller() -> String {
-        let monitored = "read-eval-print-loop
-  (perform (op initialize-stack))
-  (perform (op prompt-for-input)
-           (const \";;; EC-Eval input:\"))
-  (assign exp (op read))
-  (assign env (op get-global-environment))
-  (assign continue (label print-result))
-  (goto (label eval-dispatch))
-print-result
-  (perform (op print-stack-statistics))
-  (perform (op announce-output)
-           (const \";;; EC-Eval value:\"))
-  (perform (op user-print) (reg val))
-  (goto (label read-eval-print-loop))";
-        compose_controller(&[("driver", monitored)])
-    }
-
-    /// The value of the last interaction: the line before the
-    /// trailing prompt the driver prints when the queue runs dry.
-    fn last_value(transcript: &[String]) -> &str {
-        let at = transcript.len().saturating_sub(2);
-        transcript[at].as_str()
-    }
-
-    /// The `(total-pushes ...)` lines of a monitored session.
-    fn stats_lines(transcript: &[String]) -> Vec<String> {
-        transcript
-            .iter()
-            .filter(|line| line.starts_with("(total-pushes"))
-            .cloned()
-            .collect()
-    }
-
-    /// Runs `source` on the monitored driver and answers the stats
-    /// of the last interaction.
-    fn measured(source: &str) -> (u64, u64, String) {
-        let mut evaluator =
-            make_evaluator(&monitored_controller(), &[], source).expect("assembles");
-        evaluator.run().expect("runs");
-        let transcript = evaluator.transcript();
-        let stats = stats_lines(&transcript);
-        let line = stats.last().map(String::as_str).unwrap_or_default();
-        let (pushes, depth) = parse_stats(line);
-        (pushes, depth, last_value(&transcript).to_owned())
-    }
-
-    /// Reads the two counters out of a stats line.
-    fn parse_stats(line: &str) -> (u64, u64) {
-        let integer =
-            |text: &str| -> u64 { text.trim().trim_end_matches(')').parse().unwrap_or(0) };
-        let (_, rest) = line.split_once("(total-pushes = ").unwrap_or(("", line));
-        let (pushes, rest) = rest.split_once(' ').unwrap_or((rest, ""));
-        let depth = rest
-            .split_once("maximum-depth = ")
-            .map_or("0", |(_, depth)| depth);
-        (integer(pushes), integer(depth))
-    }
-
-    #[test]
-    fn quotes_and_variables_and_arithmetic() {
-        let lines = run_session("'foo\n(* 6 7)\n(cons 1 (cons 2 '()))").expect("runs");
-        assert_eq!(lines[0], ";;; EC-Eval input:");
-        assert_eq!(last_value(&lines), "(1 2)");
-        assert!(
-            lines.contains(&"foo".to_owned()),
-            "the quoted symbol: {lines:?}"
-        );
-        assert!(lines.contains(&"42".to_owned()), "the product: {lines:?}");
-    }
-
-    #[test]
-    fn defines_and_sets() {
-        let lines = run_session(
-            "(define (twice n) (* 2 n))\n(twice 21)\n(define x 5)\n(set! x (twice x))\nx",
-        )
-        .expect("runs");
-        assert!(
-            lines.contains(&"ok".to_owned()),
-            "the define answers: {lines:?}"
-        );
-        assert_eq!(last_value(&lines), "10", "x reads (twice 5) after the set!");
-    }
-
-    #[test]
-    fn begin_and_if_compose() {
-        let lines = run_session("(begin 1 2 (if (< 1 2) (quote yes) (quote no)))").expect("runs");
-        assert_eq!(last_value(&lines), "yes");
-    }
-
-    #[test]
-    fn unknown_expression_errors_reach_the_driver_loop() {
-        // The controller's error entries route through signal-error
-        // and back to the driver loop; the next read ends the run.
-        let lines = run_session("7").expect("runs");
-        assert_eq!(last_value(&lines), "7");
-    }
-
-    #[test]
-    fn primitive_failures_stop_the_machine() {
-        let result = run_session("(car 5)");
-        let Err(fault) = result else {
-            panic!("car of 5 must fault")
-        };
-        assert!(fault.to_string().contains("car: not a pair: 5"), "{fault}");
-    }
-
-    #[test]
-    fn unbound_variables_stop_the_base_machine() {
-        // Exercise 5.30's work: the base evaluator only catches the
-        // unknown expression and procedure types, so the lookup fault
-        // takes the run out of the evaluator.
-        let result = run_session("no-such-variable");
-        let Err(fault) = result else {
-            panic!("an unbound variable must fault")
-        };
-        assert!(
-            fault
-                .to_string()
-                .contains("unbound variable: no-such-variable"),
-            "{fault}"
-        );
-    }
-
-    #[test]
-    fn the_monitored_session_matches_the_book() {
-        let mut evaluator = make_evaluator(
-            &monitored_controller(),
-            &[],
-            "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))\n(factorial 5)",
-        )
-        .expect("assembles");
-        evaluator.run().expect("runs");
-        let transcript = evaluator.transcript();
-        assert_eq!(
-            stats_lines(&transcript),
-            vec![
-                "(total-pushes = 3 maximum-depth = 3)".to_owned(),
-                "(total-pushes = 144 maximum-depth = 28)".to_owned(),
-            ]
-        );
-        assert_eq!(last_value(&transcript), "120");
-    }
-
-    #[test]
-    fn the_recursive_factorial_fits_the_book_formulas() {
-        for (n, pushes, depth) in [(1, 16, 8), (2, 48, 13), (3, 80, 18), (5, 144, 28)] {
-            let source = format!(
-                "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))\n(factorial {n})"
-            );
-            let (measured_pushes, measured_depth, value) = measured(&source);
-            assert_eq!(value, ((1..=n).product::<i128>()).to_string(), "n = {n}");
-            assert_eq!(
-                (measured_pushes, measured_depth),
-                (pushes, depth),
-                "n = {n}"
-            );
-        }
-    }
-
-    #[test]
-    fn tail_recursion_keeps_the_depth_constant() {
-        let source = "(define (factorial n) (define (iter product counter) (if (> counter n) product (iter (* counter product) (+ counter 1)))) (iter 1 1))\n(factorial 6)";
-        let (pushes, depth, value) = measured(source);
-        assert_eq!(value, "720");
-        assert_eq!(depth, 10, "the maximum depth is independent of n");
-        assert_eq!(pushes, 239, "the pushes fit 35n + 29 at n = 6");
-    }
-}
+/// The flow vocabulary shared with the other engines.
+pub type MachineFlow = Flow;

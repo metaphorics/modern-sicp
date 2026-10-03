@@ -3,12 +3,12 @@
 
 package sicp.ch2.exercises
 
-/** The book's `fringe`: every leaf of [t], left to right. */
-public fun fringe(t: Tree): List<Long> =
-    when (t) {
-        is Tree.Leaf -> listOf(t.value)
-        is Tree.Node -> t.subtrees.flatMap(::fringe)
+/** Return each leaf of [tree], from left to right. */
+public fun fringe(tree: Tree): List<Long> =
+    when (tree) {
+        is Tree.Leaf -> listOf(tree.value)
+        is Tree.Node -> tree.subtrees.flatMap(::fringe)
     }
 
-/** `fringe` of the book's x, the four leaves `[1, 2, 3, 4]`. */
-public fun ex_2_28(): List<Long> = fringe(bookPairTree())
+/** The left-to-right leaves of the shared two-branch sample tree. */
+public fun ex_2_28(): List<Long> = fringe(twoBranchTree())

@@ -38,6 +38,6 @@ public class S2_1_2AbstractionBarriersTest :
             denomLazy(x) shouldBe 3L
         }
         test("the unreduced pair itself is unchanged; only the selectors reduce") {
-            makeRatLazy(6L, 9L) shouldBe (6L to 9L)
+            makeRatLazy(6L, 9L) shouldBe Pair(6L, 9L)
         }
     })

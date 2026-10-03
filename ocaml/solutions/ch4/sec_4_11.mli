@@ -1,48 +1,63 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Original exercise *)
+   Adapted from SICP section 4.1 exercise 4.11 *)
 
-(** Exercise 4.11: frames as association lists. The statement lives
-    in the section; this signature is the pending exercise's public
-    contract. *)
+(** Exercise 4.11: frames as association lists.
 
-(** An environment whose frames are association lists of name-value
-    pairs, newest frame first: the alternative representation the
-    statement asks for, owned by this module. *)
+    Each frame is one list of bindings, a name paired with the cell that
+    holds its value, instead of a list of names beside a list of values.
+    An environment is a list of frames, innermost first.  The
+    operations keep the book's contracts: lookup and assignment search
+    outward through every frame, definition touches only the first. *)
+
+(** An environment of association-list frames. *)
 type env
 
-(** [extend_environment names values base_env] is a fresh frame
-      binding each name to the value at the same position, in front of
-      [base_env]; it answers an arity error when the lists differ. *)
+(** [empty] is the environment with no frames. *)
+val empty : env
+
+(** [extend_environment names values env] is [env] with a new first
+    frame binding each name to the value in the same position, or an
+    [Arity_mismatch] error when the lists differ in length. *)
 val extend_environment
   :  string list
   -> Sicp_common.Value.t list
   -> env
   -> (env, Sicp_common.Eval_error.t) result
 
-(** [lookup_variable_value name env] is the value of the nearest
-      binding of [name], or [Error (Unbound_variable name)]. *)
+(** [lookup_variable_value name env] is the value of the nearest binding
+    of [name], or an [Unbound_variable] error. *)
 val lookup_variable_value
   :  string
   -> env
   -> (Sicp_common.Value.t, Sicp_common.Eval_error.t) result
 
-(** [set_variable_value_ name value env] rebinds the nearest binding
-      of [name]. *)
-val set_variable_value_
+(** [set_variable_value name value env] changes the nearest binding of
+    [name] to [value], or answers an [Unbound_variable] error. *)
+val set_variable_value
   :  string
   -> Sicp_common.Value.t
   -> env
   -> (unit, Sicp_common.Eval_error.t) result
 
-(** [define_variable_ name value env] binds [name] in the newest
-      frame. *)
-val define_variable_
+(** [define_variable name value env] binds [name] to [value] in the
+    first frame of [env], replacing a binding already there.  The empty
+    environment has no frame to define in. *)
+val define_variable
   :  string
   -> Sicp_common.Value.t
   -> env
   -> (unit, Sicp_common.Eval_error.t) result
 
-(** [ex_4_11 ()] runs the demonstration the statement asks for and
-    answers its observable outcomes as printed strings, in the order
-    the statement raises them. *)
-val ex_4_11 : unit -> string list
+(** [frames env] is the bindings of each frame of [env], innermost frame
+    first and newest binding first. *)
+val frames : env -> (string * Sicp_common.Value.t) list list
+
+(** [show_frames env] is [frames env] printed as one line. *)
+val show_frames : env -> string
+
+(** [ex_4_11 ()] builds an outer frame binding [x] and [y], defines [z]
+    in it, sets [x], extends it with an inner frame that shadows [x], and
+    sets [y] through the inner environment.  It answers the frames, the
+    inner and outer [x], the outer [y], an unbound lookup, and an
+    extension with too few values. *)
+val ex_4_11 : unit -> (string list, Sicp_common.Eval_error.t) result

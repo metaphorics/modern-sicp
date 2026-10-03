@@ -31,7 +31,7 @@ construct computational objects whose behaviors change as our programs run.  In
 particular, if we wish to model state variables by ordinary names in the
 programming language, then the language must provide an @newterm{assignment
 operator} to enable us to change the value associated with a name.  Rust
-provides one, and it adds a rule the book's Lisp never needed: a name can be
+provides one, and it adds a rule the original's language never needed: a name can be
 assigned again only if its binding is declared @code{mut}.  State shared by
 several procedures lives behind a cell whose interior the type system guards.
 
@@ -128,15 +128,15 @@ in Rust evaluates to the unit value @code{()}, which carries no information;
 like the book's @code{set!}, it should be used only for its effect, not for
 its value.
 
-The book's @code{set!} reflects a Scheme naming convention in which operations
+The book's @code{set!} reflects a naming convention of the original text in which operations
 that change the values of variables (or that change data structures, as we will
 see in @ref{3.3}) are given names that end with an exclamation point.  Rust
 marks the mutation in the type instead of the name: a plain binding must
 declare @code{mut} to be assignable, and interior state must sit behind a
 @code{Cell} or a @code{RefCell}.  Predicates in Rust are conventionally named
-to begin with @code{is_}, in the role of Scheme's question mark.}
+to begin with @code{is_}, in the role the original gives a question-mark suffix.}
 
-@code{Withdraw} also relies on sequencing to first decrement @code{balance}
+@code{withdraw} also relies on sequencing to first decrement @code{balance}
 and then return the value of @code{balance}.  In general, evaluating the block
 
 @example rust
@@ -152,7 +152,7 @@ and then return the value of @code{balance}.  In general, evaluating the block
 causes the statements @math{{⟨statement_1⟩}} through @math{{⟨statement_{k-1}⟩}}
 to be executed in sequence and the value of the final expression
 @math{{⟨exp_k⟩}} to be the value of the entire block.@footnote{Rust needs no
-separate sequencing form, where the book's Scheme reaches for @code{begin}:
+separate sequencing form, where the original reaches for @code{begin}:
 the body of a function is always a block, and so is each arm of a
 @code{match}.  Where the book writes @code{begin}, this edition simply writes
 the statements in order and lets the block's final expression be the answer.}
@@ -237,7 +237,7 @@ pub fn make_withdraw(mut balance: i128) -> impl FnMut(i128) -> Reply @{
 @end example
 
 @noindent
-@code{Make_withdraw} can be used as follows to create two objects @code{w1}
+@code{make_withdraw} can be used as follows to create two objects @code{w1}
 and @code{w2}:
 
 @example rust
@@ -315,7 +315,7 @@ unknown message, the @code{match} over @code{Request} needs none: the
 compiler proves that every message is handled, because a message that is not
 one of the two variants cannot be spelled.
 
-@code{Make_account} can be used as follows:
+@code{make_account} can be used as follows:
 
 @example rust
 let acc = make_account(100);
@@ -514,7 +514,7 @@ approximation to @math{\pi}.
 The heart of our program is a function @code{monte_carlo}, which takes as
 arguments the number of times to try an experiment, together with the
 experiment, represented as a closure that will return either true
-or false each time it is run.  @code{Monte_carlo} runs the experiment for the
+or false each time it is run.  @code{monte_carlo} runs the experiment for the
 designated number of trials and returns a number telling the fraction of the
 trials in which the experiment was found to be true.
 
@@ -525,7 +525,9 @@ fn estimate_pi(trials: u32, rand: &mut Rand) -> f64 @{
     (6.0 / coprime_fraction).sqrt()
 @}
 
-fn monte_carlo(trials: u32, experiment: &mut dyn FnMut() -> bool) -> f64 @{
+fn monte_carlo(
+    trials: u32, experiment: &mut dyn FnMut() -> bool,
+) -> f64 @{
     let mut passed = 0;
     for _ in 0..trials @{
         if experiment() @{
@@ -636,9 +638,16 @@ decimal value (as in this exercise).  The runtime's generator draws 64-bit
 words only, so this edition scales a word into the requested range.}
 
 @example rust
-fn random_in_range(rand: &mut Rand, low: f64, high: f64) -> f64 @{
+fn random_in_range(
+    rand: &mut Rand,
+    low: f64,
+    high: f64,
+) -> f64 @{
     let range = high - low;
-    low + i128::from(rand.generate()) as f64 / i128::from(u64::MAX) as f64 * range
+    let fraction =
+        i128::from(rand.generate()) as f64
+        / i128::from(u64::MAX) as f64;
+    low + fraction * range
 @}
 @end example
 @end quotation
@@ -690,7 +699,9 @@ of the @code{make_withdraw} function of @ref{3.1.1} that does not
 bother to check for an insufficient amount:
 
 @example rust
-pub fn make_simplified_withdraw(mut balance: i128) -> impl FnMut(i128) -> i128 @{
+pub fn make_simplified_withdraw(
+    mut balance: i128,
+) -> impl FnMut(i128) -> i128 @{
     move |amount| @{
         balance -= amount;
         balance
@@ -717,7 +728,7 @@ pub fn make_decrementer(balance: i128) -> impl Fn(i128) -> i128 @{
 @end example
 
 @noindent
-@code{Make_decrementer} returns a function that subtracts its input from a
+@code{make_decrementer} returns a function that subtracts its input from a
 designated amount @code{balance}, but there is no accumulated effect over
 successive calls, as with @code{make_simplified_withdraw}.  The returned
 closure is an @code{Fn}, not an @code{FnMut}: the type system itself records
@@ -963,7 +974,9 @@ fn factorial(n: u64) -> i128 @{
     fact_iter(1, 1, n)
 @}
 
-fn fact_iter(mut product: i128, mut counter: u64, max_count: u64) -> i128 @{
+fn fact_iter(
+    mut product: i128, mut counter: u64, max_count: u64,
+) -> i128 @{
     while counter <= max_count @{
         product *= i128::from(counter);
         counter += 1;
@@ -1029,17 +1042,19 @@ explore the uses of objects with local state in designing simulations.
 created by @code{make_account_with_password}, with the password modification
 described in @ref{Exercise 3.3}.  Suppose that our banking system requires the
 ability to make joint accounts.  Define a function @code{make_joint} that
-accomplishes this.  @code{Make_joint} should take three arguments.  The first
+accomplishes this.  @code{make_joint} should take three arguments.  The first
 is a password-protected account.  The second argument must match the password
 with which the account was defined for the @code{make_joint} operation to proceed; if it does not, @code{make_joint} should return the
-account's complaint.  The third argument is a new password.  @code{Make_joint}
+account's complaint.  The third argument is a new password.  @code{make_joint}
 is to create an additional access to the original account under the new
 password, sharing the original account's balance.  For example, if
-@code{peter_acc} is a bank account with password @code{open-sesame}, then
+@code{peter_acc} is a bank account with password @code{"open-sesame"}, then
 
 @example rust
-let peter_acc = make_account_with_password(100, "open-sesame");
-let paul_acc = make_joint(&peter_acc, "open-sesame", "rosebud")?;
+let peter_acc =
+    make_account_with_password(100, "open-sesame");
+let paul_acc =
+    make_joint(&peter_acc, "open-sesame", "rosebud")?;
 @end example
 
 @noindent

@@ -3,4 +3,4 @@
 
 import { test } from "vitest";
 
-test.todo("Exercise 4.8: named let");
+test.todo("Exercise 4.8: named local binding");

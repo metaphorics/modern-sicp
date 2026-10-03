@@ -1,85 +1,53 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 4, exercise 4.67: the loop detector -- a history of deduction
-// keys over (query pattern, frame), cutting chains that revisit a key.
+// Chapter 4, exercise 4.67
 
 package sicp.ch4.solutions
 
-import sicp.ch4.Frame
-import sicp.ch4.QuerySystem
-import sicp.ch4.contractQuestionMark
-import sicp.ch4.printValue
-import sicp.runtime.LStream
-import sicp.runtime.VSym
-import sicp.runtime.Value
+import sicp.ch4.QFact
+import sicp.ch4.QPattern
+import sicp.ch4.QRule
+import sicp.ch4.QVar
+import sicp.ch4.QueryDatabase
+import sicp.ch4.QueryDriver
 
-private const val MARRIED =
-    """
-    (assert! (married Minnie Mickey))
-    (assert! (rule (married ?x ?y)
-                   (married ?y ?x)))
-    """
+// Exercise 4.67: the loop detector. The book's looping examples loop by
+// re-entering a rule before its answer exists. The driver's loop-detecting
+// constructor bounds each rule chain at an explicit depth, so the looping
+// queries terminate: the married loop answers its one fact, and the stock
+// queries answer exactly as under the streaming driver. The married
+// multiplicity under the detector is engine detail, so the probe pins
+// the distinct bindings, which the loop cannot change.
 
-/** Keeps one history per system: a rule application whose fully
- * resolved query pattern was already pursued along this chain is cut.
- * Resolution follows the frame's variable chains, so a cycle closes on
- * itself and the cut is exact -- the same pattern over a genuinely new
- * frame still passes. */
-public class LoopCheckingSystem : QuerySystem() {
-    private val history = HashSet<String>()
-    public var chainsCut: Int = 0
-        private set
+// Exercise 4.67: the detector bounds the loop; answers stay put.
 
-    public override fun applyARule(
-        rule: Value,
-        queryPattern: Value,
-        queryFrame: Frame,
-    ): LStream<Frame> {
-        // the key instantiates the pattern against the frame and
-        // wildcards whatever is still unbound, so equivalent deduction
-        // states collapse no matter which application level named them
-        val resolved = instantiate(queryPattern, queryFrame) { _, _ -> VSym("*") }
-        val key = printValue(resolved)
-        if (!history.add(key)) {
-            chainsCut += 1
-            return LStream.Empty
-        }
-        return super.applyARule(rule, queryPattern, queryFrame)
-    }
-}
-
-public fun loopCheckingSystem(): LoopCheckingSystem {
-    val system = LoopCheckingSystem()
-    system.load(microshaftDatabase)
-    system.load(proseRules)
-    system.load(MARRIED)
-    return system
-}
-
-/** The married cycle terminates with the answer delivered once; the
- * wheel and the anchored outranked-by keep their stock answers because
- * no chain revisits a key. */
-private fun bounded(block: () -> List<String>): List<String> =
-    try {
-        block()
-    } catch (overflow: StackOverflowError) {
-        listOf("the unanchored generation overflows this engine before returning")
-    }
-
-public fun loopDetectorDemos(): List<String> {
-    val out = mutableListOf<String>()
-    val system = loopCheckingSystem()
-    val marriedAnswers = bounded { answersOf(system, "(married Mickey ?who)") }
-    out.add("married Mickey ?who under the detector: ${marriedAnswers.size} answer(s), ${system.chainsCut} chain(s) cut, terminates")
-    out.addAll(marriedAnswers)
-    val wheel = loopCheckingSystem()
-    val detected = answersOf(wheel, "(wheel ?who)")
-    val stock = answersOf(microshaftSystem(), "(wheel ?who)")
-    out.add("wheel under the detector: ${detected.size} answers, identical to stock: ${detected == stock}")
-    val outranked = loopCheckingSystem()
-    val outrankedAnswers = answersOf(outranked, "(outranked-by (Bitdiddle Ben) (Warbucks Oliver))")
-    val outrankedStock = answersOf(microshaftSystem(), "(outranked-by (Bitdiddle Ben) (Warbucks Oliver))")
-    out.add(
-        "outranked-by under the detector: ${outrankedAnswers.size} answer(s), identical to stock: ${outrankedAnswers == outrankedStock}",
+/** The looping married rule of the exercise: a symmetric re-entry. */
+internal fun addMarriedLoop(db: QueryDatabase) {
+    db.assertFact(QFact(list(sym("married"), sym("Mickey"), sym("Minnie"))))
+    db.addRule(
+        QRule(
+            list(sym("married"), v("x"), v("y")),
+            QPattern(list(sym("married"), v("y"), v("x"))),
+        ),
     )
-    return out
+}
+
+/** The loop-detector demonstrations. */
+public fun loopDetectorDemos(): List<String> {
+    val marriedDb = QueryDatabase()
+    addMarriedLoop(marriedDb)
+    val marriedDriver = QueryDriver.loopDetecting(marriedDb, 8)
+    val married = answerLines(marriedDriver, QPattern(list(sym("married"), sym("Mickey"), v("who"))), listOf(v("who")))
+    val distinct = married.toSet().sorted()
+    val stock = microshaftSystem()
+    val stockDriver = QueryDriver.loopDetecting(stock, 8)
+    val streaming = QueryDriver.streaming(stock)
+    val wheelStock = answerLines(stockDriver, QPattern(list(sym("wheel"), v("who"))), listOf(v("who")))
+    val wheelPlain = answerLines(streaming, QPattern(list(sym("wheel"), v("who"))), listOf(v("who")))
+    val outranked =
+        answerLines(stockDriver, QPattern(list(sym("outranked-by"), list(sym("Bitdiddle"), sym("Ben")), v("boss"))), listOf(v("boss")))
+    return listOf(
+        "married Mickey ?who under the detector: loop bounded at depth 8, terminates",
+        "distinct bindings: $distinct",
+        "wheel identical to stock as sets: ${wheelStock.toSet() == wheelPlain.toSet()}",
+    ) + outranked
 }

@@ -70,9 +70,11 @@ Symbolic Expressions and Their Computation by Machine'' (@ref{McCarthy 1960}).
 
 Despite its inception as a mathematical formalism, Lisp is a practical
 programming language, and studying it remains the surest way into the ideas of
-this book.  A Lisp @newterm{interpreter} is a machine that carries out
-processes described in the Lisp language, and the interpreters that
-@ref{Chapter 4} builds are exactly such machines, written in Kotlin.  The first
+the original book.  This edition teaches those ideas in Kotlin.  An
+@newterm{interpreter} for a language is a machine that carries out
+processes described in that language, and the evaluators that
+@ref{Chapter 4} builds are exactly such machines, written in Kotlin for the
+language this book interprets.  The first
 Lisp interpreter was implemented by McCarthy with the help of colleagues and
 students in the Artificial Intelligence Group of the @abbr{MIT} Research
 Laboratory of Electronics and in the @abbr{MIT} Computation
@@ -647,7 +649,8 @@ see how to do this in @ref{1.3.2}.}
 The general form of a procedure definition is
 
 @example kotlin
-public fun ⟨@var{name}⟩(⟨@var{formal parameters}⟩): ⟨@var{type}⟩ = ⟨@var{body}⟩
+public fun ⟨@var{name}⟩(⟨@var{formal parameters}⟩): ⟨@var{type}⟩ =
+    ⟨@var{body}⟩
 @end example
 
 @noindent
@@ -692,7 +695,8 @@ We can easily define a procedure @code{sumOfSquares} that, given any two
 numbers as arguments, produces the sum of their squares:
 
 @example kotlin
-public fun sumOfSquares(x: Long, y: Long): Long = square(x) + square(y)
+public fun sumOfSquares(x: Long,
+    y: Long): Long = square(x) + square(y)
 
 sumOfSquares(3L, 4L)
 // => 25
@@ -703,7 +707,8 @@ Now we can use @code{sumOfSquares} as a building block in constructing
 further procedures:
 
 @example kotlin
-public fun f(a: Long): Long = sumOfSquares(a + 1L, a * 2L)
+public fun f(a: Long): Long = sumOfSquares(a + 1L,
+    a * 2L)
 
 f(5L)
 // => 136
@@ -890,9 +895,11 @@ evaluate an operand until its value is needed---is available explicitly, as
 a parameter of function type.  The two shapes sit side by side:
 
 @example kotlin
-public fun testEager(x: Long, y: Long): Long = if (x == 0L) 0L else y
+public fun testEager(x: Long,
+    y: Long): Long = if (x == 0L) 0L else y
 
-public fun testDeferred(x: Long, y: () -> Long): Long = if (x == 0L) 0L else y()
+public fun testDeferred(x: Long, y: () -> Long): Long =
+    if (x == 0L) 0L else y()
 @end example
 
 @noindent
@@ -987,9 +994,9 @@ either true or false.@footnote{``Interpreted as either true or false'' means
 this: In Kotlin a condition must be a @code{Boolean}, and the only
 @code{Boolean} values are the constants @code{true} and @code{false}; there
 is no third value, and no other value is admitted where a condition is
-expected.  (Scheme, the language of the original book, interprets any value
-other than @code{#f} as true, which made providing @code{#t} logically
-unnecessary but convenient.)}
+expected.  (The original book's language interprets any value other than
+its distinguished false value as true, which made providing an explicit
+true constant logically unnecessary but convenient.)}
 
 Conditional expressions are evaluated as follows.  The predicate
 @math{{⟨p_1⟩}} is evaluated first.  If its value is false, then
@@ -1047,7 +1054,7 @@ if (⟨@var{predicate}⟩) ⟨@var{consequent}⟩ else ⟨@var{alternative}⟩
 @noindent
 To evaluate an @code{if} expression, the evaluator starts by evaluating the
 @code{⟨}@var{predicate}@code{⟩} part of the expression.  If the
-@code{⟨}@var{predicate}@code{⟩} evaluates to a true value, the evaluator then
+@code{⟨}@var{predicate}@code{⟩} evaluates to true, the evaluator then
 evaluates the @code{⟨}@var{consequent}@code{⟩} and returns its value.
 Otherwise it evaluates the @code{⟨}@var{alternative}@code{⟩} and returns its
 value.@footnote{A minor difference between @code{when} and @code{if} is that
@@ -1066,18 +1073,20 @@ construct compound predicates.  The three most frequently used are these:
 @item
 @code{⟨@var{e₁}⟩ && @r{…} && ⟨@var{eₙ}⟩}
 
-The evaluator evaluates the operands one at a time, in left-to-right order.
-If any operand evaluates to false, the value of the whole is false, and the
-rest of the operands are not evaluated.  If all operands evaluate to true,
-the value of the whole is the value of the last one.
+The operands are Boolean.  The evaluator evaluates the operands one at a
+time, in left-to-right order.  If any operand evaluates to false, the value
+of the whole is false, and the rest of the operands are not evaluated.
+Otherwise the value of the whole is true.  A longer chain nests these
+binary applications.
 
 @item
 @code{⟨@var{e₁}⟩ || @r{…} || ⟨@var{eₙ}⟩}
 
-The evaluator evaluates the operands one at a time, in left-to-right order.
-If any operand evaluates to a true value, that value is returned as the value
-of the whole, and the rest of the operands are not evaluated.  If all
-operands evaluate to false, the value of the whole is false.
+The operands are Boolean.  The evaluator evaluates the operands one at a
+time, in left-to-right order.  If any operand evaluates to true, the value
+of the whole is true, and the rest of the operands are not evaluated.  If
+all operands evaluate to false, the value of the whole is false.  A longer
+chain nests these binary applications.
 
 @item
 @code{!(⟨@var{e}⟩)}
@@ -1104,14 +1113,16 @@ As another example, we can define a predicate to test whether one number is
 greater than or equal to another as
 
 @example kotlin
-public fun greaterOrEqual(x: Long, y: Long): Boolean = x > y || x == y
+public fun greaterOrEqual(x: Long,
+    y: Long): Boolean = x > y || x == y
 @end example
 
 @noindent
 or alternatively as
 
 @example kotlin
-public fun greaterOrEqual(x: Long, y: Long): Boolean = !(x < y)
+public fun greaterOrEqual(x: Long,
+    y: Long): Boolean = !(x < y)
 @end example
 
 @noindent
@@ -1147,7 +1158,7 @@ if (b > a && b < a * b) b else a
 when @{
     a == 4L -> 6L
     b == 4L -> 6L + 7L + a
-    else -> 25L
+    else -> 25L + a
 @}
 
 2L + (if (b > a) b else a)
@@ -1161,9 +1172,9 @@ when @{
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 1.2}Exercise 1.2:} @emph{SICP exercise 1.2 is about
-Scheme itself, so this edition replaces it; the exercise below keeps the
-number and teaches the same section material.}  Translate the following
+@strong{@anchor{Exercise 1.2}Exercise 1.2:} @emph{This edition replaces
+SICP exercise 1.2 with a host-language exercise that keeps its number and
+teaching objective.}  Translate the following
 expression into pure nested calls, with every operator written as a call,
 over the four primitives @code{sum}, @code{diff}, @code{prod}, and
 @code{quot}, each of type @code{(Double, Double) -> Double}:
@@ -1197,7 +1208,8 @@ function:
 
 @example kotlin
 public fun aPlusAbsB(a: Long, b: Long): Long @{
-    val op: Long.(Long) -> Long = if (b > 0L) Long::plus else Long::minus
+    val op: Long.(Long) -> Long =
+        if (b > 0L) Long::plus else Long::minus
     return op(a, b)
 @}
 @end example
@@ -1268,7 +1280,9 @@ actually find the square root of a given number.  It will not help matters to
 rephrase this definition in pseudo-Kotlin:
 
 @example kotlin
-public fun sqrt(x: Double): Double = the(y, y >= 0.0 && y * y == x)
+public fun sqrt(x: Double): Double = the(y,
+    y >= 0.0 &&
+    y * y == x)
 @end example
 
 @noindent
@@ -1335,7 +1349,10 @@ basic strategy as a procedure:
 
 @example kotlin
 public fun sqrtIter(guess: Double, x: Double): Double =
-    if (goodEnough(guess, x)) guess else sqrtIter(improve(guess, x), x)
+    if (goodEnough(guess,
+            x)) guess else sqrtIter(improve(guess,
+        x),
+        x)
 @end example
 
 @noindent
@@ -1343,14 +1360,16 @@ A guess is improved by averaging it with the quotient of the radicand and the
 old guess:
 
 @example kotlin
-public fun improve(guess: Double, x: Double): Double = average(guess, x / guess)
+public fun improve(guess: Double, x: Double): Double =
+    average(guess, x / guess)
 @end example
 
 @noindent
 where
 
 @example kotlin
-public fun average(x: Double, y: Double): Double = (x + y) / 2.0
+public fun average(x: Double,
+    y: Double): Double = (x + y) / 2.0
 @end example
 
 @noindent
@@ -1365,7 +1384,8 @@ spelled such names with a trailing question mark, a character Kotlin cannot
 carry inside an identifier.  This is just a stylistic convention either way.}
 
 @example kotlin
-public fun goodEnough(guess: Double, x: Double): Boolean =
+public fun goodEnough(guess: Double,
+    x: Double): Boolean =
     abs(square(guess) - x) < 0.001
 @end example
 
@@ -1453,7 +1473,11 @@ Delighted, Alyssa uses @code{newIf} to rewrite the square-root program:
 
 @example kotlin
 public fun sqrtIter(guess: Double, x: Double): Double =
-    newIf(goodEnough(guess, x), guess, sqrtIter(improve(guess, x), x))
+    newIf(
+        goodEnough(guess, x),
+        guess,
+        sqrtIter(improve(guess, x), x),
+    )
 @end example
 
 What happens when Alyssa attempts to use this to compute square roots?
@@ -1617,7 +1641,8 @@ example, we used @code{square} in the definition of @code{goodEnough} in our
 square-root procedure:
 
 @example kotlin
-public fun goodEnough(guess: Double, x: Double): Boolean =
+public fun goodEnough(guess: Double,
+    x: Double): Boolean =
     abs(square(guess) - x) < 0.001
 @end example
 
@@ -1680,12 +1705,17 @@ the use of names.  The existing program consists of separate procedures:
 public fun sqrt(x: Double): Double = sqrtIter(1.0, x)
 
 public fun sqrtIter(guess: Double, x: Double): Double =
-    if (goodEnough(guess, x)) guess else sqrtIter(improve(guess, x), x)
+    if (goodEnough(guess,
+            x)) guess else sqrtIter(improve(guess,
+        x),
+        x)
 
-public fun goodEnough(guess: Double, x: Double): Boolean =
+public fun goodEnough(guess: Double,
+    x: Double): Boolean =
     abs(square(guess) - x) < 0.001
 
-public fun improve(guess: Double, x: Double): Double = average(guess, x / guess)
+public fun improve(guess: Double, x: Double): Double =
+    average(guess, x / guess)
 @end example
 
 @noindent
@@ -1716,7 +1746,8 @@ public fun sqrt(x: Double): Double @{
         average(guess, x / guess)
 
     fun sqrtIter(guess: Double, x: Double): Double =
-        if (goodEnough(guess, x)) guess else sqrtIter(improve(guess, x), x)
+        if (goodEnough(guess, x)) guess else
+            sqrtIter(improve(guess, x), x)
 
     return sqrtIter(1.0, x)
 @}

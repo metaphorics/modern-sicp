@@ -7,13 +7,13 @@
 
 mod ex_2_13 {
     use ch02::sec_2_1::{Interval, mul_interval};
-    use sicp_runtime::SchemeError;
+    use sicp_runtime::SicpError;
 
     /// This exercise's own copy of exercise 2.12's `make-center-percent`;
     /// exercise files are compiled as independent test binaries, so each
     /// one that needs a small helper defines it locally rather than
     /// sharing a module across files.
-    fn from_center_percent(center: f64, percent: f64) -> Result<Interval, SchemeError> {
+    fn from_center_percent(center: f64, percent: f64) -> Result<Interval, SicpError> {
         Interval::from_center_width(center, center.abs() * percent / 100.0)
     }
 
@@ -31,9 +31,9 @@ mod ex_2_13 {
     /// tolerances.
     ///
     /// # Errors
-    /// [`SchemeError`] when the fixed inputs below fail to build an
+    /// [`SicpError`] when the fixed inputs below fail to build an
     /// interval, which they do not.
-    pub fn ex_2_13() -> Result<(f64, f64), SchemeError> {
+    pub fn ex_2_13() -> Result<(f64, f64), SicpError> {
         let a = from_center_percent(10.0, 1.0)?;
         let b = from_center_percent(20.0, 2.0)?;
         let product = mul_interval(&a, &b);

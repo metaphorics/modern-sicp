@@ -1,3 +1,14 @@
 (library
  (name sicp_common)
- (modules ast env error eval_error pending random reader value))
+ (libraries compiler-libs.common)
+ (modules
+  ast
+  check
+  constructor_data
+  env
+  error
+  eval_error
+  pending
+  prelude
+  random
+  value))

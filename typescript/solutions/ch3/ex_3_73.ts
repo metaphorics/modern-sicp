@@ -24,18 +24,18 @@ import { integralDelayed, type Stream, streamMap2 } from "../../packages/ch3/src
  * far (the book's Euler rectangle).
  */
 
-/** The book's `RC`: takes the resistance R, the capacitance C, and
+/** The statement's `rc`: takes the resistance R, the capacitance C, and
  * the time step dt, and answers a procedure from the current stream
  * and the initial capacitor voltage v0 to the voltage stream. The
  * integrand (i - v/R)/C is the capacitor current over C; it reads the
  * `voltage` being defined, so the whole integrand is delayed until
  * `integralDelayed` asks for the tail. */
-export const RC = (
+export const rc = (
   R: number,
   C: number,
   dt: number,
 ): ((current: Stream<number>, v0: number) => Stream<number>) => {
-  const rc = (current: Stream<number>, v0: number): Stream<number> => {
+  const voltageFor = (current: Stream<number>, v0: number): Stream<number> => {
     const voltage: Stream<number> = integralDelayed(
       () => streamMap2((i, v) => (i - v / R) / C, current, voltage),
       v0,
@@ -43,8 +43,8 @@ export const RC = (
     );
     return voltage;
   };
-  return rc;
+  return voltageFor;
 };
 
 /** The statement's example: R = 5 ohms, C = 1 farad, dt = 0.5 s. */
-export const RC1 = RC(5, 1, 0.5);
+export const rc1 = rc(5, 1, 0.5);

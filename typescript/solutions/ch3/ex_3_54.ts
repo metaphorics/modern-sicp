@@ -11,12 +11,11 @@ import {
 } from "../../packages/ch3/src/05-streams.js";
 
 /**
- * Exercise 3.54: the statement asks for a procedure `mul-streams`,
- * analogous to `add-streams`, that produces the elementwise product
+ * Exercise 3.54: the statement asks for a procedure `mulStreams`,
+ * analogous to `addStreams`, that produces the elementwise product
  * of its two input streams, and then to complete
  *
- *   (define factorials
- *     (cons-stream 1 (mul-streams (blank) (blank))))
+ *   const factorials = consStream(1, () => mulStreams(⟨??⟩, ⟨??⟩));
  *
  * so that the n-th element (counting from 0) is (n + 1) factorial.
  * The blanks are the integers with their first element dropped and
@@ -25,7 +24,7 @@ import {
  * definition closes over itself exactly like the text's `integers`.
  */
 
-/** The book's `mul-streams`: element-wise product, ending where
+/** The book's `mulStreams`: element-wise product, ending where
  * either input ends. */
 export const mulStreams = (s1: Stream<number>, s2: Stream<number>): Stream<number> =>
   streamMap2((a, b) => a * b, s1, s2);

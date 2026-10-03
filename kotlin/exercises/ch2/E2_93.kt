@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.93: modify the rational-arithmetic package to use generic
  * operations, but change `makeRat` so it does not reduce fractions to
@@ -14,4 +12,4 @@ import sicp.runtime.PendingSolution
  * for. The edition keeps the tower's exact rational [QRat] as its own
  * level, so this package installs under the tag `rational-function`.
  */
-public fun ex_2_93(): String = throw PendingSolution()
+public fun ex_2_93(): String = throw PendingExercise()

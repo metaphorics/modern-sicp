@@ -1,0 +1,5 @@
+{
+  "case_id": "query/04-append-form",
+  "constructor": "query_append",
+  "observation": "driver-dispatched named case; no expected result is recorded here"
+}

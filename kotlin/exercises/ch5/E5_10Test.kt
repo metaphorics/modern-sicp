@@ -12,6 +12,10 @@ public class E5_10Test :
         test("Exercise 5.10: the gcd machine in the new syntax").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            newSyntaxRuns() shouldBe emptyList()
+            newSyntaxRuns() shouldBe
+                listOf(
+                    "gcd(206, 40) in the new syntax = 2",
+                    "countdown(3) sum = 3",
+                )
         }
     })

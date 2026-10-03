@@ -2,12 +2,12 @@
 // Original exercise
 
 /**
- * Exercise 4.5: Scheme allows one more form of cond clause,
- * (test => recipient). If test evaluates to something other than false,
- * recipient is evaluated; its value must be a procedure of one argument,
- * and that procedure is called on the value of test. Extend the cond
- * expansion so arrow clauses work, and test with an assoc procedure
- * defined in the evaluated language.
+ * Exercise 4.5: the case analysis of 4.1.2 matches its discriminant against
+ * literal tests. Add a clause whose match evaluates a recipient and calls it
+ * with the matched value, the call's result becoming the analysis value.
+ * Example: `const entries = [{ key: "a", value: 1 }, { key: "b", value: 2 }];`
+ * and a case analysis of `lookup("b", entries)` with recipient `entryValue`
+ * returns 2. Modify `switchToIf` and the 4.1.2 syntax procedures.
  */
 export class PendingSolution extends Error {
   constructor() {

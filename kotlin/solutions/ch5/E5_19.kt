@@ -1,29 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, exercise 5.19: breakpoints. A breakpoint names an instruction
-// (by label) and an n: the machine stops just before executing that
-// instruction for the n-th time, reports where it is waiting, and resumes
-// on `proceed`; `cancel` removes the breakpoint so later runs go straight
-// through.
+// Original exercise
+//
+// Chapter 5, exercise 5.19: breakpoints. A breakpoint names a place in
+// the controller and an n: the driver parks just before the instruction
+// at that place runs for the n-th time, reports where it is waiting, and
+// resumes on `proceed`; `cancel` releases the breakpoint so later runs go
+// straight through. The substrate machine has no breakpoint registry, so
+// the feature rides the stepping seam the exercise establishes.
 
 package sicp.ch5.solutions
 
-import arrow.core.raise.Raise
-import sicp.ch5.Machine
-import sicp.ch5.MachineError
-import sicp.ch5.Op
-import sicp.ch5.arithOperations
-import sicp.ch5.getRegisterContents
-import sicp.ch5.setRegisterContents
-import sicp.runtime.Reg
-import sicp.runtime.VInt
+import sicp.guest.GValue
+import sicp.runtime.Machine
 
-/** The breakpoint machine: the execution loop checks the breakpoints
- *  before every instruction and parks the machine before an instruction's
- *  n-th execution, and again before each later n-th. */
-public class BreakpointMachine(
-    registerNames: List<Reg>,
-    userOperations: Map<String, Op>,
-) : Machine(registerNames, userOperations) {
+/** The breakpoint driver: it parks the machine before an instruction's
+ *  n-th execution and again before each later n-th. */
+public class BreakpointDriver(
+    private val machine: Machine,
+) {
     private class Breakpoint(
         val address: Int,
         val every: Int,
@@ -44,7 +38,8 @@ public class BreakpointMachine(
         label: String,
         n: Int,
     ) {
-        val address = labels[label] ?: throw IllegalArgumentException("no such label: $label")
+        require(n >= 1) { "a breakpoint needs a positive arrival count, got $n" }
+        val address = machine.labels[label] ?: error("no such label: $label")
         byLabel[label] = Breakpoint(address, n)
     }
 
@@ -58,38 +53,37 @@ public class BreakpointMachine(
         byLabel.clear()
     }
 
-    /** Resumes a machine parked at a breakpoint: the pending execution
-     *  runs (counting once, in [execute]) and the machine stops next at a
-     *  later n-th arrival, not at the same one forever. */
-    context(r: Raise<MachineError>)
-    public fun proceed() {
-        waitingAt = null
-        execute()
-    }
-
-    /** A fresh run begins a fresh stop schedule: no stop carries over. */
-    context(r: Raise<MachineError>)
-    override fun start() {
+    /** Runs until the machine halts or parks at a breakpoint. A fresh run
+     *  begins a fresh stop schedule: no stop carries over. */
+    public fun start() {
         waitingAt = null
         byLabel.values.forEach { it.stopped = false }
-        super.start()
+        drive()
     }
 
-    context(r: Raise<MachineError>)
-    override fun execute() {
-        while (pc < insts.size) {
-            val hit = byLabel.entries.firstOrNull { it.value.address == pc }
-            val bp = hit?.value
-            if (bp != null && !bp.stopped && bp.executions % bp.every == bp.every - 1) {
+    /** Resumes a machine parked at a breakpoint: the pending execution
+     *  runs and the machine stops next at a later n-th arrival, not at
+     *  the same one forever. */
+    public fun proceed() {
+        waitingAt = null
+        drive()
+    }
+
+    private fun drive() {
+        while (!machine.halted()) {
+            val hit = byLabel.entries.firstOrNull { it.value.address == machine.pc }
+            val breakpoint = hit?.value
+            val parked = breakpoint != null && !breakpoint.stopped && breakpoint.executions % breakpoint.every == breakpoint.every - 1
+            if (parked) {
                 waitingAt = hit.key
-                bp.stopped = true
+                breakpoint.stopped = true
                 return
             }
-            if (bp != null) {
-                bp.stopped = false
-                bp.executions += 1
+            if (breakpoint != null) {
+                breakpoint.stopped = false
+                breakpoint.executions += 1
             }
-            insts[pc].exec(r)
+            stepOrFail(machine, machine.controller[machine.pc])
         }
     }
 }
@@ -98,24 +92,35 @@ public class BreakpointMachine(
  *  and fourth execution of `test-b`, reading the registers at each
  *  stop, proceed to the answer, then cancel and restart straight
  *  through. */
-public fun breakpointSession(): List<String> =
-    machineRun {
-        val machine = BreakpointMachine(listOf("a", "b", "t"), arithOperations)
-        machine.install(gcdController)
-        machine.setRegisterContents("a", VInt(206))
-        machine.setRegisterContents("b", VInt(40))
-        machine.setBreakpoint("test-b", 2)
-        machine.start()
-        val lines = mutableListOf<String>()
-        while (machine.waitingAt != null) {
-            lines +=
-                "break at ${machine.waitingAt}: a = ${machine.getRegisterContents("a")}, " +
-                "b = ${machine.getRegisterContents("b")}"
-            machine.proceed()
-        }
-        lines += "finished: gcd(206, 40) = ${machine.getRegisterContents("a")}"
-        machine.cancelBreakpoint("test-b")
-        machine.start()
-        lines += "cancel and restart: gcd(206, 40) = ${machine.getRegisterContents("a")}"
-        lines
+public fun breakpointSession(): List<String> {
+    val lines = mutableListOf<String>()
+    val stopped =
+        freshMachine(
+            setOf("a", "b", "t"),
+            machineArithmetic,
+            gcdController,
+            mapOf("a" to GValue.VLong(206), "b" to GValue.VLong(40)),
+        )
+    val driver = BreakpointDriver(stopped)
+    driver.setBreakpoint("test-b", 2)
+    driver.start()
+    while (driver.waitingAt != null) {
+        lines.add(
+            "break at ${driver.waitingAt}: a = ${render(stopped.registers.getValue("a").content)}, " +
+                "b = ${render(stopped.registers.getValue("b").content)}",
+        )
+        driver.proceed()
     }
+    lines.add("finished: gcd(206, 40) = ${render(stopped.registers.getValue("a").content)}")
+    driver.cancelBreakpoint("test-b")
+    val restarted =
+        freshMachine(
+            setOf("a", "b", "t"),
+            machineArithmetic,
+            gcdController,
+            mapOf("a" to GValue.VLong(206), "b" to GValue.VLong(40)),
+        )
+    BreakpointDriver(restarted).start()
+    lines.add("cancel and restart: gcd(206, 40) = ${render(restarted.registers.getValue("a").content)}")
+    return lines
+}

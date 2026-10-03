@@ -8,10 +8,10 @@ mod ex_2_92 {
         add, install_generic_arithmetic, install_polynomial_package, make_polynomial, make_term,
         poly_variable,
     };
-    use sicp_runtime::{OpTable, SchemeError, Value};
+    use sicp_runtime::{OpTable, SicpError, Value};
     use std::rc::Rc;
 
-    fn table() -> Result<Rc<OpTable>, SchemeError> {
+    fn table() -> Result<Rc<OpTable>, SicpError> {
         let t = Rc::new(OpTable::new());
         install_generic_arithmetic(&t)?;
         install_polynomial_package(&t);
@@ -21,11 +21,11 @@ mod ex_2_92 {
     /// A global variable ordering, the book's own suggestion for
     /// imposing a canonical form: earlier entries are the "more
     /// principal" variable and stay on the outside.
-    fn rank(order: &[&str], var: &str) -> Result<usize, SchemeError> {
+    fn rank(order: &[&str], var: &str) -> Result<usize, SicpError> {
         order
             .iter()
             .position(|&v| v == var)
-            .ok_or_else(|| SchemeError::TypeMismatch(format!("{var} is not in the variable order")))
+            .ok_or_else(|| SicpError::TypeMismatch(format!("{var} is not in the variable order")))
     }
 
     /// Embeds a polynomial as the constant-order coefficient of a new,
@@ -34,7 +34,7 @@ mod ex_2_92 {
     /// what "convert one polynomial to another polynomial that has the
     /// same principal variable" means when the whole lower polynomial
     /// becomes that coefficient.
-    fn embed(table: &OpTable, var: &str, p: Value) -> Result<Value, SchemeError> {
+    fn embed(table: &OpTable, var: &str, p: Value) -> Result<Value, SicpError> {
         make_polynomial(table, var, &[make_term(0, p)])
     }
 
@@ -50,7 +50,7 @@ mod ex_2_92 {
         order: &[&str],
         p: &Value,
         q: &Value,
-    ) -> Result<Value, SchemeError> {
+    ) -> Result<Value, SicpError> {
         let pv = poly_variable(&ch02::sec_2_5::contents(p)?)?;
         let qv = poly_variable(&ch02::sec_2_5::contents(q)?)?;
         if pv.as_ref() == qv.as_ref() {
@@ -67,7 +67,7 @@ mod ex_2_92 {
     /// to collide with, so it becomes the whole constant coefficient of
     /// an `x`-polynomial, and `x` stays on the outside as the book's
     /// canonical form requires.
-    pub fn ex_2_92() -> Result<String, SchemeError> {
+    pub fn ex_2_92() -> Result<String, SicpError> {
         let table = table()?;
         let order = ["x", "y"];
 

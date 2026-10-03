@@ -8,12 +8,12 @@ mod term_lists {
     //! the dividend by an integerizing factor before dividing, so every
     //! quotient this edition's `div_terms` computes stays an integer.
     use ch02::sec_2_5::{Term, coeff, make_term, order};
-    use sicp_runtime::{SchemeError, Value};
+    use sicp_runtime::{SicpError, Value};
 
-    fn coeff_int(t: &Term) -> Result<i128, SchemeError> {
+    fn coeff_int(t: &Term) -> Result<i128, SicpError> {
         match coeff(t) {
             Value::Int(n) => Ok(*n),
-            other => Err(SchemeError::TypeMismatch(format!(
+            other => Err(SicpError::TypeMismatch(format!(
                 "only integer coefficients are supported here: {other}"
             ))),
         }
@@ -29,7 +29,7 @@ mod term_lists {
         out
     }
 
-    fn add_terms(l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    fn add_terms(l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SicpError> {
         match (l1.first(), l2.first()) {
             (None, _) => Ok(l2.to_vec()),
             (_, None) => Ok(l1.to_vec()),
@@ -44,18 +44,18 @@ mod term_lists {
         }
     }
 
-    fn negate(terms: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    fn negate(terms: &[Term]) -> Result<Vec<Term>, SicpError> {
         terms
             .iter()
             .map(|t| Ok(make_term(order(t), Value::Int(-coeff_int(t)?))))
             .collect()
     }
 
-    fn sub_terms(l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    fn sub_terms(l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SicpError> {
         add_terms(l1, &negate(l2)?)
     }
 
-    fn mul_term_by_all_terms(t: &Term, terms: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    fn mul_term_by_all_terms(t: &Term, terms: &[Term]) -> Result<Vec<Term>, SicpError> {
         terms
             .iter()
             .map(|u| {
@@ -69,7 +69,7 @@ mod term_lists {
 
     /// Full term-list multiplication, needed here to build `Q_1` and
     /// `Q_2` the same way exercise 2.95 did.
-    pub fn mul_terms(l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    pub fn mul_terms(l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SicpError> {
         match l1.first() {
             None => Ok(Vec::new()),
             Some(t1) => {
@@ -79,22 +79,19 @@ mod term_lists {
         }
     }
 
-    fn scale_terms(terms: &[Term], factor: i128) -> Result<Vec<Term>, SchemeError> {
+    fn scale_terms(terms: &[Term], factor: i128) -> Result<Vec<Term>, SicpError> {
         terms
             .iter()
             .map(|t| Ok(make_term(order(t), Value::Int(coeff_int(t)? * factor))))
             .collect()
     }
 
-    fn div_terms(
-        dividend: &[Term],
-        divisor: &[Term],
-    ) -> Result<(Vec<Term>, Vec<Term>), SchemeError> {
+    fn div_terms(dividend: &[Term], divisor: &[Term]) -> Result<(Vec<Term>, Vec<Term>), SicpError> {
         if dividend.is_empty() {
             return Ok((Vec::new(), Vec::new()));
         }
         let Some(dvsr) = divisor.first() else {
-            return Err(SchemeError::DivisionByZero);
+            return Err(SicpError::DivisionByZero);
         };
         let dend = &dividend[0];
         if order(dend) < order(dvsr) {
@@ -102,10 +99,10 @@ mod term_lists {
         }
         let (nc, dc) = (coeff_int(dend)?, coeff_int(dvsr)?);
         if dc == 0 {
-            return Err(SchemeError::DivisionByZero);
+            return Err(SicpError::DivisionByZero);
         }
         if nc % dc != 0 {
-            return Err(SchemeError::TypeMismatch(format!(
+            return Err(SicpError::TypeMismatch(format!(
                 "div_terms: {nc} does not divide evenly by {dc}"
             )));
         }
@@ -120,7 +117,7 @@ mod term_lists {
     /// and `O_2` is `q`'s. `None` when `p` is already lower order than
     /// `q` -- `div_terms` answers that case without dividing anything,
     /// so no factor is needed (and the exponent could go negative).
-    fn integerizing_factor(p: &[Term], q: &[Term]) -> Result<Option<i128>, SchemeError> {
+    fn integerizing_factor(p: &[Term], q: &[Term]) -> Result<Option<i128>, SicpError> {
         let (Some(pt), Some(qt)) = (p.first(), q.first()) else {
             return Ok(None);
         };
@@ -128,16 +125,16 @@ mod term_lists {
             return Ok(None);
         }
         let exp = 1 + i64::from(order(pt)) - i64::from(order(qt));
-        let exp = u32::try_from(exp).map_err(|_| SchemeError::Overflow)?;
+        let exp = u32::try_from(exp).map_err(|_| SicpError::Overflow)?;
         let c = coeff_int(qt)?;
-        Ok(Some(c.checked_pow(exp).ok_or(SchemeError::Overflow)?))
+        Ok(Some(c.checked_pow(exp).ok_or(SicpError::Overflow)?))
     }
 
     /// Exercise 2.96(a): just like `remainder_terms`, but it multiplies
     /// the dividend by the integerizing factor before calling
     /// `div_terms`, so the division never meets a coefficient that
     /// fails to divide evenly.
-    pub fn pseudoremainder_terms(p: &[Term], q: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    pub fn pseudoremainder_terms(p: &[Term], q: &[Term]) -> Result<Vec<Term>, SicpError> {
         let Some(factor) = integerizing_factor(p, q)? else {
             return Ok(p.to_vec());
         };
@@ -148,7 +145,7 @@ mod term_lists {
 
     /// Euclid's loop over `pseudoremainder_terms` instead of the plain
     /// remainder: 2.96(a)'s answer, before 2.96(b)'s content removal.
-    pub fn gcd_terms_raw(a: &[Term], b: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    pub fn gcd_terms_raw(a: &[Term], b: &[Term]) -> Result<Vec<Term>, SicpError> {
         if b.is_empty() {
             return Ok(a.to_vec());
         }
@@ -167,7 +164,7 @@ mod term_lists {
     /// The (integer) content of a term list: the greatest common divisor
     /// of every coefficient, or 1 for the empty list (nothing to divide
     /// out).
-    fn content(terms: &[Term]) -> Result<i128, SchemeError> {
+    fn content(terms: &[Term]) -> Result<i128, SicpError> {
         let g = terms
             .iter()
             .try_fold(0i128, |g, t| Ok(gcd_i128(g, coeff_int(t)?)))?;
@@ -179,7 +176,7 @@ mod term_lists {
     /// than they need to be. The GCD is only defined up to a nonzero
     /// rational factor, so the sign is pinned to a positive leading
     /// coefficient -- the same convention the integer `gcd` follows.
-    pub fn gcd_terms(a: &[Term], b: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    pub fn gcd_terms(a: &[Term], b: &[Term]) -> Result<Vec<Term>, SicpError> {
         let raw = gcd_terms_raw(a, b)?;
         let c = content(&raw)?;
         let mut gcd: Vec<Term> = raw
@@ -196,7 +193,7 @@ mod term_lists {
         Ok(gcd)
     }
 
-    pub fn as_pairs(terms: &[Term]) -> Result<Vec<(u32, i128)>, SchemeError> {
+    pub fn as_pairs(terms: &[Term]) -> Result<Vec<(u32, i128)>, SicpError> {
         terms
             .iter()
             .map(|t| Ok((order(t), coeff_int(t)?)))
@@ -207,7 +204,7 @@ mod term_lists {
 mod ex_2_96 {
     use super::term_lists::{as_pairs, gcd_terms, gcd_terms_raw, mul_terms};
     use ch02::sec_2_5::make_term;
-    use sicp_runtime::{SchemeError, Value};
+    use sicp_runtime::{SicpError, Value};
 
     /// The raw and content-reduced GCD of `Q_1` and `Q_2`.
     type Answer = (Vec<(u32, i128)>, Vec<(u32, i128)>);
@@ -216,7 +213,7 @@ mod ex_2_96 {
     /// pseudodivision-based `gcd_terms`: part (a) alone produces integer
     /// coefficients larger than `P_1`'s; part (b)'s content removal
     /// brings the answer back down to `P_1` itself.
-    pub fn ex_2_96() -> Result<Answer, SchemeError> {
+    pub fn ex_2_96() -> Result<Answer, SicpError> {
         let p1 = vec![
             make_term(2, Value::Int(1)),
             make_term(1, Value::Int(-2)),

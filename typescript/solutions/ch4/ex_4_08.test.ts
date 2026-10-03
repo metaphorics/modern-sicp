@@ -1,63 +1,142 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-import { it } from "@effect/vitest";
-import { Effect } from "effect";
-import { describe, expect, test } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { setupEnvironment } from "../../packages/ch4/src/01-metacircular.js";
-import type { Env, Value } from "../../packages/ch4/src/core.js";
-import type { EvaluationError } from "../../packages/ch4/src/errors.js";
-import { format, read } from "../../packages/ch4/src/read.js";
-import { evalWithNamedLet, namedLetToCombination } from "./ex_4_08.js";
+import { Session } from "../../packages/ch4/src/01-metacircular.js";
+import { format } from "../../packages/ch4/src/read.js";
+import type { Env } from "../../packages/ch4/src/runtime/env.js";
+import type { Outcome } from "../../packages/ch4/src/runtime/errors.js";
+import {
+  bin,
+  call,
+  cond,
+  type Expr,
+  exprStmt,
+  functionDecl,
+  ident,
+  lam,
+  num,
+  param,
+  returnStmt,
+} from "../../packages/ch4/src/syntax/ast.js";
+import { noSpan } from "../../packages/ch4/src/syntax/diagnostics.js";
+import {
+  evalWithNamedLet,
+  type LoopBinding,
+  letNode,
+  namedLetNode,
+  namedLetToCall,
+} from "./ex_4_08.js";
 
-const run = (source: string, env: Env): Effect.Effect<Value, EvaluationError> =>
-  evalWithNamedLet(read(source), env);
+const envWith = (): { session: Session; env: Env } => {
+  const session = new Session("core");
+  return { session, env: session.globalEnv() };
+};
 
-const fib = (n: number): string =>
-  `(let fib ((k ${n})) (if (< k 2) k (+ (fib (- k 1)) (fib (- k 2)))))`;
+/** The observable result: the rendered value, or the fault category. */
+const shown = (outcome: Outcome): string =>
+  outcome.tag === "ok" ? format(outcome.value) : `error:${outcome.error.tag}`;
+
+/** Erases spans so two constructed trees can be compared structurally. */
+const normalize = (value: object): unknown =>
+  JSON.parse(JSON.stringify(value, (key, item) => (key === "span" ? null : item)));
+
+const bindings = (...pairs: ReadonlyArray<readonly [string, Expr]>): LoopBinding[] =>
+  pairs.map(([name, init]) => ({ name, init }));
+
+const loopCall = (name: string, args: ReadonlyArray<Expr>): Expr => call(ident(name), args);
 
 describe("exercise 4.8: named let", () => {
-  it.effect("Fibonacci 10 by named let is 55", () =>
-    Effect.gen(function* () {
-      const env = yield* setupEnvironment();
-      expect(yield* run(fib(10), env)).toStrictEqual({ _tag: "Number", n: 55 });
-    }),
-  );
-
-  it.effect("a factorial loop by named let is 120", () =>
-    Effect.gen(function* () {
-      const env = yield* setupEnvironment();
-      expect(
-        yield* run("(let fact ((n 5) (acc 1)) (if (= n 0) acc (fact (- n 1) (* acc n))))", env),
-      ).toStrictEqual({ _tag: "Number", n: 120 });
-    }),
-  );
-
-  test("the transformation follows the book's set! hint", () => {
-    const namedForm = read("(let loop ((n 0)) n)");
-    if (namedForm._tag !== "Cons") {
-      throw new Error("expected a named let form");
-    }
-    const expected = format(read("((lambda (loop) (set! loop (lambda (n) n)) (loop 0)) 'ok)"));
-    expect(format(namedLetToCombination(namedForm))).toBe(expected);
+  it("Fibonacci 10 by named let is 55", () => {
+    const { session, env } = envWith();
+    const node = namedLetNode(
+      "loop",
+      bindings(["k", num(10)]),
+      [
+        exprStmt(
+          cond(
+            bin("<", ident("k"), num(2)),
+            ident("k"),
+            bin(
+              "+",
+              loopCall("loop", [bin("-", ident("k"), num(1))]),
+              loopCall("loop", [bin("-", ident("k"), num(2))]),
+            ),
+          ),
+        ),
+      ],
+      noSpan,
+    );
+    expect(shown(evalWithNamedLet(node, env, session))).toBe("55");
   });
 
-  it.effect("plain let still evaluates in the same evaluator", () =>
-    Effect.gen(function* () {
-      const env = yield* setupEnvironment();
-      expect(yield* run("(let ((x 3) (y 4)) (+ x y))", env)).toStrictEqual({
-        _tag: "Number",
-        n: 7,
-      });
-    }),
-  );
+  it("a factorial loop by named let is 120", () => {
+    const { session, env } = envWith();
+    const node = namedLetNode(
+      "loop",
+      bindings(["n", num(5)], ["acc", num(1)]),
+      [
+        exprStmt(
+          cond(
+            bin("===", ident("n"), num(0)),
+            ident("acc"),
+            loopCall("loop", [bin("-", ident("n"), num(1)), bin("*", ident("acc"), ident("n"))]),
+          ),
+        ),
+      ],
+      noSpan,
+    );
+    expect(shown(evalWithNamedLet(node, env, session))).toBe("120");
+  });
 
-  it.effect("a named let inside a defined body recurs through its name", () =>
-    Effect.gen(function* () {
-      const env = yield* setupEnvironment();
-      yield* run(`(define (fib10) ${fib(10)})`, env);
-      expect(yield* run("(fib10)", env)).toStrictEqual({ _tag: "Number", n: 55 });
-    }),
-  );
+  it("the transformation builds the local named function over the group's names", () => {
+    const node = namedLetNode("loop", bindings(["n", num(0)]), [exprStmt(ident("n"))], noSpan);
+    const manual = call(
+      lam(
+        [],
+        [
+          functionDecl("loop", [param("n")], [exprStmt(ident("n"))]),
+          returnStmt(loopCall("loop", [num(0)])),
+        ],
+      ),
+      [],
+    );
+    expect(normalize(namedLetToCall(node))).toEqual(normalize(manual));
+  });
+
+  it("plain let still evaluates in the same evaluator", () => {
+    const { session, env } = envWith();
+    const node = letNode(
+      bindings(["x", num(3)], ["y", num(4)]),
+      [exprStmt(bin("+", ident("x"), ident("y")))],
+      noSpan,
+    );
+    expect(shown(evalWithNamedLet(node, env, session))).toBe("7");
+  });
+
+  it("a named let inside a procedure body recurs through its name", () => {
+    const { session, env } = envWith();
+    const inner = namedLetNode(
+      "loop",
+      bindings(["k", num(10)]),
+      [
+        exprStmt(
+          cond(
+            bin("<", ident("k"), num(2)),
+            ident("k"),
+            bin(
+              "+",
+              loopCall("loop", [bin("-", ident("k"), num(1))]),
+              loopCall("loop", [bin("-", ident("k"), num(2))]),
+            ),
+          ),
+        ),
+      ],
+      noSpan,
+    );
+    expect(
+      shown(evalWithNamedLet(call(lam([], [returnStmt(namedLetToCall(inner))]), []), env, session)),
+    ).toBe("55");
+  });
 });

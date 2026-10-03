@@ -1,7 +1,7 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(* Exercise 5.42: lexical addressing in compile-variable and compile-assignment. This is the pending scaffold of the solution with the same
+(* Exercise 5.42: lexical addressing in the code generator. This is the pending scaffold of the solution with the same
    name under solutions/ch5: every entry raises the pending marker
    until the exercise is solved. *)
 

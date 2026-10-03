@@ -2,12 +2,12 @@
 // Original exercise
 
 /**
- * Exercise 4.8: named let: (let var bindings body) binds var to a
- * procedure of the binding variables over the body, then calls it with the
- * binding initializers. Modify the let transformation so
- * (let fib ((n 10)) ...) evaluates Fibonacci 10 to 55, following the
- * book's hint to bind the name with set! inside a helper lambda and call
- * it once with a throwaway initial actual.
+ * Exercise 4.8: lower the named binding form. The group's bound names are
+ * the parameters of a local function whose body is the group's body; the
+ * function is named within its own body and called immediately on the
+ * initializers. Example guest program:
+ * `function fib(n: number): number { const iter = (a: number, b: number, count: number): number => count === 0 ? b : iter(a + b, a, count - 1); return iter(1, 0, n); }`.
+ * Modify `letToCall` of 4.6 to support this named form.
  */
 export class PendingSolution extends Error {
   constructor() {

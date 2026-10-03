@@ -9,12 +9,16 @@ import io.kotest.matchers.shouldBe
 public class E4_58Test :
     FunSpec({
         test("Exercise 4.58: the big-shot query") {
+            // Fair QOr round-robin order (book 4.4.3 interleaving);
+            // same answers, branches alternate instead of running out.
             bigShotQuery() shouldBe
                 listOf(
-                    "query: (big-shot ?person ?division)",
-                    "(big-shot (Warbucks Oliver) administration)",
-                    "(big-shot (Bitdiddle Ben) computer)",
-                    "(big-shot (Scrooge Eben) accounting)",
+                    "?person = [Bitdiddle, Ben]",
+                    "?division = computer",
+                    "?person = [Warbucks, Oliver]",
+                    "?division = administration",
+                    "?person = [Scrooge, Eben]",
+                    "?division = accounting",
                 )
         }
     })

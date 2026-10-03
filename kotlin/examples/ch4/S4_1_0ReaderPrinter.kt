@@ -1,62 +1,91 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 4, section 4.1, the reader and printer (given code, D23):
-// round trips over the shared grammar and the printer contract.
+// Original exercise
+// Chapter 4, section 4.1, the source contract (given code, D23):
+// admission round trips over the shared grammar before any guest effect,
+// and the section 3.7 printer contract for what a program may write.
 
 package sicp.ch4.examples
 
-import arrow.core.raise.either
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.ch4.printFloat
-import sicp.ch4.printValue
-import sicp.ch4.readDatum
-import sicp.runtime.SchemeError
-import sicp.runtime.VBool
-import sicp.runtime.VStr
+import sicp.ch4.Direct
+import sicp.guest.Admission
+import sicp.guest.GValue
+import sicp.guest.Mode
+import sicp.guest.RunResult
+import sicp.guest.renderPrinted
 
-private fun readOne(text: String): String = either { printValue(readDatum(text)) }.fold({ e -> throw AssertionError(e.toString()) }, { it })
+private val squareSource: String =
+    """
+    fun square(x: Long): Long = x * x
 
-// readDatum("(cons 1 2)") => (cons 1 2)
-// readDatum("(a . b)")    => (a . b)
-// printValue(VReal(2.25)) => 2.25
-// printValue(VStr("a\"b")) => "a\"b"
+    fun main() {
+        println(square(6L))
+    }
+    """.trimIndent()
+
+/** The rejection class of [source], asserting it never admits. */
+private fun rejection(source: String): String =
+    Admission.admit(source, Mode.CORE).fold(
+        { e -> e.category },
+        { throw AssertionError("the unit was admitted: $source") },
+    )
+
+/** Runs [source] as a core program, asserting admission. */
+private fun runCore(source: String): RunResult =
+    Direct.run(source, Mode.CORE).fold(
+        { e -> throw AssertionError("admission rejected the unit: ${e.category}: ${e.message}") },
+        { it },
+    )
 
 public class S4_1_0ReaderPrinterTest :
     FunSpec({
-        test("lists and dotted pairs round trip through read and print") {
-            readOne("(1 2 3)") shouldBe "(1 2 3)"
-            readOne("(a . b)") shouldBe "(a . b)"
-            readOne("(a (b . c) d)") shouldBe "(a (b . c) d)"
-            readOne("()") shouldBe "()"
+        test("a well-formed unit admits to a checked program") {
+            val checked =
+                Admission.admit(squareSource, Mode.CORE).fold(
+                    { e -> throw AssertionError("rejected: ${e.category}: ${e.message}") },
+                    { it },
+                )
+            checked.syntax.declarations.isNotEmpty() shouldBe true
+            runCore(squareSource).output shouldBe "36\n"
         }
 
-        test("quote sugar reads as the quote form the evaluator sees") {
-            readOne("'x") shouldBe "(quote x)"
+        test("malformed source fails typed, before any guest effect") {
+            rejection("fun main() {\n    println(\"open)\n") shouldBe "Literal"
+            rejection("fun main() {\n    println(1L) )\n}\n") shouldBe "Syntax"
         }
 
-        test("booleans, integers, and comments parse") {
-            either { readDatum("#t") } shouldBe either { VBool(true) }
-            readOne("42") shouldBe "42"
-            readOne("-7") shouldBe "-7"
-            readOne("; a comment\n1.5") shouldBe "1.5"
+        test("rejected Kotlin surface names its rejection class") {
+            rejection("fun main() {\n    try {\n        println(1L)\n    } finally {\n    }\n}\n") shouldBe "Exceptions"
+            rejection("private fun f(): Long = 1L\n") shouldBe "MiscKotlin"
+            rejection("val c = 'c'\n") shouldBe "CharSurface"
+            rejection("fun main() {\n    println(\"${'$'}{listOf(1L)}\")\n}\n") shouldBe "StructuredOutput"
         }
 
-        test("strings escape only quote and backslash") {
-            printValue(VStr("a\"b\\c")) shouldBe "\"a\\\"b\\\\c\""
-            readOne("\"plain\"") shouldBe "\"plain\""
+        test("the printer renders exactly the four printable shapes") {
+            renderPrinted(GValue.VLong(42)) shouldBe "42"
+            renderPrinted(GValue.VDouble(2.25)) shouldBe "2.25"
+            renderPrinted(GValue.VBool(true)) shouldBe "true"
+            renderPrinted(GValue.VString("a\"b")) shouldBe "a\"b"
+            // a structured value is not printable output at all
+            renderPrinted(GValue.VList(mutableListOf(), mutable = false)) shouldBe null
         }
 
-        test("floats print shortest round-trip, point always, e outside the window") {
-            printFloat(2.25) shouldBe "2.25"
-            printFloat(5.0) shouldBe "5.0"
-            printFloat(0.001) shouldBe "0.001"
-            printFloat(1.0e22) shouldBe "1.0e22"
-            printFloat(2.5e-7) shouldBe "2.5e-7"
+        test("decimal rendering is the pinned double text") {
+            renderPrinted(GValue.VDouble(5.0)) shouldBe "5.0"
+            renderPrinted(GValue.VDouble(0.001)) shouldBe "0.001"
+            renderPrinted(GValue.VDouble(1.0e22)) shouldBe "1.0E22"
+            renderPrinted(GValue.VDouble(2.5e-7)) shouldBe "2.5E-7"
         }
 
-        test("malformed surface raises the typed parse error") {
-            either { readDatum("(a b") }.isLeft() shouldBe true
-            either { readDatum("\"open") }.isLeft() shouldBe true
-            either<SchemeError, Any> { readDatum("(a . b c)") }.isLeft() shouldBe true
+        test("a string source escapes only quote and backslash, and prints unescaped") {
+            runCore(
+                """
+                fun main() {
+                    println("a\"b\\c")
+                    println("plain")
+                }
+                """.trimIndent(),
+            ).output shouldBe "a\"b\\c\nplain\n"
         }
     })

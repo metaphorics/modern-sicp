@@ -4,7 +4,7 @@
 import {
   div,
   makePolynomial,
-  makeSchemeNumber,
+  makeTsNumber,
   show,
 } from "../../packages/ch2/src/05-generic-operations.js";
 
@@ -20,7 +20,7 @@ import {
 const makeX = (terms: ReadonlyArray<readonly [bigint, bigint]>) =>
   makePolynomial(
     "x",
-    terms.map(([o, c]) => [o, makeSchemeNumber(c)] as const),
+    terms.map(([o, c]) => [o, makeTsNumber(c)] as const),
   );
 
 /** The book's example: (x^5 - 1) / (x^2 - 1) = x^3 + x with remainder

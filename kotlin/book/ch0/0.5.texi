@@ -62,11 +62,11 @@ assignment-free.
 @heading Aliasing and identity
 
 Mutating one cell is visible through every name that holds it. The
-runtime's interpreted pair @code{VPair} is the book's mutable pair of
+runtime's mutable pair @code{VPair} is the book's mutable pair of
 @ref{3.3.1}: @code{cons} builds it, and @code{setCar} and @code{setCdr}
-mutate the one cell that every alias sees. Because identity is the question
-@code{eq?} asks, the runtime's pairs compare with @code{==} by identity,
-and @code{===} traces the aliasing directly:
+mutate the one cell that every alias sees. Because a mutable pair is
+identified by which object it is, the runtime's pairs compare with @code{==}
+by identity, and @code{===} traces the aliasing directly:
 
 @example kotlin
 val p = cons(VInt(1), VSym("x"))
@@ -87,35 +87,59 @@ sharing.
 
 @heading The environment chain, once concretely
 
-The runtime's @code{Env} is a frame of bindings and a parent link. The
-frame is a persistent map held in a @code{var}, so a definition rebinds
-that one node's map and every holder of the node observes the new binding,
-while the maps themselves are values that are never edited in place:
+The environment structure of @ref{3.2} is a frame of bindings and a parent
+link. A definition binds a name in the frame that holds it, and every
+holder of that frame observes the new binding.
+Walk one chain in the small: a frame @code{inner} extends a frame
+@code{global}, and @code{inner} defines @code{x} to 1, so a lookup of
+@code{x} through @code{inner} finds 1. Assignment mutates the nearest
+frame on the chain that owns the name and never creates a binding: setting
+@code{x} to 99 lands in @code{inner}, which holds @code{x}, so a second
+lookup through @code{inner} finds 99. @code{global}, which has no @code{x}
+of its own, is left without one, and a lookup of @code{x} through
+@code{global} fails.
 
 @example kotlin
-val global = Env.global()
-val inner = Env.child(global)
-inner.define("x", VInt(1))
-either @{ inner.lookup("x") @}
-// => Either.Right(1)
+import arrow.core.Either
+import arrow.core.raise.either
+import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.shouldBe
+import sicp.runtime.BindingFrame
+import sicp.runtime.DatumError
+import sicp.runtime.Whole
 
-inner.set("x", VInt(99))
-either @{ inner.lookup("x") @}
-// => Either.Right(99)
-either @{ global.lookup("x") @}
-// => Either.Left(SchemeError.Unbound("x"))
+public class EnvironmentChainTest :
+    FunSpec(@{
+        test("lookup and assignment follow the chain") @{
+            val global = BindingFrame.root()
+            val inner = BindingFrame.child(global)
+            inner.bind("x", Whole(1L))
+            val nested = BindingFrame.child(inner)
+
+            either @{ nested.read("x") @} shouldBe
+                Either.Right(Whole(1L))
+            either @{ nested.assign("x", Whole(99L)) @} shouldBe
+                Either.Right(Unit)
+            either @{ inner.read("x") @} shouldBe
+                Either.Right(Whole(99L))
+            either @{ global.read("x") @} shouldBe
+                Either.Left(DatumError.BadDatum("x"))
+        @}
+    @})
 @end example
 
 @noindent
-@code{set} mutates the nearest frame on the chain that owns the name and
-never creates a binding: @code{inner} holds @code{x}, so the assignment
-lands there, and @code{global}, which has no @code{x} of its own, is left
-without one and its lookup fails. The interpreted @code{define} and
-@code{set!} of @ref{3.2} run on exactly this chain, and @ref{4.3}'s
-backtracking evaluator takes a snapshot of the chain to abandon a branch's
-effects, which persistent maps make cheap.
+@ref{3.2} presents this chain as an abstract model of what a declaration
+or an assignment means; native Kotlin does not execute on a
+@code{BindingFrame}, because the compiler resolves names before the
+program runs. The chain becomes an executing structure in chapter 4,
+where the guest evaluators keep their variables in frames of this shape.
+There, @ref{4.3}'s backtracking evaluator does not copy the chain: at each
+choice point it saves the value of every cell visible from the current
+environment together with a mark in its mutation log, and abandoning a
+branch restores those values and undoes the logged writes past the mark.
 Ownership, in the sense of Rust's edition, has no Kotlin counterpart: the
 collector reclaims unreachable cells, and the book's aliasing arguments are
 made with @code{===}, not with lifetimes.
 
-@cindex Env
+@cindex environments

@@ -3,30 +3,21 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.VInt
-import sicp.runtime.VNil
-import sicp.runtime.VPair
-import sicp.runtime.Value
-import sicp.runtime.vlist
+import sicp.runtime.Datum
+import sicp.runtime.Empty
+import sicp.runtime.PairCell
+import sicp.runtime.Whole
+import sicp.runtime.datumList
+import sicp.runtime.renderDatum
 
-/**
- * The section's basic accessors over the chain representation, shared by
- * the sequence exercises: [carOf] and [cdrOf] select the head and the
- * rest of a chain, [numOf] reads a chain element's integer. The runtime's
- * own `car` and `cdr` raise a typed error on a non-pair; these exercises
- * predate chapter 4's error machinery, so they cast directly.
- */
-public fun carOf(v: Value): Value = (v as VPair).car
+/** Typed selectors shared by the sequence exercises. */
+public fun firstPart(v: Datum): Datum = (v as PairCell).first
 
-public fun cdrOf(v: Value): Value = (v as VPair).cdr
+public fun secondPart(v: Datum): Datum = (v as PairCell).second
 
-public fun numOf(v: Value): Long = (v as VInt).n
+public fun wholeNumber(v: Datum): Long = (v as Whole).value
 
-/**
- * The book's `last-pair`: cdrs down the chain until the rest is the
- * end-of-list marker, then returns the final one-element list.
- */
-public fun lastPair(items: Value): Value = if (cdrOf(items) is VNil) items else lastPair(cdrOf(items))
+public fun lastPair(items: Datum): Datum = if (secondPart(items) === Empty) items else lastPair(secondPart(items))
 
-/** `lastPair` of the book's `(23 72 149 34)`, printed. */
-public fun ex_2_17(): String = lastPair(vlist(VInt(23L), VInt(72L), VInt(149L), VInt(34L))).toString()
+/** The canonical native rendering of the final one-element datum pair. */
+public fun ex_2_17(): String = renderDatum(lastPair(datumList(Whole(23L), Whole(72L), Whole(149L), Whole(34L))))

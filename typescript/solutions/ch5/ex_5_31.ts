@@ -1,31 +1,64 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import {
-  compileProgram,
-  defaultConfig,
-  LinkageNext,
-  newState,
-  statementsText,
-} from "../../packages/ch5/src/05-compilation.js";
+// Original exercise
 
-/** The saves and restores of one compilation, in emission order. */
-const saves = (source: string): readonly string[] =>
-  statementsText(compileProgram(defaultConfig(), newState(), source, LinkageNext))
-    .split("\n")
-    .filter((line) => line.startsWith("(save ") || line.startsWith("(restore "));
+import { readProgram } from "../../packages/ch5/src/04-eceval.ts";
+import type { CompiledProgram } from "../../packages/ch5/src/05-compilation.ts";
+import { compileProgram, isCompileError } from "../../packages/ch5/src/05-compilation.ts";
 
-const CASES = ["(f 'x 'y)", "((f) 'x 'y)", "(f (g 'x) y)", "(f (g 'x) 'y)"] as const;
+/** One save the analysis reports: its register and step, and whether
+ * the region it protects modifies the register before the matching
+ * restore. A save whose register is untouched across its region keeps
+ * the old value alive for nothing: that is the superfluous one. */
+export type SaveReport = {
+  readonly register: string;
+  readonly step: number;
+  readonly superfluous: boolean;
+};
 
-const EXPECTED_COUNTS = [0, 0, 4, 4] as const;
+const savedRegisters = (statement: CompiledProgram["instructions"][number]): string | null =>
+  statement.tag === "save" ? statement.register : null;
 
-/** The four code-generated answers: quoted operands need nothing, so
- * the first two combinations keep no saves at all; the last two keep
- * the proc and argl pairs around the inner call, because the call it
- * compiles modifies both while they stay live. */
-export const ex_5_31 = (): readonly string[] =>
-  CASES.map((source, index) => {
-    const instructions = saves(source);
-    if (instructions.length !== EXPECTED_COUNTS[index]) {
-      throw new Error(`${source}: expected ${EXPECTED_COUNTS[index]} saves`);
+/** Walks one compiled program and pairs each save with its restore,
+ * then reports whether the enclosed statements modify the register. */
+export const analyzeSaves = (source: string): readonly SaveReport[] => {
+  const compiled = compileProgram(readProgram(source));
+  if (isCompileError(compiled)) {
+    throw new Error(`compilation failed: ${JSON.stringify(compiled)}`);
+  }
+  const statements = compiled.instructions;
+  const reports: SaveReport[] = [];
+  const stack: { register: string; step: number }[] = [];
+  for (let step = 0; step < statements.length; step += 1) {
+    const statement = statements[step];
+    if (statement === undefined) continue;
+    const saved = savedRegisters(statement);
+    if (saved !== null) {
+      stack.push({ register: saved, step });
+      continue;
     }
-    return `${source}: ${instructions.join(" ")}`;
-  });
+    if (statement.tag !== "restore") continue;
+    const frame = stack.pop();
+    if (frame === undefined || frame.register !== statement.register) continue;
+    let modified = false;
+    for (let between = frame.step + 1; between < step; between += 1) {
+      const inner = statements[between];
+      if (inner !== undefined && inner.tag === "assign" && inner.register === frame.register) {
+        modified = true;
+      }
+    }
+    reports.push({ register: frame.register, step: frame.step, superfluous: !modified });
+  }
+  return reports;
+};
+
+/** Exercise 5.31's answer for the compiled factorial: the saves whose
+ * registers the protected region never rewrites. */
+export const ex_5_31 = (): readonly string[] => {
+  const reports = analyzeSaves(
+    "function factorial(n: number): number { return n === 1 ? 1 : factorial(n - 1) * n; }",
+  );
+  return reports.map(
+    (report) =>
+      `save ${report.register} at ${report.step}: ${report.superfluous ? "superfluous" : "needed"}`,
+  );
+};

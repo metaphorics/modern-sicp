@@ -3,28 +3,25 @@
 
 package sicp.ch3.exercises
 
-import sicp.runtime.VNil
-import sicp.runtime.VPair
-import sicp.runtime.Value
-import sicp.runtime.setCdr
+import sicp.runtime.Datum
+import sicp.runtime.Empty
+import sicp.runtime.PairCell
 
 /**
- * The book's `mystery`: reverse the chain `x` in place. The internal
- * `loop` keeps the old `cdr` in `temp` while it repoints the pair's `cdr`
- * at the cells already passed, so `v` ends as the last cell alone and the
- * returned value is the old last cell.
+ * Reverse the pair chain in place. Each step retains the old second field,
+ * points the current cell at the reversed prefix, then advances.
  */
-public fun mystery(x: VPair): VPair {
+public fun mystery(x: PairCell): PairCell {
     fun loop(
-        x: Value,
-        y: Value,
-    ): VPair =
-        if (x !is VPair) {
-            y as VPair
+        x: Datum,
+        y: Datum,
+    ): PairCell =
+        if (x !is PairCell) {
+            y as PairCell
         } else {
-            val temp = x.cdr
-            x.setCdr(y)
-            loop(temp, x)
+            val next = x.second
+            x.second = y
+            loop(next, x)
         }
-    return loop(x, VNil)
+    return loop(x, Empty)
 }

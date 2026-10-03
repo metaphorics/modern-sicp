@@ -7,9 +7,9 @@ import type { MList } from "../../packages/ch3/src/03-mutable-data.js";
  * Exercise 3.18: whether a list contains a cycle, that is, whether a
  * program that tried to find the end by taking successive cdrs would
  * go into an infinite loop. Exercise 3.13 constructed such lists with
- * a set-cdr! back to an earlier pair. The book's answer walks the
+ * a setCdr back to an earlier pair. The book's answer walks the
  * tails while remembering every pair it has seen; JavaScript object
- * identity does the book's `eq?`, and the host `Set` is the
+ * identity is the membership key, and the host `Set` is the
  * identity-keyed collection the exercise-map row calls for (the row
  * marks TypeScript T where the map's other editions read A for
  * lacking one). A tail that revisits any remembered pair proves the

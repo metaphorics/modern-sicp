@@ -1,28 +1,25 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Original exercise
 // Chapter 4, exercise 4.6
 
 package sicp.ch4.exercises
 
-import sicp.ch4.Evaluator
-import sicp.runtime.Env
-import sicp.runtime.Expr
-import sicp.runtime.LetE
 import sicp.runtime.PendingSolution
 
 /**
- * Exercise 4.6: `let` as a derived expression. [letRewrite] rewrites
- * `(let ((x 3) (y 4)) body)` to `((lambda (x y) body) 3 4)` and the
- * evaluator derives every `let` through it. The rewrite fixes the scoping
- * rule: the application evaluates the inits as operands, in the outer
- * environment -- with x bound to 5 outside, `(let ((x 3) (y x)) y)` is 5,
- * not 3.
+ * Exercise 4.6: a one-binding `let` is derived from the kernel's `GLam`
+ * and `GApp`: the initializer is evaluated in the current frame, then the
+ * body runs in the new binding frame. Nested one-binding lets add nested
+ * frames.
+ *
+ * Expected: the ordinary and derived forms both print 7; an initializer
+ * that reads the outer x and a body that reads the new x print 7; nested
+ * bindings print 3.
  */
-public class WithLetDerived(
-    global: Env,
-) : Evaluator(global) {
-    override fun letToCombination(expr: LetE): Expr = throw PendingSolution()
-}
+public fun letEquivalenceTranscript(): String = throw PendingSolution()
 
-/** The book's `let->combination`: parameters, body, then the inits as the
- * operands of the application. */
-public fun letRewrite(expr: LetE): Expr = throw PendingSolution()
+/** The derived let computes the body in the new frame. => "7\n" */
+public fun letBodyTranscript(): String = throw PendingSolution()
+
+/** Lets nest as derived expressions at every depth. => "3\n" */
+public fun letNestedTranscript(): String = throw PendingSolution()

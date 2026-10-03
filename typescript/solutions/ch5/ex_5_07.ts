@@ -2,144 +2,206 @@
 // Original exercise
 
 import {
-  arithmeticOperations,
   assign,
   branch,
-  type ControllerLine,
-  c,
-  getRegisterContents,
-  jump,
-  jumpReg,
-  type Machine,
+  constant,
+  gotoLabel,
+  gotoRegister,
+  labelRef,
   type MachineError,
-  makeMachine,
-  mark,
-  type Outcome,
+  type MachineStatement,
+  type MachineValue,
+  type Operation,
   op,
-  reg,
-  renderMachineError,
+  perform,
+  register,
   restore,
   save,
-  setRegisterContents,
   test,
-  type Value,
-} from "../../packages/ch5/src/02-simulator.js";
+} from "../../packages/ch5/src/01-register-machines.ts";
+import { type Machine, makeMachine } from "../../packages/ch5/src/02-simulator.ts";
 
-/** Unwraps a machine outcome: a fault escapes with its rendered message,
- * so successful pins stay honest and error tests catch the typed error. */
-export const expectOk = <A>(outcome: Outcome<A>): A => {
-  if (!outcome.ok) throw new Error(renderMachineError(outcome.error));
-  return outcome.value;
+/** A label statement: the exchange's `{ tag: "label" }` marker, written
+ * as the plain record the contract admits. */
+export const mark = (name: string): { readonly tag: "label"; readonly name: string } => ({
+  tag: "label",
+  name,
+});
+
+/** Renders a machine fault for a thrown message; diagnostics only. */
+export const renderMachineError = (error: MachineError): string => JSON.stringify(error);
+
+/** Unwraps a halted run: a fault escapes with its rendered message, so
+ * successful pins stay honest and error tests catch the typed error. */
+export const expectOk = (run: { readonly error: MachineError | null }): void => {
+  if (run.error !== null) throw new Error(renderMachineError(run.error));
 };
 
-export const expectError = <A>(outcome: Outcome<A>): MachineError => {
-  if (outcome.ok) throw new Error("expected a machine error");
-  return outcome.error;
+/** The fault of a run that must not halt cleanly. */
+export const expectError = (run: { readonly error: MachineError | null }): MachineError => {
+  if (run.error === null) throw new Error("expected a machine fault");
+  return run.error;
+};
+
+/** Reads a register that must hold a word: the storage exercises pass
+ * machine words unmodified through registers. */
+export const requireWord = (value: MachineValue | undefined): MachineValue => {
+  if (value === undefined) throw new Error("expected a word in the register");
+  return value;
+};
+
+const numberArg = (who: string, value: MachineValue): number => {
+  if (typeof value !== "number") throw new Error(`${who}: expected a number operand`);
+  return value;
+};
+
+/** The section's arithmetic operations over machine words. */
+export const arithmeticOperations: Readonly<Record<string, Operation>> = {
+  "+": (args) => args.reduce<number>((sum, value) => sum + numberArg("+", value), 0),
+  "-": (args) => {
+    const first = numberArg("-", args[0]);
+    return args.slice(1).reduce<number>((rest, value) => rest - numberArg("-", value), first);
+  },
+  "*": (args) => args.reduce<number>((product, value) => product * numberArg("*", value), 1),
+  "/": (args) => numberArg("/", args[0]) / numberArg("/", args[1]),
+  abs: (args) => Math.abs(numberArg("abs", args[0])),
+  rem: (args) => numberArg("rem", args[0]) % numberArg("rem", args[1]),
+  "=": (args) => numberArg("=", args[0]) === numberArg("=", args[1]),
+  "<": (args) => numberArg("<", args[0]) < numberArg("<", args[1]),
+  ">": (args) => numberArg(">", args[0]) > numberArg(">", args[1]),
 };
 
 /** The book's gcd machine of 5.2: registers a, b, t, the section's
  * arithmetic operations, and the controller of 5.1.1's reduction step. */
-export const gcdController: ControllerLine[] = [
+export const gcdController: readonly MachineStatement[] = [
   mark("test-b"),
-  test("=", reg("b"), c(0)),
+  test("=", register("b"), constant(0)),
   branch("gcd-done"),
-  assign("t", op("rem", reg("a"), reg("b"))),
-  assign("a", reg("b")),
-  assign("b", reg("t")),
-  jump("test-b"),
+  assign("t", op("rem", register("a"), register("b"))),
+  assign("a", register("b")),
+  assign("b", register("t")),
+  gotoLabel("test-b"),
   mark("gcd-done"),
 ];
 
-/** A fresh gcd machine, assembled and ready for inputs. */
+/** A fresh gcd machine for the controller's registers. */
 export const gcdMachine = (): Machine =>
-  expectOk(makeMachine(["a", "b", "t"], arithmeticOperations, gcdController));
+  makeMachine({
+    registers: ["a", "b", "t"],
+    operations: arithmeticOperations,
+    controller: gcdController,
+  });
 
-/** The recursive-exponent machine of exercise 5.4: continue is saved
- * before the subproblem and restored after the multiplication, one saved
- * continue per level; the subproblem clobbers n but never b. */
-export const exptRecursiveController: ControllerLine[] = [
-  assign("continue", { tag: "label", name: "expt-done" }),
+/** The recursive-exponent machine of exercise 5.4, transcribed from the
+ * book's controller: each level saves continue and n, subproblem on
+ * n - 1 with continue reassigned to after-expt, then restores the pair
+ * and multiplies val by b; the subproblem clobbers n but never b. */
+export const exptRecursiveController: readonly MachineStatement[] = [
+  assign("continue", labelRef("expt-done")),
   mark("expt-loop"),
-  test("=", reg("n"), c(0)),
-  branch("base-expt"),
+  test("=", register("n"), constant(0)),
+  branch("base-case"),
   save("continue"),
-  assign("continue", { tag: "label", name: "after-expt" }),
-  assign("n", op("-", reg("n"), c(1))),
-  jump("expt-loop"),
+  save("n"),
+  assign("n", op("-", register("n"), constant(1))),
+  assign("continue", labelRef("after-expt")),
+  gotoLabel("expt-loop"),
   mark("after-expt"),
-  assign("val", op("*", reg("b"), reg("val"))),
+  restore("n"),
   restore("continue"),
-  jumpReg("continue"),
-  mark("base-expt"),
-  assign("val", c(1)),
-  jumpReg("continue"),
+  assign("val", op("*", register("b"), register("val"))),
+  gotoRegister("continue"),
+  mark("base-case"),
+  assign("val", constant(1)),
+  gotoRegister("continue"),
   mark("expt-done"),
 ];
 
 /** The iterative-exponent machine of exercise 5.4: counter and product,
  * no stack and no continue. */
-export const exptIterativeController: ControllerLine[] = [
-  assign("counter", reg("n")),
-  assign("product", c(1)),
+export const exptIterativeController: readonly MachineStatement[] = [
+  assign("counter", register("n")),
+  assign("product", constant(1)),
   mark("expt-iter"),
-  test("=", reg("counter"), c(0)),
+  test("=", register("counter"), constant(0)),
   branch("expt-done"),
-  assign("product", op("*", reg("b"), reg("product"))),
-  assign("counter", op("-", reg("counter"), c(1))),
-  jump("expt-iter"),
+  assign("product", op("*", register("b"), register("product"))),
+  assign("counter", op("-", register("counter"), constant(1))),
+  gotoLabel("expt-iter"),
   mark("expt-done"),
 ];
 
-/** Runs one expt machine with inputs b and n, answering the named result
- * register; every run starts from a fresh machine. */
-const runExpt = (controller: ControllerLine[], b: number, n: number, answerReg: string): Value => {
-  const machine = expectOk(
-    makeMachine(
-      ["b", "n", "continue", "val", "counter", "product"],
-      arithmeticOperations,
-      controller,
-    ),
-  );
-  expectOk(setRegisterContents(machine, "b", b));
-  expectOk(setRegisterContents(machine, "n", n));
-  expectOk(machine.start());
-  return expectOk(getRegisterContents(machine, answerReg));
-};
-
-/** The host oracle: b to the n by repeated multiplication, the same
- * reduction the machines execute. */
-const hostExpt = (b: number, n: number): number => {
-  let product = 1;
-  for (let step = 0; step < n; step += 1) product *= b;
-  return product;
-};
-
-/** Both 5.4 machines on both inputs, each line pairing the machine's
- * answer with its oracle's answer. The recursive machine answers in val,
- * the iterative one in product. */
-export const simulatedExptRuns = (): string[] =>
-  (
-    [
-      ["recursive", exptRecursiveController, "val"],
-      ["iterative", exptIterativeController, "product"],
-    ] as const
-  ).flatMap(([kind, controller, answerReg]) =>
-    (
-      [
-        [2, 10],
-        [3, 5],
-      ] as const
-    ).map(([b, n]) => {
-      const answer = runExpt(controller, b, n, answerReg);
-      return `${kind} expt(${b}, ${n}) = ${answer} (host ${hostExpt(b, n)})`;
-    }),
-  );
-
 /** The gcd machine's answer for one input pair. */
-export const runGcd = (a: number, b: number): Value => {
+export const runGcd = (a: number, b: number): MachineValue => {
   const machine = gcdMachine();
-  expectOk(setRegisterContents(machine, "a", a));
-  expectOk(setRegisterContents(machine, "b", b));
-  expectOk(machine.start());
-  return expectOk(getRegisterContents(machine, "a"));
+  machine.writeRegister("a", a);
+  machine.writeRegister("b", b);
+  const run = machine.run();
+  expectOk(run);
+  const answer = machine.readRegister("a");
+  if (answer === undefined) throw new Error("gcd finished without a value in register a");
+  return answer;
+};
+/** Runs the recursive and iterative 5.4 controllers in fresh machines and
+ * compares their answer registers with the host exponentiation oracle. */
+export const simulatedExptRuns = (): string[] => {
+  const run = (
+    controller: ReadonlyArray<MachineStatement>,
+    registers: ReadonlyArray<string>,
+    answerRegister: string,
+    base: number,
+    exponent: number,
+  ): number => {
+    const machine = makeMachine({ registers, operations: arithmeticOperations, controller });
+    machine.writeRegister("b", base);
+    machine.writeRegister("n", exponent);
+    const result = machine.run();
+    expectOk(result);
+    const answer = machine.readRegister(answerRegister);
+    if (typeof answer !== "number")
+      throw new Error(`expt finished without a numeric value in ${answerRegister}`);
+    return answer;
+  };
+  const cases = [
+    [2, 10],
+    [3, 5],
+  ] as const;
+  const recursive = cases.map(([base, exponent]) => {
+    const result = run(
+      exptRecursiveController,
+      ["b", "n", "val", "continue"],
+      "val",
+      base,
+      exponent,
+    );
+    return `recursive expt(${base}, ${exponent}) = ${result} (host ${base ** exponent})`;
+  });
+  const iterative = cases.map(([base, exponent]) => {
+    const result = run(
+      exptIterativeController,
+      ["b", "n", "counter", "product"],
+      "product",
+      base,
+      exponent,
+    );
+    return `iterative expt(${base}, ${exponent}) = ${result} (host ${base ** exponent})`;
+  });
+  return [...recursive, ...iterative];
+};
+
+export type { Machine, MachineError, MachineStatement, MachineValue, Operation };
+export {
+  assign,
+  branch,
+  constant,
+  gotoLabel,
+  gotoRegister,
+  labelRef,
+  makeMachine,
+  op,
+  perform,
+  register,
+  restore,
+  save,
+  test,
 };

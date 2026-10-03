@@ -9,9 +9,10 @@ import io.kotest.matchers.shouldBe
 
 public class E2_24Test :
     FunSpec({
-        test("Exercise 2.24: the nested vlist prints (1 (2 (3 4)))").config(
+        test("nested datum output uses the canonical pair-cell structure").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            ex_2_24() shouldBe "(1 (2 (3 4)))"
+            ex_2_24() shouldBe
+                "PairCell(first=Whole(value=1), second=PairCell(first=PairCell(first=Whole(value=2), second=PairCell(first=PairCell(first=Whole(value=3), second=PairCell(first=Whole(value=4), second=Empty)), second=Empty)), second=Empty))"
         }
     })

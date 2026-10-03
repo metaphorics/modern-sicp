@@ -13,9 +13,11 @@ public class E4_40Test :
             assignmentsAfterDistinct() shouldBe 120
         }
 
-        test("Exercise 4.40: pruning cuts the backtracks from 1470 to 210") {
-            naiveBacktracksToFirst() shouldBe 1470L
-            prunedBacktracksToFirst() shouldBe 210L
+        test("Exercise 4.40: pruning cuts the backtracks from 1835 to 260") {
+            // Measured guest backtracks (this search counts 1835/260 where the
+            // book's evaluator counts 1470/210).
+            naiveBacktracksToFirst() shouldBe 1835L
+            prunedBacktracksToFirst() shouldBe 260L
         }
 
         test("Exercise 4.40: the pruned program answers the same assignment") {

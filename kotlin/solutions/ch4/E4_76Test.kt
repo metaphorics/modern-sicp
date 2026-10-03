@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 4, exercise 4.76
+// Chapter 4, exercise 4_76
 
 package sicp.ch4.solutions
 
@@ -11,10 +11,12 @@ public class E4_76Test :
         test("Exercise 4.76: merge-and") {
             mergeAndDemos() shouldBe
                 listOf(
-                    "query: (merge-and (job ?x (computer programmer)) (supervisor ?x ?boss))",
-                    "answers=2 same_answers_as_series: true compatibility checks: 18",
-                    "query: (merge-and (supervisor ?x ?y) (job ?x ?job))",
-                    "answers=8 same_answers_as_series: true compatibility checks: 80",
+                    "?x = [Hacker, Alyssa, P]",
+                    "?boss = [Bitdiddle, Ben]",
+                    "?x = [Fect, Cy, D]",
+                    "?boss = [Bitdiddle, Ben]",
+                    "merge agrees with and: true",
+                    "compatibility checks: 16",
                 )
         }
     })

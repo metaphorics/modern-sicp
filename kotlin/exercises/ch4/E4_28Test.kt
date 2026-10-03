@@ -18,6 +18,6 @@ public class E4_28Test :
         test("Exercise 4.28: the unforced operator dispatches on a thunk").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            unforcedOperatorTranscript() shouldBe "Error: not a procedure: #[thunk]\n"
+            unforcedOperatorTranscript() shouldBe "null"
         }
     })

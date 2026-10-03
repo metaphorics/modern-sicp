@@ -26,5 +26,5 @@ mod ex_4_04 {
 #[ignore = "pending solution"]
 fn ex_4_04() {
     let values = ex_4_04::ex_4_04().expect("solved");
-    assert_eq!(values, vec!["#t", "3", "#f", "#f", "7", "#f"]);
+    assert_eq!(values, vec!["true", "3", "false", "false", "7", "false"]);
 }

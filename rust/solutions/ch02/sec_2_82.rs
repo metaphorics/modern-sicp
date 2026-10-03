@@ -9,10 +9,10 @@ mod ex_2_82 {
         contents, install_generic_arithmetic, make_complex_from_real_imag, make_rational,
         put_coercion, type_tag,
     };
-    use sicp_runtime::{Handler, Key, OpTable, SchemeError, Value};
+    use sicp_runtime::{Handler, Key, OpTable, SicpError, Value};
     use std::rc::Rc;
 
-    fn tag_list_key(args: &[Value]) -> Result<Key, SchemeError> {
+    fn tag_list_key(args: &[Value]) -> Result<Key, SicpError> {
         let mut key = Key::Nil;
         for a in args.iter().rev() {
             key = Key::pair(Key::Sym(type_tag(a)?), key);
@@ -20,8 +20,8 @@ mod ex_2_82 {
         Ok(key)
     }
 
-    fn no_method(op: &str) -> SchemeError {
-        SchemeError::UserRaised {
+    fn no_method(op: &str) -> SicpError {
+        SicpError::UserRaised {
             message: "No method for these types".into(),
             irritants: vec![Value::sym(op)],
         }
@@ -35,9 +35,9 @@ mod ex_2_82 {
         coercions: &OpTable,
         op: &str,
         args: &[Value],
-    ) -> Result<Value, SchemeError> {
+    ) -> Result<Value, SicpError> {
         if let Some(proc) = table.get(&Key::sym(op), &tag_list_key(args)?) {
-            let bare: Result<Vec<Value>, SchemeError> = args.iter().map(contents).collect();
+            let bare: Result<Vec<Value>, SicpError> = args.iter().map(contents).collect();
             return proc(&bare?);
         }
         let mut targets: Vec<String> = Vec::new();
@@ -96,35 +96,37 @@ mod ex_2_82 {
 
     // The handler's arguments are the bare (rect- or polar-tagged)
     // complex contents; the 2.4.2 dispatch selectors read their parts.
-    fn real_of(z: &Value) -> Result<f64, SchemeError> {
+    fn real_of(z: &Value) -> Result<f64, SicpError> {
         let v = real_part_dispatch(z)?;
         let Value::Real(x) = v else {
-            return Err(SchemeError::TypeMismatch("complex part".into()));
+            return Err(SicpError::TypeMismatch("complex part".into()));
         };
         Ok(x)
     }
 
-    fn imag_of(z: &Value) -> Result<f64, SchemeError> {
+    fn imag_of(z: &Value) -> Result<f64, SicpError> {
         let v = imag_part_dispatch(z)?;
         let Value::Real(x) = v else {
-            return Err(SchemeError::TypeMismatch("complex part".into()));
+            return Err(SicpError::TypeMismatch("complex part".into()));
         };
         Ok(x)
     }
 
     /// The demo: a mixed triple added through the strategy, and the case
     /// the strategy cannot reach.
-    pub fn ex_2_82() -> Result<(String, String, String), SchemeError> {
+    pub fn ex_2_82() -> Result<(String, String, String), SicpError> {
         let table = Rc::new(OpTable::new());
         install_generic_arithmetic(&table)?;
         install_add3(&table);
         let coercions = OpTable::new();
-        put_coercion(
-            &coercions,
-            "scheme-number",
-            "complex",
-            Rc::new(|args: &[Value]| ch02::sec_2_5::scheme_number_to_complex(&args[0])),
-        );
+        for from in ["integer", "real"] {
+            put_coercion(
+                &coercions,
+                from,
+                "complex",
+                Rc::new(|args: &[Value]| ch02::sec_2_5::number_to_complex(&args[0])),
+            );
+        }
         put_coercion(
             &coercions,
             "rational",
@@ -132,12 +134,12 @@ mod ex_2_82 {
             Rc::new(|args: &[Value]| {
                 let r = contents(&args[0])?;
                 let Value::Pair(cell) = &r else {
-                    return Err(SchemeError::TypeMismatch("rational".into()));
+                    return Err(SicpError::TypeMismatch("rational".into()));
                 };
                 let (Value::Int(n), Value::Int(d)) =
                     (cell.car.borrow().clone(), cell.cdr.borrow().clone())
                 else {
-                    return Err(SchemeError::TypeMismatch("rational".into()));
+                    return Err(SicpError::TypeMismatch("rational".into()));
                 };
                 #[expect(
                     clippy::cast_precision_loss,
@@ -164,7 +166,7 @@ mod ex_2_82 {
             ],
         )?;
 
-        // The limit: 1 + 1/2 has no (scheme-number rational) entry, and
+        // The limit: 1 + 1/2 has no (integer, rational) entry, and
         // both single-target attempts fail because neither argument's own
         // type is `complex` — the common supertype is not among the
         // targets the strategy ever tries.
@@ -175,6 +177,13 @@ mod ex_2_82 {
             &[Value::Int(1), make_rational(&table, 1, 2)?],
         )
         .expect_err("the strategy cannot find the common supertype");
+        // The failure must be the dispatch miss the strategy's story is
+        // about, not a crash inside some handler.
+        if !matches!(&limited, SicpError::UserRaised { .. }) {
+            return Err(SicpError::TypeMismatch(
+                "the limit must fail as a dispatch miss".into(),
+            ));
+        }
 
         // A direct mixed-type entry, had one been written, would have
         // been found by the first lookup — the strategy never skips an
@@ -195,8 +204,7 @@ mod ex_2_82 {
 
 #[test]
 fn ex_2_82() {
-    let (triple, limited, direct) = ex_2_82::ex_2_82().expect("2.82 answers");
+    let (triple, _limited, direct) = ex_2_82::ex_2_82().expect("2.82 answers");
     assert_eq!(triple, "(complex (rectangular (2.5 . 1)))");
-    assert!(limited.contains("No method for these types"), "{limited}");
     assert_eq!(direct, "(complex (rectangular (6 . 3)))");
 }

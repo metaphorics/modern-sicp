@@ -11,8 +11,7 @@ import sicp.runtime.PendingSolution
  * forced operator answering 5, and the counterfactual evaluator that
  * applies whatever `eval` returned without forcing fails on the thunk.
  *
- * Expected answers: `5` with the forcing, `Error: not a procedure:
- * #[thunk]` without it.
+ * Expected answers: `5` with the forcing, `null` without it.
  */
 public fun forcedOperatorTranscript(): String = throw PendingSolution()
 

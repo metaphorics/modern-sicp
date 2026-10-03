@@ -106,9 +106,8 @@ exercise under the same number replaces it). A replaced exercise's statement
 opens with a fixed sentence naming the substitution:
 
 @quotation
-@emph{SICP exercise @math{N.M} is about Scheme itself, so this edition
-replaces it; the exercise below keeps the number and teaches the same
-section material.}
+@emph{This edition replaces SICP exercise @math{N.M} with a host-language
+exercise that keeps its number and teaching objective.}
 @end quotation
 
 @noindent
@@ -127,12 +126,12 @@ the source book, so its five exercises, numbered @code{0.1} through
 material this edition adds outside that numbering entirely; none of them
 carries a signpost, because none of them replaces or extends anything. Every
 exercise you have seen so far in this chapter, and every one in the chapters
-ahead, has exactly three files: its scaffold, a failing test until solved; a
-reference solution, a passing test once solved; and a short rationale beside
-the solution explaining the approach. Running @code{cargo nextest run
---workspace --run-ignored ignored-only --no-tests=pass} lists exactly the
-exercises still pending, by name, which is the standing way to see what is
-left to solve without reading every file in @code{exercises/} by hand.
+ahead, has exactly three files: its scaffold, with a test ignored while
+pending; a reference solution, with a passing test; and a short rationale
+beside the solution explaining the approach. Running @code{just scaffold}
+from @code{rust/} exercises the ignored scaffold tests and reports those
+still pending by name. It exits unsuccessfully while any remain unsolved;
+normal workspace tests leave these pending cases ignored.
 
 You now have the whole vocabulary chapter 1 assumes. It starts, as the source
 book does, with values, procedures, and the substitution model, in Rust

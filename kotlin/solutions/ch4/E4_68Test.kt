@@ -11,12 +11,9 @@ public class E4_68Test :
         test("Exercise 4.68: the reverse queries") {
             reverseQueries() shouldBe
                 listOf(
-                    "query: (reverse (1 2 3) ?x)",
-                    "(reverse (1 2 3) (3 2 1))",
-                    "query: (reverse (a b c d) ?x)",
-                    "(reverse (a b c d) (d c b a))",
-                    "query: (reverse ?x (1 2 3)) -- first answer:",
-                    "the unanchored generation exhausts the heap before the first answer survives the append filter",
+                    "?x = [3, 2, 1]",
+                    "?x = [d, c, b, a]",
+                    "?x = [3, 2, 1]",
                 )
         }
     })

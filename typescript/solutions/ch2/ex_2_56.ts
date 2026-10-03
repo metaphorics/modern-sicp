@@ -67,20 +67,33 @@ export const makeExponentiation = (u: ExprPow, n: ExprPow): ExprPow => {
   return { _tag: "Pow", base: u, exponent: n };
 };
 
-/** Renders an expression in the book's printed form, with `**` for powers. */
-export const showExprPow = (e: ExprPow): string => {
-  switch (e._tag) {
-    case "Var":
-      return e.name;
-    case "Num":
-      return String(e.n);
-    case "Sum":
-      return `(+ ${showExprPow(e.addend)} ${showExprPow(e.augend)})`;
-    case "Prod":
-      return `(* ${showExprPow(e.multiplier)} ${showExprPow(e.multiplicand)})`;
-    case "Pow":
-      return `(** ${showExprPow(e.base)} ${showExprPow(e.exponent)})`;
-  }
+/** Renders an expression with minimal-precedence infix notation. */
+export const showExprPow = (e: ExprPow): string => renderExprPow(e, 0, "root");
+
+type PowSide = "root" | "left" | "right";
+
+const powPrecedence = (e: ExprPow): number =>
+  e._tag === "Sum" ? 1 : e._tag === "Prod" ? 2 : e._tag === "Pow" ? 3 : 4;
+
+const renderExprPow = (e: ExprPow, parentPrecedence: number, side: PowSide): string => {
+  const precedence = powPrecedence(e);
+  const text = (() => {
+    switch (e._tag) {
+      case "Var":
+        return e.name;
+      case "Num":
+        return String(e.n);
+      case "Sum":
+        return `${renderExprPow(e.addend, 1, "left")} + ${renderExprPow(e.augend, 1, "right")}`;
+      case "Prod":
+        return `${renderExprPow(e.multiplier, 2, "left")} * ${renderExprPow(e.multiplicand, 2, "right")}`;
+      case "Pow":
+        return `${renderExprPow(e.base, 3, "left")} ** ${renderExprPow(e.exponent, 3, "right")}`;
+    }
+  })();
+  return precedence < parentPrecedence || (side === "right" && precedence === parentPrecedence)
+    ? `(${text})`
+    : text;
 };
 
 /** The extended differentiation switch: the four original arms plus

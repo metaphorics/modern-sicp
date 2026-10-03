@@ -7,9 +7,9 @@
 
 mod ex_2_15 {
     use ch02::sec_2_1::{Interval, add_interval, div_interval, mul_interval};
-    use sicp_runtime::SchemeError;
+    use sicp_runtime::SicpError;
 
-    fn from_center_percent(center: f64, percent: f64) -> Result<Interval, SchemeError> {
+    fn from_center_percent(center: f64, percent: f64) -> Result<Interval, SicpError> {
         Interval::from_center_width(center, center.abs() * percent / 100.0)
     }
 
@@ -21,7 +21,7 @@ mod ex_2_15 {
         div_interval(&mul_interval(r1, r2), &add_interval(r1, r2))
     }
 
-    fn par2(r1: &Interval, r2: &Interval) -> Result<Interval, SchemeError> {
+    fn par2(r1: &Interval, r2: &Interval) -> Result<Interval, SicpError> {
         let one = Interval::new(1.0, 1.0)?;
         let reciprocal_sum = add_interval(&div_interval(&one, r1), &div_interval(&one, r2));
         Ok(div_interval(&one, &reciprocal_sum))
@@ -41,9 +41,9 @@ mod ex_2_15 {
     /// than `par1`'s, for the same two resistors as exercise 2.14.
     ///
     /// # Errors
-    /// [`SchemeError`] when the fixed inputs below fail to build, which
+    /// [`SicpError`] when the fixed inputs below fail to build, which
     /// they do not.
-    pub fn ex_2_15() -> Result<bool, SchemeError> {
+    pub fn ex_2_15() -> Result<bool, SicpError> {
         let r1 = from_center_percent(10.0, 5.0)?;
         let r2 = from_center_percent(20.0, 5.0)?;
         let p1 = par1(&r1, &r2);

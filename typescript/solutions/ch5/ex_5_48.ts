@@ -1,63 +1,85 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import { type ControllerLine, mark } from "../../packages/ch5/src/02-simulator.js";
-import { EvaluatorFault } from "../../packages/ch5/src/04-eceval.js";
+// Original exercise
+
 import {
-  bumpEntry,
-  type CompilerState,
-  compileForms,
-  defaultConfig,
-  ecevalController,
-  LinkageReturn,
-  makeCompiledEvaluator,
-  newState,
-  type RuntimeFn,
-} from "../../packages/ch5/src/05-compilation.js";
+  assign,
+  branch,
+  evaluatorController,
+  gotoLabel,
+  insertBeforeInstruction,
+  type MachineStatement,
+  makeEvaluator,
+  type Operation,
+  op,
+  register,
+  replaceSegment,
+  test,
+  type Word,
+} from "../../packages/ch5/src/04-eceval.ts";
+import { compileAndRun } from "../../packages/ch5/src/05-compilation.ts";
+import { mark } from "./ex_5_07.ts";
 
-const DEFINITION = "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))";
+type EvaluatorStatement = MachineStatement<Word>;
 
-interface Block {
-  readonly entry: string;
-  readonly lines: readonly ControllerLine[];
-}
+const isCallOf = (word: Word, name: string): boolean =>
+  typeof word === "object" &&
+  word !== null &&
+  "tag" in word &&
+  word.tag === "call" &&
+  "callee" in word &&
+  typeof word.callee === "object" &&
+  word.callee !== null &&
+  "tag" in word.callee &&
+  word.callee.tag === "variable" &&
+  "name" in word.callee &&
+  word.callee.name === name;
 
-/** The compile-and-run primitive: it compiles its quoted expression
- * into a block and answers ok; the block joins the controller at the
- * next assembly, the two-phase interface this edition pins. */
-const compileAndRunPrimitive = (
-  state: CompilerState,
-  blocks: Block[],
-): Record<string, RuntimeFn> => ({
-  "compile-and-run": (args) => {
-    const expression = args[0];
-    if (expression === undefined) throw new EvaluatorFault("compile-and-run needs one expression");
-    const seq = compileForms(defaultConfig(), state, [expression], LinkageReturn);
-    const entry = `compiled-entry-run-${bumpEntry(state)}`;
-    blocks.push({ entry, lines: [mark(entry), ...seq.stmts] });
-    return { symbol: "ok" };
+/** Exercise 5.48: compile-and-run as a primitive of the evaluator. The
+ * dispatch recognizes the call form before the generic application
+ * path and one machine operation hands the operand source to the
+ * compiler, so a program can compile and run new code at run time. */
+export const makeCompileRunOperations = (): Readonly<Record<string, Operation<Word>>> => ({
+  isCompileRunCall: (args) => isCallOf(args[0], "compileAndRun"),
+  compileRunSource: (args) => {
+    const source = args[0];
+    if (typeof source !== "string") return undefined;
+    const run = compileAndRun(source);
+    return run.outcome.tag === "ok" ? run.outcome.value : undefined;
+  },
+  compileRunArg: (args) => {
+    const call = args[0];
+    if (typeof call !== "object" || call === null || !("tag" in call) || call.tag !== "call")
+      return undefined;
+    const first = call.args[0];
+    return first?.kind === "item" && first.expr.tag === "string" ? first.expr.value : undefined;
   },
 });
 
-/** Exercise 5.48: a primitive compiles its quoted form and records a
- * block; the machine that runs the recorded block answers the
- * definition and the interpreted call to it. */
+/** The spliced dispatch: the compile-and-run call form is recognized
+ * ahead of the generic application test. */
+export const compileRunController: readonly EvaluatorStatement[] = replaceSegment(
+  insertBeforeInstruction(
+    evaluatorController,
+    (line) => line.tag === "test" && line.operation === "isCall",
+    "the compile-and-run form is recognized first",
+    [test("isCompileRunCall", register("expr")), branch("ev-compile-run")],
+  ),
+  "done",
+  "done",
+  [
+    mark("ev-compile-run"),
+    assign("val", op("compileRunSource", op("compileRunArg", register("expr")))),
+    gotoLabel("continue-dispatch"),
+  ],
+);
+/** The session: a program that compiles and runs new arithmetic at run
+ * time, then answers with the compiled value. */
 export const ex_5_48 = (): readonly string[] => {
-  const state = newState();
-  const blocks: Block[] = [];
-  const first = makeCompiledEvaluator(undefined, `(compile-and-run '${DEFINITION})`, {
-    runtime: compileAndRunPrimitive(state, blocks),
-  });
-  first.run();
-  const firstTranscript = first.transcript;
-  if (!firstTranscript.includes("ok")) throw new Error("compile-and-run did not answer ok");
-  const block = blocks[0];
-  if (block === undefined) throw new Error("compile-and-run recorded no code");
-  const second = makeCompiledEvaluator([...ecevalController, ...block.lines], "(factorial 5)");
-  second.armEntry(block.entry);
-  second.run();
-  const secondTranscript = second.transcript;
-  if (!secondTranscript.includes("120")) throw new Error("the recorded block never ran");
-  return [
-    `compile-and-run primitive: ${firstTranscript.join(" ")}`,
-    `compiled definition and call: ${secondTranscript.join(" ")}`,
-  ];
+  const program = [
+    'function compileAndRun(source: string): number { throw new Error("compileAndRun must be intercepted by the controller"); }',
+    'console.log(compileAndRun("1 + 2 * 3;"));',
+    'console.log(compileAndRun("10 - 4;"));',
+  ].join("\n");
+  const result = makeEvaluator(program, makeCompileRunOperations(), compileRunController).run();
+  return result.transcript;
 };

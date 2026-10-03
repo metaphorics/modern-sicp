@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.15: Eva Lu Ator, another user, has also noticed that the
  * different intervals computed by algebraically equivalent expressions may
@@ -21,4 +19,4 @@ import sicp.runtime.PendingSolution
  * with `par2(r1, r2)`, for the resistors 6.12 to 7.48 ohms and 4.465 to
  * 4.935 ohms of section 2.1.4's own example.
  */
-public fun ex_2_15(): Pair<Double, Double> = throw PendingSolution()
+public fun ex_2_15(): Pair<Double, Double> = throw PendingExercise()

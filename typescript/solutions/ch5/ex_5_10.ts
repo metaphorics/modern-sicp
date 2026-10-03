@@ -2,109 +2,90 @@
 // Original exercise
 
 import {
-  arithmeticOperations,
-  assemble,
   assign,
-  branch,
-  type ControllerLine,
-  c,
-  getRegisterContents,
-  jump,
-  type Machine,
-  makeNewMachine,
-  mark,
+  constant,
+  type MachineStatement,
+  type MachineValue,
   op,
-  reg,
-  setRegisterContents,
-  test,
-  type Value,
-} from "../../packages/ch5/src/02-simulator.js";
-import { expectOk } from "./ex_5_07.js";
+  register,
+} from "../../packages/ch5/src/01-register-machines.ts";
+import { makeMachine } from "../../packages/ch5/src/02-simulator.ts";
+import { arithmeticOperations, expectOk, mark } from "./ex_5_07.ts";
 
-/** The new surface: the book's instructions wrapped in book lines, plus
- * three new register-to-register forms. */
+/** The new surface of exercise 5.10: register-to-register forms beside
+ * the book's instruction shapes. The syntax stays a separate typed
+ * vocabulary, so the simulator's data model never grows a second
+ * representation. */
 export type NewStmt =
-  | { readonly tag: "cpy"; readonly to: string; readonly from: string }
-  | { readonly tag: "inc"; readonly reg: string }
-  | { readonly tag: "dec"; readonly reg: string }
-  | { readonly tag: "book"; readonly stmt: ControllerLine };
+  | { readonly tag: "new-label"; readonly name: string }
+  | { readonly tag: "new-load"; readonly to: string; readonly value: MachineValue }
+  | { readonly tag: "new-move"; readonly to: string; readonly from: string }
+  | { readonly tag: "new-add"; readonly to: string; readonly left: string; readonly right: string }
+  | { readonly tag: "new-sub"; readonly to: string; readonly left: string; readonly right: string }
+  | { readonly tag: "new-rem"; readonly to: string; readonly left: string; readonly right: string }
+  | { readonly tag: "new-test-equal"; readonly left: string; readonly right: MachineValue }
+  | { readonly tag: "new-jump"; readonly label: string }
+  | { readonly tag: "new-branch-if"; readonly label: string };
 
-export const book = (stmt: ControllerLine): NewStmt => ({ tag: "book", stmt });
-export const cpy = (to: string, from: string): NewStmt => ({ tag: "cpy", to, from });
-export const inc = (name: string): NewStmt => ({ tag: "inc", reg: name });
-export const dec = (name: string): NewStmt => ({ tag: "dec", reg: name });
+/** One syntax procedure per form: the recognizer. */
+export const isLabel = (line: NewStmt): boolean => line.tag === "new-label";
+export const isMove = (line: NewStmt): boolean => line.tag === "new-move";
 
-/** The isolated syntax procedures: every new form expands to exactly one
- * book instruction, before labels are scanned. */
-export const syntaxExpand = (controller: ReadonlyArray<NewStmt>): ControllerLine[] => {
-  const expanded: ControllerLine[] = [];
-  for (const stmt of controller) {
-    switch (stmt.tag) {
-      case "cpy":
-        expanded.push(assign(stmt.to, reg(stmt.from)));
-        break;
-      case "inc":
-        expanded.push(assign(stmt.reg, op("+", reg(stmt.reg), c(1))));
-        break;
-      case "dec":
-        expanded.push(assign(stmt.reg, op("-", reg(stmt.reg), c(1))));
-        break;
-      case "book":
-        expanded.push(stmt.stmt);
-        break;
-    }
+/** The translator: every new form lowers to the simulator's own
+ * statements, and nothing else knows the new spelling. */
+export const translate = (line: NewStmt): MachineStatement[] => {
+  switch (line.tag) {
+    case "new-label":
+      return [mark(line.name)];
+    case "new-load":
+      return [assign(line.to, constant(line.value))];
+    case "new-move":
+      return [assign(line.to, register(line.from))];
+    case "new-add":
+      return [assign(line.to, op("+", register(line.left), register(line.right)))];
+    case "new-sub":
+      return [assign(line.to, op("-", register(line.left), register(line.right)))];
+    case "new-rem":
+      return [assign(line.to, op("rem", register(line.left), register(line.right)))];
+    case "new-test-equal":
+      return [
+        {
+          tag: "test",
+          operation: "=",
+          args: [register(line.left), constant(line.right)],
+        },
+      ];
+    case "new-jump":
+      return [{ tag: "goto-label", label: line.label }];
+    case "new-branch-if":
+      return [{ tag: "branch", label: line.label }];
   }
-  return expanded;
 };
 
-/** The book's gcd machine written in the new syntax: the two register
- * shuffles become cpy lines. */
-const gcdControllerNewSyntax: NewStmt[] = [
-  book(mark("test-b")),
-  book(test("=", reg("b"), c(0))),
-  book(branch("gcd-done")),
-  book(assign("t", op("rem", reg("a"), reg("b")))),
-  cpy("a", "b"),
-  cpy("b", "t"),
-  book(jump("test-b")),
-  book(mark("gcd-done")),
+/** The gcd machine of the book written in the new syntax. */
+export const gcdInNewSyntax: readonly NewStmt[] = [
+  { tag: "new-label", name: "test-b" },
+  { tag: "new-test-equal", left: "b", right: 0 },
+  { tag: "new-branch-if", label: "gcd-done" },
+  { tag: "new-rem", to: "t", left: "a", right: "b" },
+  { tag: "new-move", to: "a", from: "b" },
+  { tag: "new-move", to: "b", from: "t" },
+  { tag: "new-jump", label: "test-b" },
+  { tag: "new-label", name: "gcd-done" },
 ];
 
-/** A countdown that exercises dec and inc: while count is nonzero,
- * decrement it and increment sum, which starts at zero. */
-const countdownController: NewStmt[] = [
-  book(assign("count", reg("n"))),
-  book(assign("sum", c(0))),
-  book(mark("loop")),
-  book(test("=", reg("count"), c(0))),
-  book(branch("done")),
-  dec("count"),
-  inc("sum"),
-  book(jump("loop")),
-  book(mark("done")),
-];
-
-const runNewSyntax = (
-  controller: ReadonlyArray<NewStmt>,
-  registers: string[],
-  inputs: Record<string, number>,
-  answerReg: string,
-): Value => {
-  const machine: Machine = makeNewMachine(registers, arithmeticOperations);
-  const program = assemble(syntaxExpand(controller), machine);
-  if (!program.ok) throw new Error("assembly failed");
-  machine.install(program.value);
-  for (const [name, value] of Object.entries(inputs)) {
-    expectOk(setRegisterContents(machine, name, value));
-  }
-  expectOk(machine.start());
-  return expectOk(getRegisterContents(machine, answerReg));
-};
-
-/** Both machines in the new syntax: the gcd answers its usual 2, the
- * countdown sums 1 for each of its three decrements. */
-export const newSyntaxRuns = (): string[] => {
-  const gcd = runNewSyntax(gcdControllerNewSyntax, ["a", "b", "t"], { a: 206, b: 40 }, "a");
-  const countdown = runNewSyntax(countdownController, ["n", "count", "sum"], { n: 3 }, "sum");
-  return [`gcd(206, 40) in the new syntax = ${gcd}`, `countdown(3) sum = ${countdown}`];
+/** Runs the translated machine on one input pair. */
+export const ex_5_10 = (a: number, b: number): MachineValue => {
+  const controller = gcdInNewSyntax.flatMap(translate);
+  const machine = makeMachine({
+    registers: ["a", "b", "t"],
+    operations: arithmeticOperations,
+    controller,
+  });
+  machine.writeRegister("a", a);
+  machine.writeRegister("b", b);
+  const run = machine.run();
+  expectOk(run);
+  const answer = machine.readRegister("a");
+  return answer === undefined ? null : answer;
 };

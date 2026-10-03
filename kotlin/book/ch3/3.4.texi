@@ -121,7 +121,8 @@ class Cell(public var value: Long)
 
 val balance = Cell(100L)
 
-fun withdraw(amount: Long): Either<WithdrawError, Long> =
+fun withdraw(amount: Long): Either<WithdrawError,
+    Long> =
     if (balance.value < amount) @{
         Either.Left(WithdrawError.InsufficientFunds)
     @} else @{
@@ -181,7 +182,7 @@ access.}
 @strong{Figure 3.29:} Timing diagram showing how interleaving the order of events 
 in two banking withdrawals can lead to an incorrect final balance.
 
-@example
+@smallexample
  |           Peter              Bank              Paul
  |                              ____
  |                             /    \
@@ -197,7 +198,7 @@ in two banking withdrawals can lead to an incorrect final balance.
  |  `----------+-----------'            `----------+-----------'
  |             V                                   |
  |  .----------------------.                       |
- |  | set! balance to $90  |                       |
+ |  | set balance to $90  |                       |
  |  `----------+-----------'    ____               |
  |             |               /    \              |
  |             `------------->| $ 90 |             V
@@ -208,13 +209,13 @@ in two banking withdrawals can lead to an incorrect final balance.
  |                            | $ 90 |<------------'
  V                             \____/
 time
-@end example
+@end smallexample
 @end ifinfo
 @ifhtml
 @image{../../text/original/figures/chap3/Fig3.29b,,147mm,Figure 3.29: Timing diagram showing how interleaving the order of events in two banking withdrawals can lead to an incorrect final balance.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.29b.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.29b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.29:} Timing diagram showing how interleaving the order of events in two banking withdrawals can lead to an incorrect final balance.}
@@ -296,7 +297,7 @@ time
 @image{../../text/original/figures/chap3/Fig3.30c,,147mm,Figure 3.30: Concurrent deposits and withdrawals from a joint account in Bank1 and a private account in Bank2.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.30c.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.30c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.30:} Concurrent deposits and withdrawals from a joint account in Bank1 and a private account in Bank2.}
@@ -467,7 +468,7 @@ point.  This creates two concurrent processes---@math{P_1}, which sets @code{x} 
 complete, @code{x} will be left with one of five possible values, depending on
 the interleaving of the events of @math{P_1} and @math{P_2}:
 
-@example
+@smallexample
 101: @math{P_1} sets @code{x} to 100 and then @math{P_2} increments
      @code{x} to 101.
 121: @math{P_2} increments @code{x} to 11 and then @math{P_1} sets
@@ -479,7 +480,7 @@ the interleaving of the events of @math{P_1} and @math{P_2}:
      then @math{P_2} sets @code{x}.
 100: @math{P_1} accesses @code{x} (twice), then @math{P_2} sets
      @code{x} to 11, then @math{P_1} sets @code{x}.
-@end example
+@end smallexample
 
 @noindent
 On the JVM the scheduler is free to pick any of these interleavings on each
@@ -522,7 +523,8 @@ dispatch symbol becomes a method:
 
 @example kotlin
 interface SerializedAccount @{
-    suspend fun withdraw(amount: Long): Either<WithdrawError, Long>
+    suspend fun withdraw(amount: Long): Either<WithdrawError,
+        Long>
 
     suspend fun deposit(amount: Long): Long
 
@@ -536,7 +538,9 @@ fun makeSerializedAccount(balance: Long): SerializedAccount @{
         override suspend fun withdraw(amount: Long) =
             s.serialized @{
                 if (b < amount) @{
-                    Either.Left(WithdrawError.InsufficientFunds)
+                    Either.Left(
+                        WithdrawError.InsufficientFunds,
+                    )
                 @} else @{
                     b -= amount
                     Either.Right(b)
@@ -575,7 +579,8 @@ val s = Serializer()
 coroutineScope @{
     launch @{
         val squared = s.serialized @{ x * x @}()
-        x = squared // the assignment is outside the serializer
+        // the assignment is outside the serializer
+        x = squared
     @}
     launch @{ s.serialized @{ x = x + 1 @}() @}
 @}
@@ -621,7 +626,9 @@ fun bensAccount(balance: Long): SerializedAccount @{
         override suspend fun withdraw(amount: Long) =
             s.serialized @{
                 if (b < amount) @{
-                    Either.Left(WithdrawError.InsufficientFunds)
+                    Either.Left(
+                        WithdrawError.InsufficientFunds,
+                    )
                 @} else @{
                     b -= amount
                     Either.Right(b)
@@ -690,9 +697,11 @@ class BenAccount(balance: Long) : SerializedAccount @{
             b
         @}
 
-    override suspend fun withdraw(amount: Long) = protectedWithdraw(amount)
+    override suspend fun withdraw(amount: Long) =
+        protectedWithdraw(amount)
 
-    override suspend fun deposit(amount: Long) = protectedDeposit(amount)
+    override suspend fun deposit(amount: Long) =
+        protectedDeposit(amount)
 
     override suspend fun balance(): Long = b
 @}
@@ -720,7 +729,8 @@ that our @code{deposit} accepts negative amounts.  (This is a serious
 bug in our banking system!)}
 
 @example kotlin
-suspend fun exchange(account1: RawAccount, account2: RawAccount): Long @{
+suspend fun exchange(account1: RawAccount,
+    account2: RawAccount): Long @{
     val difference = account1.balance() - account2.balance()
     account1.withdraw(difference)
     account2.deposit(difference)
@@ -755,7 +765,8 @@ the balance variable, and the serializer is exported via the interface:
 
 @example kotlin
 interface RawAccount @{
-    suspend fun withdraw(amount: Long): Either<WithdrawError, Long>
+    suspend fun withdraw(amount: Long): Either<WithdrawError,
+        Long>
 
     suspend fun deposit(amount: Long): Long
 
@@ -768,10 +779,13 @@ interface RawAccount @{
 fun makeAccountAndSerializer(balance: Long): RawAccount @{
     var b = balance
     val s = Serializer()
-    // The raw procedures the book's dispatch returned: serialization is
+    // The raw procedures the book's dispatch returned:
+    // serialization is
     // the caller's job now.
     return object : RawAccount @{
-        override suspend fun withdraw(amount: Long): Either<WithdrawError, Long> =
+        override suspend fun withdraw(
+            amount: Long,
+        ): Either<WithdrawError, Long> =
             if (b < amount) @{
                 Either.Left(WithdrawError.InsufficientFunds)
             @} else @{
@@ -799,7 +813,8 @@ follows:@footnote{@ref{Exercise 3.45} investigates why deposits and withdrawals
 are no longer automatically serialized by the account.}
 
 @example kotlin
-suspend fun deposit(account: RawAccount, amount: Long): Long =
+suspend fun deposit(account: RawAccount,
+    amount: Long): Long =
     account.serializer().serialized @{
         account.deposit(amount)
     @}()
@@ -879,7 +894,9 @@ fun louisAccount(balance: Long): RawAccount @{
         override suspend fun withdraw(amount: Long) =
             s.serialized @{
                 if (b < amount) @{
-                    Either.Left(WithdrawError.InsufficientFunds)
+                    Either.Left(
+                        WithdrawError.InsufficientFunds,
+                    )
                 @} else @{
                     b -= amount
                     Either.Right(b)
@@ -902,7 +919,8 @@ fun louisAccount(balance: Long): RawAccount @{
 Then deposits are handled as with the original @code{makeAccount}:
 
 @example kotlin
-suspend fun deposit(account: RawAccount, amount: Long): Long =
+suspend fun deposit(account: RawAccount,
+    amount: Long): Long =
     account.deposit(amount)
 @end example
 
@@ -939,7 +957,9 @@ property that we need to guarantee.
 import kotlinx.coroutines.sync.Mutex
 
 class Serializer @{
-    private val mutex = Mutex() // kotlinx's Mutex: a waiter parks in lock
+    private val mutex =
+        Mutex()
+        // kotlinx's Mutex: a waiter parks in lock
 
     /** The book's make-serializer over a procedure of no arguments. */
     fun <A> serialized(p: suspend () -> A): suspend () -> A = @{
@@ -953,9 +973,11 @@ class Serializer @{
 
     /** The same set over a one-argument procedure: the book's
      * make-serializer is indifferent to the wrapped procedure's shape.
-     * A separate name, not an overload: a brace lambda matches both
+     * A separate name,
+         not an overload: a brace lambda matches both
      * arities through its implicit `it`. */
-    fun <P, A> serializedArg(p: suspend (P) -> A): suspend (P) -> A = @{
+    fun <P,
+        A> serializedArg(p: suspend (P) -> A): suspend (P) -> A = @{
         mutex.lock()
         try @{
             p(it)
@@ -1006,7 +1028,8 @@ fun makeMutex(): BookMutex @{
     return object : BookMutex @{
         override suspend fun acquire() @{
             while (testAndSet(cell)) @{
-                yield() // retry: hand the thread back, then test again
+                yield()
+                // retry: hand the thread back, then test again
             @}
         @}
 
@@ -1058,9 +1081,12 @@ and the cell becomes an atomic boolean holding the mutex's state:
 @example kotlin
 import java.util.concurrent.atomic.AtomicBoolean
 
-class AtomicCell(private val flag: AtomicBoolean = AtomicBoolean(false)) @{
-    /** The book's test-and-set, atomic: true when the cell was already set. */
-    fun testAndSet(): Boolean = !flag.compareAndSet(false, true)
+class AtomicCell(private val flag: AtomicBoolean =
+    AtomicBoolean(false)) @{
+    /** The book's test-and-set,
+        atomic: true when the cell was already set. */
+    fun testAndSet(): Boolean = !flag.compareAndSet(false,
+        true)
 
     fun clear() @{
         flag.set(false)
@@ -1245,7 +1271,8 @@ send in @code{finally} to release.
 coroutineScope @{
     val done = launch @{ x = x * x @}
     launch @{ x = x + 1 @}
-    done.cancel() // the control object halts P1 mid-flight
+    done.cancel()
+    // the control object halts P1 mid-flight
 @}
 @end example
 

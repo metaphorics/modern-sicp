@@ -7,9 +7,9 @@ import arrow.core.Either
 import arrow.core.raise.either
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.runtime.Env
-import sicp.runtime.VInt
-import sicp.runtime.Value
+import sicp.runtime.BindingFrame
+import sicp.runtime.Datum
+import sicp.runtime.Whole
 
 /**
  * The section's `square` twice over. The `fun` declaration is the everyday
@@ -28,47 +28,47 @@ public val squareFn: (Long) -> Long = { x -> x * x }
  * II's 7 and from B is I's 3.
  */
 public object Figure31 {
-    public val frameI: Env = Env.global()
+    public val frameI: BindingFrame = BindingFrame.root()
 
-    public val frameII: Env = Env.child(frameI)
+    public val frameII: BindingFrame = BindingFrame.child(frameI)
 
-    public val frameIII: Env = Env.child(frameI)
+    public val frameIII: BindingFrame = BindingFrame.child(frameI)
 
     init {
-        frameI.define("x", VInt(3))
-        frameI.define("y", VInt(5))
-        frameII.define("z", VInt(6))
-        frameII.define("x", VInt(7))
-        frameIII.define("m", VInt(1))
-        frameIII.define("y", VInt(2))
+        frameI.bind("x", Whole(3))
+        frameI.bind("y", Whole(5))
+        frameII.bind("z", Whole(6))
+        frameII.bind("x", Whole(7))
+        frameIII.bind("m", Whole(1))
+        frameIII.bind("y", Whole(2))
     }
 
-    public val a: Env = frameII
+    public val a: BindingFrame = frameII
 
-    public val b: Env = frameIII
+    public val b: BindingFrame = frameIII
 
-    public val c: Env = frameI
+    public val c: BindingFrame = frameI
 
-    public val d: Env = frameI
+    public val d: BindingFrame = frameI
 
     public fun lookup(
-        env: Env,
+        env: BindingFrame,
         name: String,
-    ): Either<sicp.runtime.SchemeError, Value> = either { env.lookup(name) }
+    ): Either<sicp.runtime.DatumError, Datum> = either { env.read(name) }
 }
 
 public class S3_2_1RulesForEvaluationTest :
     FunSpec({
         test("the value of x with respect to environment D is 3: frame I binds it") {
-            Figure31.lookup(Figure31.d, "x") shouldBe Either.Right(VInt(3))
+            Figure31.lookup(Figure31.d, "x") shouldBe Either.Right(Whole(3))
         }
 
         test("the value of x with respect to environment B is 3: III defers to I") {
-            Figure31.lookup(Figure31.b, "x") shouldBe Either.Right(VInt(3))
+            Figure31.lookup(Figure31.b, "x") shouldBe Either.Right(Whole(3))
         }
 
         test("with respect to environment A, II's x: 7 shadows I's x: 3") {
-            Figure31.lookup(Figure31.a, "x") shouldBe Either.Right(VInt(7))
+            Figure31.lookup(Figure31.a, "x") shouldBe Either.Right(Whole(7))
         }
 
         test("the fun declaration and the function value compute the same square") {

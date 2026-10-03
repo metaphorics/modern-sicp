@@ -12,6 +12,11 @@ public class E5_29Test :
         test("Exercise 5.29: fib's stack table and the depth, recurrence, and closed-form lines").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            fibonacciStackMeasurements() shouldBe emptyList()
+            fibonacciStackMeasurements().takeLast(3) shouldBe
+                listOf(
+                    "maximum depth linear in n: true",
+                    "pushes recurrence with constant k: true",
+                    "pushes closed form over Fib: true",
+                )
         }
     })

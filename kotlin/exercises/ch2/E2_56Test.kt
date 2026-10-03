@@ -9,9 +9,9 @@ import io.kotest.matchers.shouldBe
 
 public class E2_56Test :
     FunSpec({
-        test("Exercise 2.56: the derivative of x^3 with respect to x is 3 x^2").config(
+        test("Exercise 2.56 returns the power-rule derivative tree for the cube").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            ex_2_56() shouldBe "(* 3 (** x 2))"
+            ex_2_56() shouldBe PowExpr.Product(PowExpr.Num(3L), PowExpr.Pow(PowExpr.Var("x"), 2L))
         }
     })

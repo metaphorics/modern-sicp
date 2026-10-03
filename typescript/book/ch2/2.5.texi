@@ -86,46 +86,65 @@ according to the data type of its arguments.
 The generic arithmetic procedures are defined as follows:
 
 @example typescript
-export const add = (x: ArithDatum, y: ArithDatum): Result<ArithDatum, GenError> =>
+export const add = (
+  x: ArithDatum,
+  y: ArithDatum,
+): Result<ArithDatum, GenError> =>
   applyGeneric("add", x, y);
-export const sub = (x: ArithDatum, y: ArithDatum): Result<ArithDatum, GenError> =>
+export const sub = (
+  x: ArithDatum,
+  y: ArithDatum,
+): Result<ArithDatum, GenError> =>
   applyGeneric("sub", x, y);
-export const mul = (x: ArithDatum, y: ArithDatum): Result<ArithDatum, GenError> =>
+export const mul = (
+  x: ArithDatum,
+  y: ArithDatum,
+): Result<ArithDatum, GenError> =>
   applyGeneric("mul", x, y);
-export const div = (x: ArithDatum, y: ArithDatum): Result<ArithDatum, GenError> =>
+export const div = (
+  x: ArithDatum,
+  y: ArithDatum,
+): Result<ArithDatum, GenError> =>
   applyGeneric("div", x, y);
 @end example
 
 @noindent
 We begin by installing a package for handling @newterm{ordinary} numbers, that
 is, the primitive numbers of our language.  We will tag these with the name
-@code{"scheme-number"}.  The arithmetic operations in this package are the
+@code{"ts-number"}.  The arithmetic operations in this package are the
 primitive arithmetic procedures (so there is no need to define extra procedures
 to handle the untagged numbers).  Since these operations each take two
 arguments, they are installed in the table keyed by the list
-@code{["scheme-number", "scheme-number"]}:
+@code{["ts-number", "ts-number"]}:
 
 @example typescript
-export const installSchemeNumberPackage = (): void => @{
-  put("add", ["scheme-number", "scheme-number"], bigintOp("add", (x, y) => x + y));
-  put("sub", ["scheme-number", "scheme-number"], bigintOp("sub", (x, y) => x - y));
-  put("mul", ["scheme-number", "scheme-number"], bigintOp("mul", (x, y) => x * y));
-  put("div", ["scheme-number", "scheme-number"], bigintOp("div", (x, y) => x / y));
-  put("make", ["scheme-number"], @{ _tag: "MakeNumber", fn: (n: bigint) => n @});
+export const installTsNumberPackage = (): void => @{
+  put("add", ["ts-number", "ts-number"],
+    bigintOp("add", (x, y) => x + y));
+  put("sub", ["ts-number", "ts-number"],
+    bigintOp("sub", (x, y) => x - y));
+  put("mul", ["ts-number", "ts-number"],
+    bigintOp("mul", (x, y) => x * y));
+  put("div", ["ts-number", "ts-number"],
+    bigintOp("div", (x, y) => x / y));
+  put("make", ["ts-number"], @{
+    _tag: "MakeNumber",
+    fn: (n: bigint) => n,
+  @});
 @};
 @end example
 
 @noindent
-Users of the scheme-number package will create (tagged) ordinary numbers by
+Users of the ts-number package will create (tagged) ordinary numbers by
 means of the constructor:
 
 @example typescript
-export const makeSchemeNumber = (n: bigint): SchemeNumber => @{
-  const e = get("make", ["scheme-number"]);
+export const makeTsNumber = (n: bigint): TsNumber => @{
+  const e = get("make", ["ts-number"]);
   if (e._tag === "Some" && e.value._tag === "MakeNumber") @{
     return e.value.fn(n);
   @}
-  throw new Error("make: no constructor for scheme-number");
+  throw new Error("make: no constructor for ts-number");
 @};
 @end example
 
@@ -146,22 +165,34 @@ export const installRationalPackage = (): void => @{
     return [n / g, d / g];
   @};
   const addRat = (x: RatContents, y: RatContents): RatContents =>
-    makeRat(numer(x) * denom(y) + numer(y) * denom(x), denom(x) * denom(y));
+    makeRat(
+      numer(x) * denom(y) + numer(y) * denom(x),
+      denom(x) * denom(y),
+    );
   const subRat = (x: RatContents, y: RatContents): RatContents =>
-    makeRat(numer(x) * denom(y) - numer(y) * denom(x), denom(x) * denom(y));
+    makeRat(
+      numer(x) * denom(y) - numer(y) * denom(x),
+      denom(x) * denom(y),
+    );
   const mulRat = (x: RatContents, y: RatContents): RatContents =>
     makeRat(numer(x) * numer(y), denom(x) * denom(y));
   const divRat = (x: RatContents, y: RatContents): RatContents =>
     makeRat(numer(x) * denom(y), denom(x) * numer(y));
   // interface to rest of the system
   const tag = (x: RatContents): Rational => attachTag("rational", x);
-  const rat2 = (name: string, f: (x: RatContents, y: RatContents) => RatContents): ArithHandler =>
+  const rat2 = (
+    name: string,
+    f: (x: RatContents, y: RatContents) => RatContents,
+  ): ArithHandler =>
     ratOp(name, (x, y) => ok(tag(f(x, y))));
   put("add", ["rational", "rational"], rat2("add", addRat));
   put("sub", ["rational", "rational"], rat2("sub", subRat));
   put("mul", ["rational", "rational"], rat2("mul", mulRat));
   put("div", ["rational", "rational"], rat2("div", divRat));
-  put("make", ["rational"], @{ _tag: "MakeRational", fn: (n: bigint, d: bigint) => tag(makeRat(n, d)) @});
+  put("make", ["rational"], @{
+    _tag: "MakeRational",
+    fn: (n: bigint, d: bigint) => tag(makeRat(n, d)),
+  @});
 @};
 
 export const makeRational = (n: bigint, d: bigint): Rational => @{
@@ -185,25 +216,66 @@ as the internal operations, the same @code{addComplex}, @code{subComplex},
 export const installComplexPackage = (): void => @{
   // imported procedures from rectangular
   // and polar packages
-  const makeFromRealImag = (x: number, y: number): Result<InnerComplex, GenError> =>
+  const makeFromRealImag = (
+    x: number,
+    y: number,
+  ): Result<InnerComplex, GenError> =>
     invokeConstructor("make-from-real-imag", "rectangular", x, y);
-  const makeFromMagAng = (r: number, a: number): Result<InnerComplex, GenError> =>
+  const makeFromMagAng = (
+    r: number,
+    a: number,
+  ): Result<InnerComplex, GenError> =>
     invokeConstructor("make-from-mag-ang", "polar", r, a);
   // internal procedures
-  const addComplex = (z1: InnerComplex, z2: InnerComplex): Result<InnerComplex, GenError> =>
-    makeFromRealImag(repRealPart(z1) + repRealPart(z2), repImagPart(z1) + repImagPart(z2));
-  const subComplex = (z1: InnerComplex, z2: InnerComplex): Result<InnerComplex, GenError> =>
-    makeFromRealImag(repRealPart(z1) - repRealPart(z2), repImagPart(z1) - repImagPart(z2));
-  const mulComplex = (z1: InnerComplex, z2: InnerComplex): Result<InnerComplex, GenError> =>
-    makeFromMagAng(repMagnitude(z1) * repMagnitude(z2), repAngle(z1) + repAngle(z2));
-  const divComplex = (z1: InnerComplex, z2: InnerComplex): Result<InnerComplex, GenError> =>
-    makeFromMagAng(repMagnitude(z1) / repMagnitude(z2), repAngle(z1) - repAngle(z2));
+  const addComplex = (
+    z1: InnerComplex,
+    z2: InnerComplex,
+  ): Result<InnerComplex, GenError> =>
+    makeFromRealImag(
+      repRealPart(z1) + repRealPart(z2),
+      repImagPart(z1) + repImagPart(z2),
+    );
+  const subComplex = (
+    z1: InnerComplex,
+    z2: InnerComplex,
+  ): Result<InnerComplex, GenError> =>
+    makeFromRealImag(
+      repRealPart(z1) - repRealPart(z2),
+      repImagPart(z1) - repImagPart(z2),
+    );
+  const mulComplex = (
+    z1: InnerComplex,
+    z2: InnerComplex,
+  ): Result<InnerComplex, GenError> =>
+    makeFromMagAng(
+      repMagnitude(z1) * repMagnitude(z2),
+      repAngle(z1) + repAngle(z2),
+    );
+  const divComplex = (
+    z1: InnerComplex,
+    z2: InnerComplex,
+  ): Result<InnerComplex, GenError> =>
+    makeFromMagAng(
+      repMagnitude(z1) / repMagnitude(z2),
+      repAngle(z1) - repAngle(z2),
+    );
   // interface to rest of the system
-  const tag = (z: InnerComplex): ComplexNumber => attachTag("complex", z);
-  put("add", ["complex", "complex"], complexOp("add", (z1, z2) => ok(tag(addComplex(z1, z2).value))));
+  const tag = (z: InnerComplex): ComplexNumber =>
+    attachTag("complex", z);
+  put("add", ["complex", "complex"],
+    complexOp("add", (z1, z2) =>
+      ok(tag(addComplex(z1, z2).value))));
   // ... the sub, mul, and div entries follow the same shape:
-  put("make-from-real-imag", ["complex"], @{ _tag: "MakeComplexRealImag", fn: (x: number, y: number) => mapGen(makeFromRealImag(x, y), tag) @});
-  put("make-from-mag-ang", ["complex"], @{ _tag: "MakeComplexMagAng", fn: (r: number, a: number) => mapGen(makeFromMagAng(r, a), tag) @});
+  put("make-from-real-imag", ["complex"], @{
+    _tag: "MakeComplexRealImag",
+    fn: (x: number, y: number) =>
+      mapGen(makeFromRealImag(x, y), tag),
+  @});
+  put("make-from-mag-ang", ["complex"], @{
+    _tag: "MakeComplexMagAng",
+    fn: (r: number, a: number) =>
+      mapGen(makeFromMagAng(r, a), tag),
+  @});
 @};
 @end example
 
@@ -215,9 +287,15 @@ packages, are exported to the complex package, and exported from there to the
 outside world.
 
 @example typescript
-export const makeComplexFromRealImag = (x: number, y: number): ComplexNumber =>
+export const makeComplexFromRealImag = (
+  x: number,
+  y: number,
+): ComplexNumber =>
   invokeConstructor("make-from-real-imag", "complex", x, y);
-export const makeComplexFromMagAng = (r: number, a: number): ComplexNumber =>
+export const makeComplexFromMagAng = (
+  r: number,
+  a: number,
+): ComplexNumber =>
   invokeConstructor("make-from-mag-ang", "complex", r, a);
 @end example
 
@@ -255,7 +333,7 @@ package is stripped off (by applying @code{contents}) and the next level of tag
 @image{../../text/original/figures/chap2/Fig2.24d,,108mm,Figure 2.24: Representation of 3 + 4i in rectangular form.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.24d.std,,108mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.24d.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.24:} Representation of @math{{3 + 4i}} in rectangular form.}
@@ -270,7 +348,7 @@ longer need names that are distinct from each other: we could simply name them
 
 @quotation
 @strong{@anchor{Exercise 2.77}Exercise 2.77:} Louis Reasoner tries to evaluate
-the expression @code{(magnitude z)} where @code{z} is the object shown in
+the expression @code{magnitude(z)} where @code{z} is the object shown in
 @ref{Figure 2.24}.  To his surprise, instead of the answer 5 he gets an error
 message from @code{applyGeneric}, saying there is no method for the operation
 @code{magnitude} on the types @code{["complex"]}.  He shows this interaction to
@@ -280,14 +358,26 @@ were never defined for @code{complex} numbers, just for @code{polar} and
 following to the @code{complex} package:''
 
 @example typescript
-put("real-part", ["complex"], @{ _tag: "Selector", fn: repSelector("real-part") @});
-put("imag-part", ["complex"], @{ _tag: "Selector", fn: repSelector("imag-part") @});
-put("magnitude", ["complex"], @{ _tag: "Selector", fn: repSelector("magnitude") @});
-put("angle", ["complex"], @{ _tag: "Selector", fn: repSelector("angle") @});
+put("real-part", ["complex"], @{
+  _tag: "Selector",
+  fn: repSelector("real-part"),
+@});
+put("imag-part", ["complex"], @{
+  _tag: "Selector",
+  fn: repSelector("imag-part"),
+@});
+put("magnitude", ["complex"], @{
+  _tag: "Selector",
+  fn: repSelector("magnitude"),
+@});
+put("angle", ["complex"], @{
+  _tag: "Selector",
+  fn: repSelector("angle"),
+@});
 @end example
 
 Describe in detail why this works.  As an example, trace through all the
-procedures called in evaluating the expression @code{(magnitude z)} where
+procedures called in evaluating the expression @code{magnitude(z)} where
 @code{z} is the object shown in @ref{Figure 2.24}.  In particular, how many
 times is @code{applyGeneric} invoked?  What procedure is dispatched to in each
 case?
@@ -295,30 +385,29 @@ case?
 
 @quotation
 @strong{@anchor{Exercise 2.78}Exercise 2.78:} The internal procedures in the
-@code{scheme-number} package are essentially nothing more than calls to the
-primitive procedures @code{+}, @code{-}, etc.  It was not possible to use the
-primitives of the language directly because our type-tag system requires that
-each data object have a type attached to it.  In fact, however, all Lisp
-implementations do have a type system, which they use internally.  Primitive
-predicates such as @code{typeof x === "number"} determine whether data
+@code{ts-number} package are essentially nothing more than calls to the
+primitive operations @code{+}, @code{-}, and so on.  The current representation
+wraps each value with an explicit type tag.  JavaScript also distinguishes
+primitive values at runtime: @code{typeof x === "bigint"} recognizes the exact
+integers used by this arithmetic package.  Such checks determine whether data
 objects have particular types.  Modify the definitions of @code{typeTagOf},
 @code{contentsOf}, and @code{attachTag} from @ref{2.4.2} so that our
 generic system takes advantage of the language's own type system.  That is to
 say, the system should work as before except that ordinary numbers should be
-represented simply as Scheme numbers rather than as pairs whose @code{car} is
-the symbol @code{scheme-number}.
+represented simply as the bare numbers themselves rather than as pairs whose
+head is the tag @code{ts-number}.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.79}Exercise 2.79:} Define a generic equality
-predicate @code{equ?} that tests the equality of two numbers, and install it in
+predicate @code{equQ} that tests the equality of two numbers, and install it in
 the generic arithmetic package.  This operation should work for ordinary
 numbers, rational numbers, and complex numbers.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.80}Exercise 2.80:} Define a generic predicate
-@code{=zero?} that tests if its argument is zero, and install it in the generic
+@code{isZeroQ} that tests if its argument is zero, and install it in the generic
 arithmetic package.  This operation should work for ordinary numbers, rational
 numbers, and complex numbers.
 @end quotation
@@ -343,12 +432,15 @@ One way to handle cross-type operations is to design a different procedure for
 each possible combination of types for which the operation is valid.  For
 example, we could extend the complex-number package so that it provides a
 procedure for adding complex numbers to ordinary numbers and installs this in
-the table using the tag @code{["complex", "scheme-number"]}:@footnote{We also have
+the table using the tag @code{["complex", "ts-number"]}:@footnote{We also have
 to supply an almost identical procedure to handle the types
-@code{["scheme-number", "complex"]}.}
+@code{["ts-number", "complex"]}.}
 
 @example typescript
-export const addComplexToSchemenum = (z: ComplexNumber, x: bigint): Result<ComplexNumber, GenError> => @{
+export const addComplexToTsNumber = (
+  z: ComplexNumber,
+  x: bigint,
+): Result<ComplexNumber, GenError> => @{
   const re = realPart(z);
   if (re._tag === "Error") @{
     return re;
@@ -360,8 +452,8 @@ export const addComplexToSchemenum = (z: ComplexNumber, x: bigint): Result<Compl
   return ok(makeComplexFromRealImag(re.value + Number(x), im.value));
 @};
 
-put("add", ["complex", "scheme-number"], complexOp("add", (z, x) =>
-  addComplexToSchemenum(attachTag("complex", z), BigInt(x))));
+put("add", ["complex", "ts-number"], complexOp("add", (z, x) =>
+  addComplexToTsNumber(attachTag("complex", z), BigInt(x))));
 @end example
 
 @noindent
@@ -402,10 +494,12 @@ Here is a typical coercion procedure, which transforms a given ordinary number
 to a complex number with that real part and zero imaginary part:
 
 @example typescript
-export const schemeNumberToComplex = (n: ArithDatum): Result<ArithDatum, GenError> =>
+export const tsNumberToComplex = (
+  n: ArithDatum,
+): Result<ArithDatum, GenError> =>
   typeof n === "bigint"
     ? ok(makeComplexFromRealImag(Number(n), 0))
-    : err(@{ _tag: "NoMethod", op: "coerce", tags: ["scheme-number"] @});
+    : err(@{ _tag: "NoMethod", op: "coerce", tags: ["ts-number"] @});
 @end example
 
 @noindent
@@ -413,7 +507,7 @@ We install these coercion procedures in a special coercion table, indexed under
 the names of the two types:
 
 @example typescript
-putCoercion("scheme-number", "complex", schemeNumberToComplex);
+putCoercion("ts-number", "complex", tsNumberToComplex);
 @end example
 
 @noindent
@@ -422,7 +516,7 @@ procedures available for manipulating this table.)  Generally some of the slots
 in the table will be empty, because it is not generally possible to coerce an
 arbitrary data object of each type into all other types.  For example, there is
 no way to coerce an arbitrary complex number to an ordinary number, so there
-will be no general @code{complexToSchemeNumber} procedure included in the
+will be no general @code{complexToTsNumber} procedure included in the
 table.
 
 Once the coercion table has been set up, we can handle coercion in a uniform
@@ -453,13 +547,25 @@ export const applyGeneric = (
   if (args.length === 2) @{
     const [a1, a2] = args;
     const [type1, type2] = typeTags;
-    const t1toT2 = type1 !== undefined && type2 !== undefined ? getCoercion(type1, type2) : none;
+    const t1toT2 =
+      type1 !== undefined && type2 !== undefined
+        ? getCoercion(type1, type2)
+        : none;
     if (t1toT2._tag === "Some" && a1 !== undefined) @{
-      return bindGen(t1toT2.value(a1), (coerced) => applyGeneric(opName, coerced, a2));
+      return bindGen(
+        t1toT2.value(a1),
+        (coerced) => applyGeneric(opName, coerced, a2),
+      );
     @}
-    const t2toT1 = type1 !== undefined && type2 !== undefined ? getCoercion(type2, type1) : none;
+    const t2toT1 =
+      type1 !== undefined && type2 !== undefined
+        ? getCoercion(type2, type1)
+        : none;
     if (t2toT1._tag === "Some" && a2 !== undefined) @{
-      return bindGen(t2toT1.value(a2), (coerced) => applyGeneric(opName, a1, coerced));
+      return bindGen(
+        t2toT1.value(a2),
+        (coerced) => applyGeneric(opName, a1, coerced),
+      );
     @}
   @}
   return err(@{ _tag: "NoMethod", op: opName, tags: typeTags @});
@@ -648,7 +754,7 @@ triangle      right          |       \    |
 @image{../../text/original/figures/chap2/Fig2.26f,,147mm,Figure 2.26: Relations among types of geometric figures.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.26f.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.26f.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.26:} Relations among types of geometric figures.}
@@ -660,13 +766,17 @@ triangle      right          |       \    |
 if they already have the same type.  Therefore, he reasons, we need to put
 procedures in the coercion table to @newterm{coerce} arguments of each type to
 their own type.  For example, in addition to the
-@code{schemeNumberToComplex} coercion shown above, he would do:
+@code{tsNumberToComplex} coercion shown above, he would do:
 
 @example typescript
-const schemeNumberToSchemeNumber = (n: ArithDatum): Result<ArithDatum, GenError> => ok(n);
-const complexToComplex = (z: ArithDatum): Result<ArithDatum, GenError> => ok(z);
+const tsNumberToTsNumber = (
+  n: ArithDatum,
+): Result<ArithDatum, GenError> => ok(n);
+const complexToComplex = (
+  z: ArithDatum,
+): Result<ArithDatum, GenError> => ok(z);
 
-putCoercion("scheme-number", "scheme-number", schemeNumberToSchemeNumber);
+putCoercion("ts-number", "ts-number", tsNumberToTsNumber);
 
 putCoercion("complex", "complex", complexToComplex);
 @end example
@@ -675,23 +785,27 @@ putCoercion("complex", "complex", complexToComplex);
 
 @item
 With Louis's coercion procedures installed, what happens if
-@code{applyGeneric} is called with two arguments of type @code{scheme-number}
+@code{applyGeneric} is called with two arguments of type @code{ts-number}
 or two arguments of type @code{complex} for an operation that is not found in
 the table for those types?  For example, assume that we've defined a generic
 exponentiation operation:
 
 @example typescript
-export const exp = (x: ArithDatum, y: ArithDatum): Result<ArithDatum, GenError> =>
+export const exp = (
+  x: ArithDatum,
+  y: ArithDatum,
+): Result<ArithDatum, GenError> =>
   applyGeneric("exp", x, y);
 @end example
 
 @noindent
-and have put a procedure for exponentiation in the Scheme-number
+and have put a procedure for exponentiation in the ts-number
 package but not in any other package:
 
 @example typescript
-// the following added to the scheme-number package
-put("exp", ["scheme-number", "scheme-number"], bigintOp("exp", (x, y) => x ** y));
+// the following added to the ts-number package
+put("exp", ["ts-number", "ts-number"],
+  bigintOp("exp", (x, y) => x ** y));
 // the language's ** on exact integers
 @end example
 
@@ -887,13 +1001,29 @@ multiplication of polys:
 @example typescript
 export const addPoly = (p1: Poly, p2: Poly): Result<Poly, GenError> =>
   sameVariableQ(variableOf(p1), variableOf(p2))
-    ? mapGen(addTerms(termListOf(p1), termListOf(p2)), (terms) => makePoly(variableOf(p1), terms))
-    : err(@{ _tag: "NotSameVar", proc: "ADD-POLY", left: showPoly(p1), right: showPoly(p2) @});
+    ? mapGen(
+        addTerms(termListOf(p1), termListOf(p2)),
+        (terms) => makePoly(variableOf(p1), terms),
+      )
+    : err(@{
+        _tag: "NotSameVar",
+        proc: "add",
+        left: showPoly(p1),
+        right: showPoly(p2),
+      @});
 
 export const mulPoly = (p1: Poly, p2: Poly): Result<Poly, GenError> =>
   sameVariableQ(variableOf(p1), variableOf(p2))
-    ? mapGen(mulTerms(termListOf(p1), termListOf(p2)), (terms) => makePoly(variableOf(p1), terms))
-    : err(@{ _tag: "NotSameVar", proc: "MUL-POLY", left: showPoly(p1), right: showPoly(p2) @});
+    ? mapGen(
+        mulTerms(termListOf(p1), termListOf(p2)),
+        (terms) => makePoly(variableOf(p1), terms),
+      )
+    : err(@{
+        _tag: "NotSameVar",
+        proc: "mul",
+        left: showPoly(p1),
+        right: showPoly(p2),
+      @});
 @end example
 
 @noindent
@@ -907,7 +1037,10 @@ similar to the ones in @ref{2.5.1}:
 export const installPolynomialPackage = (): void => @{
   // internal procedures
   // representation of poly
-  const makePoly = (variable: string, termList: TermList): Poly => (@{ variable, termList @});
+  const makePoly = (
+    variable: string,
+    termList: TermList,
+  ): Poly => (@{ variable, termList @});
   const variableOf = (p: Poly): string => p.variable;
   const termListOf = (p: Poly): TermList => p.termList;
   ⟨@emph{procedures @code{sameVariableQ}
@@ -917,16 +1050,30 @@ export const installPolynomialPackage = (): void => @{
   ⟨@emph{procedures @code{adjoinTerm} @r{…} @code{coeffOf}
   from text below}⟩
 
-  const addPoly = (p1: Poly, p2: Poly): Result<Poly, GenError> => /* @r{…} */;
+  const addPoly = (
+    p1: Poly,
+    p2: Poly,
+  ): Result<Poly, GenError> => /* @r{…} */;
   ⟨@emph{procedures used by @code{addPoly}}⟩
-  const mulPoly = (p1: Poly, p2: Poly): Result<Poly, GenError> => /* @r{…} */;
+  const mulPoly = (
+    p1: Poly,
+    p2: Poly,
+  ): Result<Poly, GenError> => /* @r{…} */;
   ⟨@emph{procedures used by @code{mulPoly}}⟩
 
   // interface to rest of the system
   const tag = (p: Poly): Polynomial => attachTag("polynomial", p);
-  put("add", ["polynomial", "polynomial"], poly2("add", (p1, p2) => mapGen(addPoly(p1, p2), tag)));
-  put("mul", ["polynomial", "polynomial"], poly2("mul", (p1, p2) => mapGen(mulPoly(p1, p2), tag)));
-  put("make", ["polynomial"], @{ _tag: "MakePoly", fn: (variable: string, terms: TermList) => tag(makePoly(variable, terms)) @});
+  put("add", ["polynomial", "polynomial"],
+    poly2("add", (p1, p2) =>
+      mapGen(addPoly(p1, p2), tag)));
+  put("mul", ["polynomial", "polynomial"],
+    poly2("mul", (p1, p2) =>
+      mapGen(mulPoly(p1, p2), tag)));
+  put("make", ["polynomial"], @{
+    _tag: "MakePoly",
+    fn: (variable: string, terms: TermList) =>
+      tag(makePoly(variable, terms)),
+  @});
 @};
 @end example
 
@@ -953,13 +1100,16 @@ concrete representations we can worry about separately.
 
 Here is the procedure that constructs the term list for the sum of two
 polynomials:@footnote{This operation is very much like the ordered
-@code{union-set} operation we developed in @ref{Exercise 2.62}.  In
+@code{unionSet} operation we developed in @ref{Exercise 2.62}.  In
 fact, if we think of the terms of the polynomial as a set ordered according to
 the power of the indeterminate, then the program that produces the term list
-for a sum is almost identical to @code{union-set}.}
+for a sum is almost identical to @code{unionSet}.}
 
 @example typescript
-const addTerms = (L1: TermList, L2: TermList): Result<TermList, GenError> => @{
+const addTerms = (
+  L1: TermList,
+  L2: TermList,
+): Result<TermList, GenError> => @{
   if (isEmptyTermListQ(L1)) @{
     return ok(L2);
   @}
@@ -969,13 +1119,22 @@ const addTerms = (L1: TermList, L2: TermList): Result<TermList, GenError> => @{
   const t1 = firstTerm(L1);
   const t2 = firstTerm(L2);
   if (orderOf(t1) > orderOf(t2)) @{
-    return mapGen(addTerms(restTerms(L1), L2), (rest) => adjoinTerm(t1, rest));
+    return mapGen(
+      addTerms(restTerms(L1), L2),
+      (rest) => adjoinTerm(t1, rest),
+    );
   @}
   if (orderOf(t1) < orderOf(t2)) @{
-    return mapGen(addTerms(L1, restTerms(L2)), (rest) => adjoinTerm(t2, rest));
+    return mapGen(
+      addTerms(L1, restTerms(L2)),
+      (rest) => adjoinTerm(t2, rest),
+    );
   @}
   return bindGen(add(coeffOf(t1), coeffOf(t2)), (c) =>
-    mapGen(addTerms(restTerms(L1), restTerms(L2)), (rest) => adjoinTerm(makeTerm(orderOf(t1), c), rest)),
+    mapGen(
+      addTerms(restTerms(L1), restTerms(L2)),
+      (rest) => adjoinTerm(makeTerm(orderOf(t1), c), rest),
+    ),
   );
 @};
 @end example
@@ -994,16 +1153,25 @@ factors and whose coefficient is the product of the coefficients of the
 factors:
 
 @example typescript
-const mulTerms = (L1: TermList, L2: TermList): Result<TermList, GenError> => @{
+const mulTerms = (
+  L1: TermList,
+  L2: TermList,
+): Result<TermList, GenError> => @{
   if (isEmptyTermListQ(L1)) @{
     return ok(theEmptyTermList());
   @}
   return bindGen(mulTermByAllTerms(firstTerm(L1), L2), (product) =>
-    bindGen(mulTerms(restTerms(L1), L2), (rest) => addTerms(product, rest)),
+    bindGen(
+      mulTerms(restTerms(L1), L2),
+      (rest) => addTerms(product, rest),
+    ),
   );
 @};
 
-const mulTermByAllTerms = (t1: Term, L: TermList): Result<TermList, GenError> => @{
+const mulTermByAllTerms = (
+  t1: Term,
+  L: TermList,
+): Result<TermList, GenError> => @{
   if (isEmptyTermListQ(L)) @{
     return ok(theEmptyTermList());
   @}
@@ -1119,19 +1287,19 @@ is sparse.
 
 The term lists of dense polynomials are most efficiently represented as lists
 of the coefficients.  For example, @math{A} above would be nicely represented as
-@code{(1 2 0 3 -2 -5)}.  The order of a term in this representation is the
+@code{[1, 2, 0, 3, -2, -5]}.  The order of a term in this representation is the
 length of the sublist beginning with that term's coefficient, decremented by
 1.@footnote{In these polynomial examples, we assume that we have implemented
 the generic arithmetic system using the type mechanism suggested in
 @ref{Exercise 2.78}.  Thus, coefficients that are ordinary numbers will be
-represented as the numbers themselves rather than as pairs whose @code{car} is
-the symbol @code{scheme-number}.}  This would be a terrible representation for
+represented as the numbers themselves rather than as pairs whose head is the
+tag @code{ts-number}.}  This would be a terrible representation for
 a sparse polynomial such as @math{B}: There would be a giant list of zeros
 punctuated by a few lonely nonzero terms.  A more reasonable representation of
 the term list of a sparse polynomial is as a list of the nonzero terms, where
 each term is a list containing the order of the term and the coefficient for
 that order.  In such a scheme, polynomial @math{B} is efficiently represented as
-@code{((100 1) (2 2) (0 1))}.  As most polynomial manipulations are performed
+@code{[[100, 1], [2, 2], [0, 1]]}.  As most polynomial manipulations are performed
 on sparse polynomials, we will use this method.  We will assume that term lists
 are represented as lists of terms, arranged from highest-order to lowest-order
 term.  Once we have made this decision, implementing the selectors and
@@ -1142,32 +1310,42 @@ list.  We can get away with this so long as we guarantee that the procedures
 (such as @code{addTerms}) that use @code{adjoinTerm} always call it with a
 higher-order term than appears in the list.  If we did not want to make such a
 guarantee, we could have implemented @code{adjoinTerm} to be similar to the
-@code{adjoin-set} constructor for the ordered-list representation of sets
+@code{adjoinSet} constructor for the ordered-list representation of sets
 (@ref{Exercise 2.61}).}
 
 @example typescript
-export const adjoinTerm = (term: Term, termList: TermList): TermList => @{
+export const adjoinTerm = (
+  term: Term,
+  termList: TermList,
+): TermList => @{
   const z = isZeroQ(coeffOf(term));
   return z._tag === "Ok" && z.value ? termList : [term, ...termList];
 @};
 export const theEmptyTermList = (): TermList => [];
-export const firstTerm = (termList: TermList): Term => termList[0] as Term;
-export const restTerms = (termList: TermList): TermList => termList.slice(1);
-export const isEmptyTermListQ = (termList: TermList): boolean => termList.length === 0;
-export const makeTerm = (order: bigint, coeff: ArithDatum): Term => [order, coeff];
+export const firstTerm = (termList: TermList): Term =>
+  termList[0] as Term;
+export const restTerms = (termList: TermList): TermList =>
+  termList.slice(1);
+export const isEmptyTermListQ = (termList: TermList): boolean =>
+  termList.length === 0;
+export const makeTerm = (order: bigint, coeff: ArithDatum): Term =>
+  [order, coeff];
 export const orderOf = (term: Term): bigint => term[0];
 export const coeffOf = (term: Term): ArithDatum => term[1];
 @end example
 
 @noindent
-where @code{=zero?} is as defined in @ref{Exercise 2.80}.  (See also
+where @code{isZeroQ} is as defined in @ref{Exercise 2.80}.  (See also
 @ref{Exercise 2.87} below.)
 
 Users of the polynomial package will create (tagged) polynomials by means of
 the procedure:
 
 @example typescript
-export const makePolynomial = (variable: string, terms: TermList): Polynomial => @{
+export const makePolynomial = (
+  variable: string,
+  terms: TermList,
+): Polynomial => @{
   const e = get("make", ["polynomial"]);
   if (e._tag === "Some" && e.value._tag === "MakePoly") @{
     return e.value.fn(variable, terms);
@@ -1177,7 +1355,7 @@ export const makePolynomial = (variable: string, terms: TermList): Polynomial =>
 @end example
 
 @quotation
-@strong{@anchor{Exercise 2.87}Exercise 2.87:} Install @code{=zero?} for
+@strong{@anchor{Exercise 2.87}Exercise 2.87:} Install @code{isZeroQ} for
 polynomials in the generic arithmetic package.  This will allow
 @code{adjoinTerm} to work for polynomials with coefficients that are
 themselves polynomials.
@@ -1400,8 +1578,13 @@ Using this, we could make the obvious modification to define a @abbr{GCD}
 operation that works on term lists:
 
 @example typescript
-const gcdTerms = (a: TermList, b: TermList): Result<TermList, GenError> =>
-  isEmptyTermListQ(b) ? ok(a) : bindGen(remainderTerms(a, b), (r) => gcdTerms(b, r));
+const gcdTerms = (
+  a: TermList,
+  b: TermList,
+): Result<TermList, GenError> =>
+  isEmptyTermListQ(b)
+    ? ok(a)
+    : bindGen(remainderTerms(a, b), (r) => gcdTerms(b, r));
 @end example
 
 @noindent
@@ -1419,12 +1602,15 @@ polys are not in the same variable.)  Install in the system a generic operation
 and to ordinary @code{gcd} for ordinary numbers.  As a test, try
 
 @example typescript
-const p1 = makePolynomial("x", [[4n, 1n], [3n, -1n], [2n, -2n], [1n, 2n]]);
+const p1 = makePolynomial(
+  "x",
+  [[4n, 1n], [3n, -1n], [2n, -2n], [1n, 2n]],
+);
 
 const p2 = makePolynomial("x", [[3n, 1n], [1n, -1n]]);
 
-greatestCommonDivisor(p1, p2)
-// => (polynomial x (2 -1) (1 1))
+show(greatestCommonDivisor(p1, p2))
+// => "[polynomial, x, [2, -1], [1, 1]]"
 @end example
 
 @noindent
@@ -1563,7 +1749,10 @@ Define a procedure analogous to @code{reduceTerms} that does what the original
 @code{makeRat} did for integers:
 
 @example typescript
-const reduceIntegers = (n: bigint, d: bigint): readonly [bigint, bigint] => @{
+const reduceIntegers = (
+  n: bigint,
+  d: bigint,
+): readonly [bigint, bigint] => @{
   const g = gcdInteger(n, d);
   return [n / g, d / g];
 @};
@@ -1571,24 +1760,24 @@ const reduceIntegers = (n: bigint, d: bigint): readonly [bigint, bigint] => @{
 
 and define @code{reduce} as a generic operation that calls @code{applyGeneric}
 to dispatch to either @code{reducePoly} (for @code{polynomial} arguments) or
-@code{reduceIntegers} (for @code{scheme-number} arguments).  You can now
+@code{reduceIntegers} (for @code{ts-number} arguments).  You can now
 easily make the rational-arithmetic package reduce fractions to lowest terms by
 having @code{makeRatFn} call @code{reduce} before combining the given numerator
 and denominator to form a rational number.  The system now handles rational
 expressions in either integers or polynomials.  To test your program, try the
 example at the beginning of this extended exercise:
 
-@example typescript
+@smallexample
 const p1 = makePolynomial("x", [[1n, 1n], [0n, 1n]]);
 const p2 = makePolynomial("x", [[3n, 1n], [0n, -1n]]);
 const p3 = makePolynomial("x", [[1n, 1n]]);
 const p4 = makePolynomial("x", [[2n, 1n], [0n, -1n]]);
 const rf1 = makeRatFn(p1, p2);
 const rf2 = makeRatFn(p3, p4);
-addRatFn97(rf1, rf2)
-// => (rational (polynomial x (3 1) (2 2) (1 3) (0 1))
-//              (polynomial x (4 1) (3 1) (1 -1) (0 -1)))
-@end example
+show(addRatFn97(rf1, rf2))
+// => "[rational, [polynomial, x, [3, 1], [2, 2], [1, 3], [0, 1]],
+//     [polynomial, x, [4, 1], [3, 1], [1, -1], [0, -1]]]"
+@end smallexample
 
 See if you get the correct answer, correctly reduced to lowest terms.
 @end enumerate

@@ -12,6 +12,11 @@ public class E5_42Test :
         test("Exercise 5.42: the lexical accesses are shown and the applied example answers through them").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            lexicalAccessRuns() shouldBe emptyList()
+            lexicalAccessRuns() shouldBe
+                listOf(
+                    "every name resolves to an address: true",
+                    "the addresses are distinct: true",
+                    "the lookups answer the bound values: true",
+                )
         }
     })

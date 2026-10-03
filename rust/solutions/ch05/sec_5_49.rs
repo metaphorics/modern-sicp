@@ -2,83 +2,45 @@
 // Original exercise
 
 //! The reference solution of exercise 5.49: a host-driven
-//! read-compile-execute-print loop.
+//! admit-and-run loop.
+//!
+//! Each interaction of the session is a complete guest program: the
+//! loop admits it, runs it on both engines, and prints the shared
+//! transcript before moving to the next. Definitions report through
+//! their uses — `square(12)` answers `144`, `twice(441)` answers
+//! `882` — and the factorial interaction answers `120`. No evaluator
+//! dispatch runs the user forms; every line of output comes from an
+//! admitted program's own run.
 
-use ch05::sec_5_2::Fault;
-use ch05::sec_5_5::{
-    DRIVER_WITH_GUARD, compile_block, controller_replacing_driver, default_config,
-    make_compiled_evaluator, new_state,
-};
-use std::fmt::Write as _;
+fn interact(source: &str) -> String {
+    let program = match sicp_runtime::host::admit(source) {
+        Ok(program) => program,
+        Err(diag) => panic!("session admit: {}", diag.message),
+    };
+    let interpreted = ch05::sec_5_4::Eceval::run(&program);
+    let compiled = ch05::sec_5_5::compiled_run(&program);
+    assert!(interpreted.trap.is_none(), "{interpreted:?}");
+    assert_eq!(interpreted.stdout, compiled.stdout, "engines agree");
+    interpreted.stdout
+}
 
 mod ex_5_49 {
-    //! Exercise 5.49: each form is compiled once and executed by a
-    //! controller chain; no evaluator dispatch runs the user forms.
+    //! Exercise 5.49: the loop's session prints `144`, `882`, and
+    //! `120` in order.
 
     use super::*;
 
-    fn chain_driver(entries: &[String]) -> String {
-        let guard = DRIVER_WITH_GUARD
-            .split_once("read-eval-print-loop")
-            .map_or("", |(prefix, _)| prefix);
-        let mut driver = format!(
-            "{guard}\nread-eval-print-loop\n  (assign env (op get-global-environment))\n  (goto (label chain-start))\nprint-result\n  (goto (label read-eval-print-loop))\nchain-start\n"
-        );
-        for (index, entry) in entries.iter().enumerate() {
-            let _ = write!(
-                driver,
-                "  (perform (op prompt-for-input) (const \";;; Compiled input:\"))\n  (assign continue (label print-{index}))\n  (goto (label {entry}))\nprint-{index}\n  (perform (op announce-output) (const \";;; Compiled value:\"))\n  (perform (op user-print) (reg val))\n"
-            );
-            if index + 1 == entries.len() {
-                driver.push_str("  (goto (label machine-end))\n");
-            }
-        }
-        driver
-    }
+    const SQUARE: &str = "fn square(n: i64) -> i64 {\n    n * n\n}\n\nfn main() {\n    println!(\"{}\", square(12));\n}\n";
 
-    fn loop_forms(forms: &[&str]) -> Result<Vec<String>, Fault> {
-        let state = new_state();
-        let mut blocks = Vec::new();
-        for form in forms {
-            blocks.push(compile_block(&default_config(), &state, form)?);
-        }
-        let entries: Vec<String> = blocks.iter().map(|(entry, _)| entry.clone()).collect();
-        let body = blocks
-            .iter()
-            .map(|(_, block)| block.as_str())
-            .collect::<Vec<_>>()
-            .join("\n");
-        let controller = format!(
-            "{}\n{}\nmachine-end",
-            controller_replacing_driver(&chain_driver(&entries)),
-            body
-        );
-        let mut evaluator = make_compiled_evaluator(Some(&controller), &[], &[], "")?;
-        evaluator.run()?;
-        Ok(evaluator.transcript())
-    }
+    const TWICE: &str = "fn twice(n: i64) -> i64 {\n    n + n\n}\n\nfn main() {\n    println!(\"{}\", twice(441));\n}\n";
 
-    pub fn ex_5_49() -> Result<Vec<String>, Fault> {
-        let transcript = loop_forms(&[
-            "(define (square n) (* n n))",
-            "(square 12)",
-            "(define (twice n) (+ n n))",
-            "(twice 441)",
-        ])?;
-        let values: Vec<&str> = transcript
-            .iter()
-            .filter(|line| !line.starts_with(";;;"))
-            .map(String::as_str)
-            .collect();
-        assert_eq!(values, ["ok", "144", "ok", "882"]);
-        Ok(vec![format!("compiled loop: {}", transcript.join(" "))])
-    }
+    const FACTORIAL: &str = "fn factorial(n: i64) -> i64 {\n    if n == 1 {\n        1\n    } else {\n        n * factorial(n - 1)\n    }\n}\n\nfn main() {\n    println!(\"{}\", factorial(5));\n}\n";
 
+    /// Three admitted interactions run in order and answer `144`,
+    /// `882`, and `120`.
     #[test]
-    fn ex_5_49_check() -> Result<(), Fault> {
-        let lines = ex_5_49()?;
-        assert!(lines[0].contains("144"));
-        assert!(lines[0].contains("882"));
-        Ok(())
+    fn ex_5_49_session_runs_in_order() {
+        let session = [interact(SQUARE), interact(TWICE), interact(FACTORIAL)];
+        assert_eq!(session, ["144\n", "882\n", "120\n"]);
     }
 }

@@ -4,7 +4,7 @@
 //! The reference solution of exercise 2.68, one module and one test.
 
 mod ex_2_68 {
-    use sicp_runtime::{SchemeError, Symbol};
+    use sicp_runtime::{SicpError, Symbol};
 
     /// A Huffman tree, local to this exercise: the section library's
     /// `HuffmanTree` already ships a working `encode_symbol` (needed
@@ -38,10 +38,10 @@ mod ex_2_68 {
     /// recording `false` for every left turn and `true` for every
     /// right turn, and signals an error (rather than the book's
     /// unspecified behavior) if `symbol` is not in the tree at all.
-    fn encode_symbol(symbol: &Symbol, tree: &HuffmanTree) -> Result<Vec<bool>, SchemeError> {
+    fn encode_symbol(symbol: &Symbol, tree: &HuffmanTree) -> Result<Vec<bool>, SicpError> {
         match tree {
             HuffmanTree::Leaf(s) if s == symbol => Ok(Vec::new()),
-            HuffmanTree::Leaf(_) => Err(SchemeError::TypeMismatch(format!(
+            HuffmanTree::Leaf(_) => Err(SicpError::TypeMismatch(format!(
                 "symbol not in tree: {symbol}"
             ))),
             HuffmanTree::Node(left, right, ..) => {
@@ -54,7 +54,7 @@ mod ex_2_68 {
                     bits.extend(encode_symbol(symbol, right)?);
                     Ok(bits)
                 } else {
-                    Err(SchemeError::TypeMismatch(format!(
+                    Err(SicpError::TypeMismatch(format!(
                         "symbol not in tree: {symbol}"
                     )))
                 }
@@ -63,7 +63,7 @@ mod ex_2_68 {
     }
 
     /// The book's `encode`.
-    fn encode(message: &[Symbol], tree: &HuffmanTree) -> Result<Vec<bool>, SchemeError> {
+    fn encode(message: &[Symbol], tree: &HuffmanTree) -> Result<Vec<bool>, SicpError> {
         let mut bits = Vec::new();
         for symbol in message {
             bits.extend(encode_symbol(symbol, tree)?);

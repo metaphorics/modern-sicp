@@ -1,125 +1,91 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
+import { type Binding, type Cell, makeCell } from "../../packages/ch4/src/runtime/env.js";
 /**
- * Exercise 4.11: frames as association lists. A frame is a list of
- * (name value) bindings held in a Ref, and the environment operations are
- * rewritten over that representation: lookup searches one frame's entries
- * before walking the chain, set! rewrites the first frame that binds the
- * name, and define conses a new binding onto the current frame. The
- * edition's pairs are proper lists, so a binding is the two-element list
- * (name value).
+ * Exercise 4.11: frames as association lists. A frame becomes one list
+ * of name-cell bindings instead of two parallel maps: `AListEnv` holds
+ * an ordered `Binding` list plus its parent. Lookup scans the current
+ * frame's entries and walks the parent chain when absent; set finds the
+ * first frame binding the name and rewrites that entry's cell in place;
+ * define conses a fresh binding onto the current frame, shadowing outer
+ * ones; `frameVariables` reports a frame's own names, in binding order.
+ * The edition's own frames stay untouched: this file re-derives the same
+ * visible semantics over the book's representation.
  */
-import { Effect, Option, Ref } from "effect";
+import type { Outcome } from "../../packages/ch4/src/runtime/errors.js";
+import { fail, ok } from "../../packages/ch4/src/runtime/errors.js";
+import type { Value } from "../../packages/ch4/src/runtime/value.js";
 
-import { symbol } from "../../packages/ch4/src/01-metacircular.js";
-import type { SymbolValue, Value } from "../../packages/ch4/src/core.js";
-import { type EvaluationError, UnboundVariable } from "../../packages/ch4/src/errors.js";
-import { cons, type List, list, nil } from "../../packages/ch4/src/list.js";
-
-/** One frame: the book's list of (name value) bindings, in a Ref so that
- * define and set! can write it and every holder of the chain sees it. */
-export type AssocFrame = Ref.Ref<List<Value>>;
-
-/** The book's environment shape: a frame plus the enclosing environment. */
-export interface AssocEnv {
-  readonly frame: AssocFrame;
-  readonly parent: Option.Option<AssocEnv>;
+/** One frame: an association list of name-cell bindings, plus its parent. */
+export interface AListEnv {
+  readonly bindings: Binding[];
+  readonly parent: AListEnv | null;
 }
 
-export const makeFrame = (): Effect.Effect<AssocFrame> => Ref.make<List<Value>>(nil);
+/** A fresh empty frame extending `parent`. */
+export const makeAListEnv = (parent: AListEnv | null = null): AListEnv => ({
+  bindings: [],
+  parent,
+});
 
-export const makeGlobalAssocEnv = (): Effect.Effect<AssocEnv> =>
-  Effect.map(makeFrame(), (frame) => ({ frame, parent: Option.none() }));
-
-export const makeAssocEnv = (parent: AssocEnv): Effect.Effect<AssocEnv> =>
-  Effect.map(makeFrame(), (frame) => ({ frame, parent: Option.some(parent) }));
-
-const bindingName = (entry: Value): string | undefined =>
-  entry._tag === "Cons" && entry.head._tag === "Symbol" ? entry.head.name : undefined;
-
-const bindingValue = (entry: Value): Value =>
-  entry._tag === "Cons" && entry.tail._tag === "Cons" ? entry.tail.head : nil;
-
-const findInFrame = (bindings: List<Value>, name: string): Option.Option<Value> => {
-  let rest = bindings;
-  while (rest._tag === "Cons") {
-    if (bindingName(rest.head) === name) {
-      return Option.some(bindingValue(rest.head));
+/** The cell bound to `name` in this frame only. */
+const ownCell = (env: AListEnv, name: string): Cell | undefined => {
+  for (const binding of env.bindings) {
+    if (binding.name === name) {
+      return binding.cell;
     }
-    rest = rest.tail;
   }
-  return Option.none();
+  return undefined;
 };
 
-/** The frame's names, newest binding first. */
-export const frameVariables = (frame: AssocFrame): Effect.Effect<List<Value>> =>
-  Effect.map(Ref.get(frame), (bindings) => {
-    const names: Value[] = [];
-    let rest = bindings;
-    while (rest._tag === "Cons") {
-      names.push(symbol(bindingName(rest.head) ?? "<malformed>"));
-      rest = rest.tail;
+/** The book's `lookup-variable-value` over association-list frames. */
+export const lookupInAList = (name: string, env: AListEnv): Outcome => {
+  let frame: AListEnv | null = env;
+  while (frame !== null) {
+    const cell = ownCell(frame, name);
+    if (cell !== undefined) {
+      return cell.initialized ? ok(cell.value) : fail({ tag: "tdz-access", name });
     }
-    return names.reduceRight<List<Value>>((tail, head) => cons(head, tail), nil);
-  });
-
-/** One more binding, consed onto this frame. */
-export const addBindingToFrameAssoc = (
-  frame: AssocFrame,
-  variable: SymbolValue,
-  value: Value,
-): Effect.Effect<void> => Ref.update(frame, (bindings) => cons(list(variable, value), bindings));
-
-export const lookupVariableValueAssoc = (
-  variable: SymbolValue,
-  env: AssocEnv,
-): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(Ref.get(env.frame), (bindings) => {
-    const own = findInFrame(bindings, variable.name);
-    if (Option.isSome(own)) {
-      return Effect.succeed(own.value);
-    }
-    const parent = env.parent;
-    if (Option.isNone(parent)) {
-      return Effect.fail(new UnboundVariable({ name: variable.name }));
-    }
-    return lookupVariableValueAssoc(variable, parent.value);
-  });
-
-const withReplacedBinding = (bindings: List<Value>, name: string, value: Value): List<Value> => {
-  if (bindings._tag === "Nil") {
-    return bindings;
+    frame = frame.parent;
   }
-  if (bindingName(bindings.head) === name) {
-    return cons(list(symbol(name), value), bindings.tail);
-  }
-  return cons(bindings.head, withReplacedBinding(bindings.tail, name, value));
+  return fail({ tag: "unbound-name", name });
 };
 
-export const setVariableValueAssoc = (
-  variable: SymbolValue,
-  value: Value,
-  env: AssocEnv,
-): Effect.Effect<void, EvaluationError> =>
-  Effect.flatMap(Ref.get(env.frame), (bindings) => {
-    if (Option.isSome(findInFrame(bindings, variable.name))) {
-      return Ref.update(env.frame, (current) => withReplacedBinding(current, variable.name, value));
+/** The book's `set-variable-value!`: rewrite the first entry that binds the name. */
+export const setInAList = (name: string, value: Value, env: AListEnv): Outcome => {
+  let frame: AListEnv | null = env;
+  while (frame !== null) {
+    const cell = ownCell(frame, name);
+    if (cell !== undefined) {
+      if (!cell.mutable) {
+        return fail({ tag: "bad-operand", operator: "=", detail: "assignment to a const binding" });
+      }
+      cell.value = value;
+      cell.initialized = true;
+      return ok(value);
     }
-    const parent = env.parent;
-    if (Option.isNone(parent)) {
-      return Effect.fail(new UnboundVariable({ name: variable.name }));
-    }
-    return setVariableValueAssoc(variable, value, parent.value);
-  });
+    frame = frame.parent;
+  }
+  return fail({ tag: "unbound-name", name });
+};
 
-/** Defines in this frame, shadowing outer ones. */
-export const defineVariableValueAssoc = (
-  variable: SymbolValue,
-  value: Value,
-  env: AssocEnv,
-): Effect.Effect<void> => addBindingToFrameAssoc(env.frame, variable, value);
+/** The book's `define-variable!`: cons a fresh binding onto the current frame. */
+export const defineInAList = (name: string, value: Value, env: AListEnv, mutable = true): void => {
+  env.bindings.unshift({ name, cell: makeCell(value, true, mutable) });
+};
+
+/** The frame's own names, in binding order (newest first). */
+export const frameVariables = (env: AListEnv): ReadonlyArray<string> =>
+  env.bindings.map((binding) => binding.name);
 
 export function ex_4_11(): string {
-  return "A frame can be an association list instead of two parallel lists: one list of (name value) bindings, searched entry by entry. lookup-variable-value scans each frame's entries and then the chain; set-variable-value! rewrites the entries of the first frame that binds the name, so the write lands in the shared frame exactly as before; define-variable! conses the new binding onto the current frame. Behavior is unchanged, only the representation moved.";
+  return (
+    "A frame is one list of name-cell bindings: lookup scans the entries of the current " +
+    "frame and walks the parent chain when absent, set rewrites the first entry that binds " +
+    "the name, define conses a fresh binding onto the current frame, and frameVariables " +
+    "reports the frame's own names. With a = 1 outer and b = 2 inner, lookup answers 2, 1, " +
+    "and unbound-name for zz; a write to a lands in the outer entry and reads back 10; " +
+    "defining c leaves the inner frame as [c, b] and the outer as [a]."
+  );
 }

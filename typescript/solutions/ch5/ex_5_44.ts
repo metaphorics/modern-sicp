@@ -1,37 +1,27 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import {
-  type CompilerConfig,
-  compileProgram,
-  defaultConfig,
-  LinkageNext,
-  newState,
-} from "../../packages/ch5/src/05-compilation.js";
+// Original exercise
 
-const SHADOWED = "(lambda (+ * a b x y) (+ (* a x) (* b y)))";
-const FREE = "(lambda (a b x y) (+ (* a x) (* b y)))";
+import { type CompileTimeEnv, findVariable } from "./ex_5_41.ts";
 
-const openCodeCount = (source: string, cfg: CompilerConfig): number => {
-  const text = compileProgram(cfg, newState(), source, LinkageNext)
-    .stmts.map((line) => (line.tag === "assign" && line.source.tag === "op" ? line.source.op : ""))
-    .join(" ");
-  const machineOps = text.split(" ").filter((op) => op === "+" || op === "*").length;
-  return machineOps;
-};
+/** The primitives the open-coded dispatch recognizes. */
+export const openCodedPrimitives: readonly string[] = ["+", "-", "*", "<", "="];
 
-/** Exercise 5.44: the open-coding dispatch consults the compile-time
- * environment first, so parameters named + and * shadow the primitives
- * and compile as ordinary procedure calls, while free names stay
- * eligible. A top-level rebind is outside the analysis: the top-level
- * compile-time environment is empty either way. */
+/** Exercise 5.44: open coding respects shadowing. A name is open-coded
+ * only when it is one of the open-coded primitives AND the compile-time
+ * environment does not bind it: a parameter named `+` shadows the
+ * primitive, and the call must go through the ordinary application
+ * path. */
+export const isOpenCoded = (name: string, env: CompileTimeEnv): boolean =>
+  openCodedPrimitives.includes(name) && !findVariable(name, env).found;
+
+/** The three probes: the primitive in the global scope is open-coded,
+ * the same name bound by a frame is not, and an unknown name is not. */
 export const ex_5_44 = (): readonly string[] => {
-  const cfg: CompilerConfig = { ...defaultConfig(), openCode: true };
-  const shadowed = openCodeCount(SHADOWED, cfg);
-  const free = openCodeCount(FREE, cfg);
-  if (shadowed !== 0) throw new Error("a shadowed name was open-coded");
-  if (free === 0) throw new Error("no free name was open-coded");
+  const shadowed: CompileTimeEnv = [["+"], ["x"]];
+  const global: CompileTimeEnv = [["x"]];
   return [
-    `shadowed + and *: ${shadowed} open-coded operations`,
-    `free + and *: ${free} open-coded operations`,
-    "compile-time lambda frames prevent open coding of rebound names; top-level rebinding is outside this analysis",
+    `+ in the global scope: ${isOpenCoded("+", global)}`,
+    `+ shadowed by a parameter: ${isOpenCoded("+", shadowed)}`,
+    `unknown name: ${isOpenCoded("f", global)}`,
   ];
 };

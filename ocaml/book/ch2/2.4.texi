@@ -94,7 +94,7 @@ and install alternative representations.
 @image{../../text/original/figures/chap2/Fig2.19a,,147mm,Figure 2.19: Data-abstraction barriers in the complex-number system.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.19a.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.19a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.19:} Data-abstraction barriers in the complex-number system.}
@@ -180,7 +180,7 @@ Imaginary-part(z_1 + z_2) = Imaginary-part(z_1) + Imaginary-part(z_2)
 @image{../../text/original/figures/chap2/Fig2.20,,147mm,Figure 2.20: Complex numbers as points in the plane.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.20.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.20.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.20:} Complex numbers as points in the plane.}
@@ -250,11 +250,11 @@ numbers using the ``abstract data'' specified by the constructors and
 selectors, just as we did for rational numbers in @ref{2.1.1}.  As
 shown in the formulas above, we can add and subtract complex numbers in terms
 of real and imaginary parts while multiplying and dividing complex numbers in
-terms of magnitudes and angles.  Scheme lets @code{add-complex} name
-@code{real-part} before any representation has defined it, trusting the
-discussion to supply a definition by the time @code{add-complex} is actually
-called.  OCaml resolves a name where it is written, not when it is called, so
-this edition states the assumption as an explicit parameter instead: a record
+terms of magnitudes and angles.  OCaml resolves a name where it is written,
+so the assumption that a representation supplies
+these four selectors and two constructors must be stated before the arithmetic
+uses them.  This edition states the assumption as an explicit parameter: a
+record
 bundling the four selectors and the two constructors a representation
 supplies.
 
@@ -336,8 +336,9 @@ computed by OCaml's @code{atan2} function, is defined so as to take two
 arguments @math{y} and @math{x} and to return the angle whose tangent is @math{{y / x}}.
 The signs of the arguments determine the quadrant of the angle.}  Ben's
 representation is therefore given by the following selectors and constructors,
-gathered into a module because OCaml, unlike Scheme, cannot let a second
-representation reuse these same six names at the top level of one file:
+gathered into a module because OCaml gives one file a single shared top level,
+where a second
+representation cannot reuse these same six names:
 
 @example ocaml
 module Rectangular = struct
@@ -367,7 +368,8 @@ module Polar = struct
   let real_part (r, a) = r *. cos a
   let imag_part (r, a) = r *. sin a
   let make_from_mag_ang r a : t = r, a
-  let make_from_real_imag x y : t = sqrt ((x *. x) +. (y *. y)), atan2 y x
+  let make_from_real_imag x y : t =
+    sqrt ((x *. x) +. (y *. y)), atan2 y x
 end
 @end example
 
@@ -490,17 +492,20 @@ procedures Ben wrote when he was working in isolation, unwrapping the
 @example ocaml
 let real_part_rectangular = function
   | Pair (x, y) -> Rectangular.real_part (x, y)
-  | Num _ | Tagged _ -> invalid_arg "real_part_rectangular: expected a pair"
+  | Num _ | Tagged _ ->
+    invalid_arg "real_part_rectangular: expected a pair"
 ;;
 
 let imag_part_rectangular = function
   | Pair (x, y) -> Rectangular.imag_part (x, y)
-  | Num _ | Tagged _ -> invalid_arg "imag_part_rectangular: expected a pair"
+  | Num _ | Tagged _ ->
+    invalid_arg "imag_part_rectangular: expected a pair"
 ;;
 
 let magnitude_rectangular = function
   | Pair (x, y) -> Rectangular.magnitude (x, y)
-  | Num _ | Tagged _ -> invalid_arg "magnitude_rectangular: expected a pair"
+  | Num _ | Tagged _ ->
+    invalid_arg "magnitude_rectangular: expected a pair"
 ;;
 
 let angle_rectangular = function
@@ -599,10 +604,9 @@ Finally, we must choose whether to construct complex numbers using Ben's
 representation or Alyssa's representation.  One reasonable choice is to
 construct rectangular numbers whenever we have real and imaginary parts and to
 construct polar numbers whenever we have magnitudes and angles.  This edition
-states the choice here, before @code{add_complex}, which calls it; Scheme's
-discussion can state the choice afterward, because Scheme resolves
-@code{make-from-real-imag} at the moment @code{add-complex} is called, not at
-the moment @code{add-complex} is defined.
+states the choice here, before @code{add_complex}, which calls it: OCaml
+resolves a name where it is written, so the choice cannot be deferred until
+after its first use.
 
 @example ocaml
 let make_from_real_imag x y = make_from_real_imag_rectangular x y
@@ -621,7 +625,9 @@ procedure @code{add_complex} is still
 
 @example ocaml
 let add_complex z1 z2 =
-  make_from_real_imag (real_part z1 +. real_part z2) (imag_part z1 +. imag_part z2)
+  make_from_real_imag
+    (real_part z1 +. real_part z2)
+    (imag_part z1 +. imag_part z2)
 ;;
 @end example
 
@@ -662,7 +668,7 @@ interface.
 @image{../../text/original/figures/chap2/Fig2.21a,,147mm,Figure 2.21: Structure of the generic complex-arithmetic system.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.21a.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.21a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.21:} Structure of the generic complex-arithmetic system.}
@@ -750,7 +756,7 @@ angle      | angle_polar     | angle_rectangular
 @image{../../text/original/figures/chap2/Fig2.22,,147mm,Figure 2.22: Table of operations for the complex-number system.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.22.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.22.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.22:} Table of operations for the complex-number system.}
@@ -819,13 +825,17 @@ let install_rectangular_package () =
     | [ Pair (x, y) ] -> Num (Rectangular.angle (x, y))
     | _ -> invalid_arg "angle: rectangular expects one pair");
   put "make_from_real_imag" [ "rectangular" ] (function
-    | [ Num x; Num y ] -> Tagged (attach_tag "rectangular" (Pair (x, y)))
-    | _ -> invalid_arg "make_from_real_imag: rectangular expects two numbers");
+    | [ Num x; Num y ] ->
+      Tagged (attach_tag "rectangular" (Pair (x, y)))
+    | _ ->
+      invalid_arg
+        "make_from_real_imag: rectangular expects two numbers");
   put "make_from_mag_ang" [ "rectangular" ] (function
     | [ Num r; Num a ] ->
       let x, y = Rectangular.make_from_mag_ang r a in
       Tagged (attach_tag "rectangular" (Pair (x, y)))
-    | _ -> invalid_arg "make_from_mag_ang: rectangular expects two numbers")
+    | _ ->
+      invalid_arg "make_from_mag_ang: rectangular expects two numbers")
 ;;
 @end example
 
@@ -884,13 +894,10 @@ The complex-arithmetic selectors access the table by means of a general
 ``operation'' procedure called @code{apply_generic}, which applies a generic
 operation to some arguments.  @code{apply_generic} looks in the table under the
 name of the operation and the types of the arguments and applies the resulting
-procedure if one is present:@footnote{Scheme's @code{apply-generic} uses the
-dotted-tail notation described in @ref{Exercise 2.20}, because different
-generic operations may take different numbers of arguments, and calls the
-primitive procedure @code{apply} to spread the collected argument list back
-out over the retrieved procedure's parameters.  OCaml's @code{apply_generic}
-needs neither device: @code{args} is an ordinary @code{value list} parameter,
-already the list @code{apply} would have spread, and the procedures @code{put}
+procedure if one is present:@footnote{Different generic operations take
+different numbers of arguments.  OCaml's @code{apply_generic} takes the
+operation name and one @code{value list} parameter, already a list of
+arguments of any length, and the procedures @code{put}
 stores are themselves single-argument functions over that list, so
 @code{apply_generic} calls the retrieved procedure directly.}
 
@@ -898,7 +905,8 @@ stores are themselves single-argument functions over that list, so
 let apply_generic op args =
   let untag = function
     | Tagged t -> t
-    | Num _ | Pair _ -> invalid_arg (op ^ ": apply_generic expects tagged arguments")
+    | Num _ | Pair _ ->
+      invalid_arg (op ^ ": apply_generic expects tagged arguments")
   in
   let tagged_args = List.map untag args in
   let type_tags = List.map type_tag tagged_args in
@@ -951,13 +959,16 @@ let as_tagged = function
 let make_from_real_imag x y =
   match get "make_from_real_imag" [ "rectangular" ] with
   | Some proc -> as_tagged (proc [ Num x; Num y ])
-  | None -> invalid_arg "make_from_real_imag: no rectangular constructor installed"
+  | None ->
+    invalid_arg
+      "make_from_real_imag: no rectangular constructor installed"
 ;;
 
 let make_from_mag_ang r a =
   match get "make_from_mag_ang" [ "polar" ] with
   | Some proc -> as_tagged (proc [ Num r; Num a ])
-  | None -> invalid_arg "make_from_mag_ang: no polar constructor installed"
+  | None ->
+    invalid_arg "make_from_mag_ang: no polar constructor installed"
 ;;
 @end example
 
@@ -972,7 +983,9 @@ let rec deriv exp var =
   | Var v -> if String.equal v var then Const 1 else Const 0
   | Sum (a1, a2) -> make_sum (deriv a1 var) (deriv a2 var)
   | Prod (m1, m2) ->
-    make_sum (make_product m1 (deriv m2 var)) (make_product (deriv m1 var) m2)
+    make_sum
+      (make_product m1 (deriv m2 var))
+      (make_product (deriv m1 var) m2)
 ;;
 @end example
 
@@ -993,12 +1006,14 @@ type expr =
 
 let operator = function
   | Compound (op, _) -> op
-  | Const _ | Var _ -> invalid_arg "operator: not a compound expression"
+  | Const _ | Var _ ->
+    invalid_arg "operator: not a compound expression"
 ;;
 
 let operands = function
   | Compound (_, args) -> args
-  | Const _ | Var _ -> invalid_arg "operands: not a compound expression"
+  | Const _ | Var _ ->
+    invalid_arg "operands: not a compound expression"
 ;;
 
 let rec deriv table exp var =
@@ -1008,7 +1023,10 @@ let rec deriv table exp var =
   | Compound (op, args) ->
     (match Hashtbl.find_opt table op with
      | Some rule -> rule (fun e v -> deriv table e v) args var
-     | None -> invalid_arg (Printf.sprintf "deriv: unknown expression type: %s" op))
+     | None ->
+       invalid_arg
+         (Printf.sprintf
+            "deriv: unknown expression type: %s" op))
 ;;
 @end example
 
@@ -1033,7 +1051,9 @@ operator that binds it together.  Suppose, however, we indexed the procedures
 in the opposite way, so that the dispatch line in @code{deriv} looked like
 
 @example ocaml
-(Hashtbl.find_opt (Hashtbl.find operator_tables (operator exp)) "deriv") args var
+(Hashtbl.find_opt
+   (Hashtbl.find operator_tables (operator exp))
+   "deriv") args var
 @end example
 
 @noindent

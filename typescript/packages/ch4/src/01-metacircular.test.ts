@@ -1,245 +1,88 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Adapted-from-SICP: section 4.1
+// Original exercise
 
-import { it } from "@effect/vitest";
-import { Effect } from "effect";
-import { describe, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import { runEvaluator } from "../../ch5/src/04-eceval.ts";
+import { compileAndRun } from "../../ch5/src/05-compilation.ts";
+import { runAnalyzedSource, runSource, Session } from "./01-metacircular.ts";
+import { makeRecord } from "./runtime/value.ts";
 
-import {
-  analyze,
-  applyProcedure,
-  driverLoop,
-  evalAnalyzed,
-  evalSequence,
-  evalString,
-  falseValue,
-  isTrue,
-  listOfValues,
-  setupEnvironment,
-  symbol,
-} from "./01-metacircular.js";
-import type { Env, Value } from "./core.js";
-import {
-  ArityMismatch,
-  type EvaluationError,
-  NotAProcedure,
-  RuntimeError,
-  UnboundVariable,
-} from "./errors.js";
-import { nil } from "./list.js";
-import { format, read, readAll } from "./read.js";
+const KERNEL_SOURCE = readFileSync(
+  new URL(
+    "../../../../spec/host-subsets/typescript/witnesses/section-9-kernel.ts",
+    import.meta.url,
+  ),
+  "utf8",
+);
 
-const evalProgram = (source: string, env: Env): Effect.Effect<Value, EvaluationError> =>
-  evalString(source, env);
+describe("section 9 guest evaluator kernel", () => {
+  it("prints 120 under each teaching engine", () => {
+    const direct = runSource(KERNEL_SOURCE);
+    expect(direct.outcome.tag).toBe("ok");
+    expect(direct.transcript).toEqual(["120"]);
 
-const evalAll = (sources: ReadonlyArray<string>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(
-    Effect.forEach(sources, (source) => evalProgram(source, env)),
-    (values) => Effect.succeed(values[values.length - 1] as Value),
-  );
+    const analyzed = runAnalyzedSource(KERNEL_SOURCE);
+    expect(analyzed.outcome.tag).toBe("ok");
+    expect(analyzed.transcript).toEqual(direct.transcript);
 
-const failureOf = (source: string, env: Env): Effect.Effect<EvaluationError> =>
-  Effect.flatMap(Effect.result(evalProgram(source, env)), (outcome) =>
-    outcome._tag === "Failure"
-      ? Effect.succeed(outcome.failure)
-      : Effect.die(new Error("expected a failure")),
-  );
+    const eceval = runEvaluator(KERNEL_SOURCE);
+    expect(eceval.outcome.tag).toBe("ok");
+    expect(eceval.transcript).toEqual(direct.transcript);
 
-const makeEnv = (): Effect.Effect<Env> => setupEnvironment();
+    const compiled = compileAndRun(KERNEL_SOURCE);
+    expect(compiled.outcome.tag).toBe("ok");
+    expect(compiled.transcript).toEqual(direct.transcript);
+  });
 
-describe("section 4.1: the metacircular evaluator", () => {
-  it.effect("evaluates self-evaluating expressions and quoted data", () =>
-    Effect.gen(function* () {
-      const env = yield* makeEnv();
-      expect(yield* evalProgram("(+ 2 3)", env)).toStrictEqual({ _tag: "Number", n: 5 });
-      expect(format(yield* evalProgram("42", env))).toBe("42");
-      expect(format(yield* evalProgram('"hello"', env))).toBe("hello");
-      expect(format(yield* evalProgram("'(a b c)", env))).toBe("(a b c)");
-      expect(format(yield* evalProgram("''a", env))).toBe("(quote a)");
-      expect(format(yield* evalProgram("#t", env))).toBe("#t");
-    }),
-  );
+  it("distinguishes absent record fields from present undefined values", () => {
+    const session = new Session("core");
+    const record = makeRecord([["present", undefined]]);
 
-  it.effect("runs the book's define-lambda-apply cycle", () =>
-    Effect.gen(function* () {
-      const env = yield* makeEnv();
-      expect(format(yield* evalProgram("(define (square x) (* x x))", env))).toBe("ok");
-      expect(yield* evalProgram("(square 7)", env)).toStrictEqual({ _tag: "Number", n: 49 });
-      expect(format(yield* evalProgram("(define x 3)", env))).toBe("ok");
-      expect(yield* evalProgram("(+ (square x) 1)", env)).toStrictEqual({ _tag: "Number", n: 10 });
-    }),
-  );
+    expect(session.memberGet(record, "missing")).toEqual({
+      tag: "error",
+      error: { tag: "unknown-field", field: "missing" },
+    });
+    expect(session.memberGet(record, "present")).toEqual({ tag: "ok", value: undefined });
+  });
+});
 
-  it.effect("subtraction negates one argument and preserves left-associative subtraction", () =>
-    Effect.gen(function* () {
-      const env = yield* makeEnv();
-      const transcript = yield* driverLoop(env, ["(- 5)", "(- 0 5)", "(- 5 2)"]);
-      expect(transcript[3]).toBe("-5");
-      expect(transcript[7]).toBe("-5");
-      expect(transcript[11]).toBe("3");
-    }),
-  );
+describe("static named imports", () => {
+  const VALUE_IMPORT = 'import { Effect as E } from "effect";\nconsole.log(E);';
+  const TYPE_IMPORT = 'import { type Effect } from "effect";\nconsole.log(1);';
+  const modules = { effect: { Effect: 41 } };
 
-  it.effect("prints the book's 4.1.4 sample session", () =>
-    Effect.gen(function* () {
-      const env = yield* makeEnv();
-      const transcript = yield* driverLoop(env, [
-        "(define (append x y) (if (null? x) y (cons (car x) (append (cdr x) y))))",
-        "(append '(a b c) '(d e f))",
-        "(car '(a b))",
-      ]);
-      expect(transcript).toStrictEqual([
-        ";;; M-Eval input:",
-        "(define (append x y) (if (null? x) y (cons (car x) (append (cdr x) y))))",
-        ";;; M-Eval value:",
-        "ok",
-        ";;; M-Eval input:",
-        "(append '(a b c) '(d e f))",
-        ";;; M-Eval value:",
-        "(a b c d e f)",
-        ";;; M-Eval input:",
-        "(car '(a b))",
-        ";;; M-Eval value:",
-        "a",
-      ]);
-    }),
-  );
+  it("binds linked value imports under their local name in every engine", () => {
+    for (const result of [
+      runSource(VALUE_IMPORT, "core", modules),
+      runAnalyzedSource(VALUE_IMPORT, "core", modules),
+      runEvaluator(VALUE_IMPORT, {}, modules),
+      compileAndRun(VALUE_IMPORT, modules),
+    ]) {
+      expect(result.outcome.tag).toBe("ok");
+      expect(result.transcript).toEqual(["41"]);
+    }
+  });
 
-  it.effect("set! writes the frame that defines the name, seen through closures", () =>
-    Effect.gen(function* () {
-      const env = yield* makeEnv();
-      yield* evalAll(
-        [
-          "(define (make-counter) (define n 0) (lambda () (set! n (+ n 1)) n))",
-          "(define c1 (make-counter))",
-          "(define c2 (make-counter))",
-        ],
-        env,
-      );
-      expect(yield* evalProgram("(c1)", env)).toStrictEqual({ _tag: "Number", n: 1 });
-      expect(yield* evalProgram("(c1)", env)).toStrictEqual({ _tag: "Number", n: 2 });
-      expect(yield* evalProgram("(c2)", env)).toStrictEqual({ _tag: "Number", n: 1 });
-    }),
-  );
-
-  it.effect("cond and begin evaluate as the book defines them", () =>
-    Effect.gen(function* () {
-      const env = yield* makeEnv();
-      yield* evalProgram(
-        "(define (rank n) (cond ((< n 10) 'small) ((< n 100) 'medium) (else 'large)))",
-        env,
-      );
-      expect(format(yield* evalProgram("(rank 5)", env))).toBe("small");
-      expect(format(yield* evalProgram("(rank 50)", env))).toBe("medium");
-      expect(format(yield* evalProgram("(rank 500)", env))).toBe("large");
-      expect(
-        yield* evalProgram("(begin (define a 1) (define b 2) (set! a (+ a b)) a)", env),
-      ).toStrictEqual({
-        _tag: "Number",
-        n: 3,
-      });
-    }),
-  );
-
-  it.effect("factorial of 10 comes out right through the driver loop", () =>
-    Effect.gen(function* () {
-      const env = yield* makeEnv();
-      const transcript = yield* driverLoop(env, [
-        "(define (factorial n) (if (= n 1) 1 (* n (factorial (- n 1)))))",
-        "(factorial 10)",
-      ]);
-      expect(transcript[7]).toBe("3628800");
-    }),
-  );
-
-  it.effect("the evaluator stays stack-safe on deep object recursion", () =>
-    Effect.gen(function* () {
-      const env = yield* makeEnv();
-      yield* evalProgram("(define (countdown n) (if (= n 0) 0 (countdown (- n 1))))", env);
-      const value = yield* evalProgram("(countdown 20000)", env);
-      expect(value).toStrictEqual({ _tag: "Number", n: 0 });
-    }),
-  );
-
-  it.effect("failures land on the checked error channel with the right variant", () =>
-    Effect.gen(function* () {
-      const env = yield* makeEnv();
-      expect(yield* failureOf("(some-unbound-name)", env)).toBeInstanceOf(UnboundVariable);
-      expect(yield* failureOf("(1 2 3)", env)).toBeInstanceOf(NotAProcedure);
-      expect(yield* failureOf("(car 5)", env)).toBeInstanceOf(RuntimeError);
-      expect(yield* failureOf("((lambda (x y) x) 1)", env)).toBeInstanceOf(ArityMismatch);
-    }),
-  );
-
-  it.effect("the error primitive carries its message and irritants", () =>
-    Effect.gen(function* () {
-      const env = yield* makeEnv();
-      const failure = yield* failureOf('(error "signal: bad input" 23)', env);
-      expect(failure._tag).toBe("RuntimeError");
-      if (failure._tag === "RuntimeError") {
-        expect(failure.message).toBe("signal: bad input");
-        expect(failure.detail).toBe("23");
-      }
-    }),
-  );
-
-  it.effect("apply and list-of-values behave as standalone book procedures", () =>
-    Effect.gen(function* () {
-      const env = yield* makeEnv();
-      const plus = yield* evalProgram("+", env);
-      const operandForm = read("(1 2 3)");
-      if (operandForm._tag !== "Cons" && operandForm._tag !== "Nil") {
-        return yield* Effect.die(new Error("expected an operand list"));
-      }
-      const args = yield* listOfValues(operandForm, env);
-      const sum = yield* applyProcedure(plus, args);
-      expect(sum).toStrictEqual({ _tag: "Number", n: 6 });
-      expect(isTrue(falseValue)).toBe(false);
-      expect(isTrue(nil)).toBe(true);
-      expect(isTrue(symbol("false"))).toBe(true);
-    }),
-  );
-
-  it.effect("eval-sequence demands a nonempty body", () =>
-    Effect.gen(function* () {
-      const env = yield* makeEnv();
-      const outcome = yield* Effect.result(evalSequence(nil, env));
-      expect(outcome._tag).toBe("Failure");
-      if (outcome._tag === "Failure") {
-        const failure = outcome.failure;
-        expect(failure._tag).toBe("RuntimeError");
-        if (failure._tag === "RuntimeError") {
-          expect(failure.message).toBe("Empty sequence: EVAL");
-        }
-      }
-    }),
-  );
-
-  it.effect("the analyzed evaluator runs the same programs", () =>
-    Effect.gen(function* () {
-      const env = yield* makeEnv();
-      yield* evalAll(
-        [
-          "(define (square x) (* x x))",
-          "(define (fib n) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2)))))",
-        ],
-        env,
-      );
-      let value: Value = nil;
-      for (const exp of readAll("(fib 10)")) {
-        value = yield* evalAnalyzed(exp, env);
-      }
-      expect(value).toStrictEqual({ _tag: "Number", n: 55 });
-      const execution = analyze(read("(square 12)"));
-      expect(yield* execution(env)).toStrictEqual({ _tag: "Number", n: 144 });
-    }),
-  );
-
-  it.effect("malformed programs fail on the error channel instead of throwing", () =>
-    Effect.gen(function* () {
-      const env = yield* makeEnv();
-      expect(yield* failureOf("(if)", env)).toBeInstanceOf(UnboundVariable);
-      expect(yield* failureOf("(moose 1)", env)).toBeInstanceOf(UnboundVariable);
-    }),
-  );
+  it("reports an unlinked value import instead of discarding it, and erases type imports", () => {
+    const unresolved = { tag: "unresolved-import", module: "effect", name: "Effect" };
+    for (const result of [
+      runSource(VALUE_IMPORT),
+      runAnalyzedSource(VALUE_IMPORT),
+      runEvaluator(VALUE_IMPORT),
+      compileAndRun(VALUE_IMPORT),
+    ]) {
+      expect(result.outcome).toEqual({ tag: "error", error: unresolved });
+      expect(result.transcript).toEqual([]);
+    }
+    for (const result of [
+      runSource(TYPE_IMPORT),
+      runAnalyzedSource(TYPE_IMPORT),
+      runEvaluator(TYPE_IMPORT),
+      compileAndRun(TYPE_IMPORT),
+    ]) {
+      expect(result.outcome.tag).toBe("ok");
+      expect(result.transcript).toEqual(["1"]);
+    }
+  });
 });

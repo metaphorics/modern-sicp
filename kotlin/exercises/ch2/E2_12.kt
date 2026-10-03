@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.12: define a constructor `makeCenterPercent` that takes a
  * center and a percentage tolerance, expressed as a fraction such as `0.1`
@@ -21,4 +19,4 @@ import sicp.runtime.PendingSolution
  */
 public fun center(i: Interval): Double = (i.lowerBound + i.upperBound) / 2.0
 
-public fun ex_2_12(): Interval = throw PendingSolution()
+public fun ex_2_12(): Interval = throw PendingExercise()

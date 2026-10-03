@@ -146,7 +146,8 @@ the presence of assignment allows us to write expressions that will produce
 different values depending on the order in which the subexpressions in a
 combination are evaluated.  OCaml leaves this order unspecified, both for the
 arguments of a function call and for the operands of operators such as
-@code{+}, so the subtlety is not a Scheme curiosity but a fact of this
+@code{+}, so the subtlety is not a curiosity of some other language but a fact
+of this
 language too.  The order should always be considered to be an implementation
 detail, and one should never write programs that depend on some particular
 order.  For instance, a sophisticated compiler might optimize a program by
@@ -224,7 +225,7 @@ env        | square: --+                    |
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.2b,,81mm,Figure 3.2: Environment structure produced by evaluating (define (square x) (* x x)) in the global environment.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.2b,,81mm,Figure 3.2: Environment structure produced by evaluating let square x = x * x in the global environment.,.std.svg}
 @end ifhtml
 @iftex
 @image{../../text/original/figures/pdf/chap3/Fig3.2b.std,,81mm,,.pdf}
@@ -279,10 +280,10 @@ env       | square: --+                        |
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.3b,,129mm,Figure 3.3: Environment created by evaluating (square 5) in the global environment.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.3b,,129mm,Figure 3.3: Environment created by evaluating square 5 in the global environment.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.3b.std,,129mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.3b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.3:} Environment created by evaluating @code{square 5} in the global environment.}
@@ -320,9 +321,8 @@ what existing closures see.  What OCaml does not let a program do at all is
 change a binding once it exists.  Mutation goes through @code{ref} cells and
 @code{:=}, which makes every assignment visible in the type of the thing that
 gets mutated.}  Finally, we specify the behavior of the operation that forced
-us to introduce the environment model in the first place.  OCaml has no direct
-counterpart of Scheme's @code{set!}, which changes the binding of a variable
-in place.  What plays its role is the ref-cell assignment
+us to introduce the environment model in the first place.  Assignment in OCaml
+is ref-cell assignment:
 @code{balance := !balance - amount} of @ref{3.1.1}.  Evaluating such an
 assignment in some environment locates the binding of the name in the
 environment and changes the cell that the binding designates to indicate the
@@ -330,8 +330,7 @@ new value.  That is, one finds the first frame in the environment that
 contains a binding for the name and modifies the contents of the ref cell it
 points to; the binding itself stays where it was.  If the name is unbound in
 the environment, or bound to something that is not a ref cell, the program
-does not type-check: OCaml rejects it before the program runs, where Scheme's
-@code{set!} signals an error while the program is running.
+does not type-check: OCaml rejects it before the program runs.
 
 These evaluation rules, though considerably more complex than the substitution
 model, are still reasonably straightforward.  Moreover, the evaluation model,
@@ -392,7 +391,7 @@ env       | f: --+                                           |
 @image{../../text/original/figures/chap3/Fig3.4b,,132mm,Figure 3.4: Procedure objects in the global frame.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.4b.std,,132mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.4b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.4:} Procedure objects in the global frame.}
@@ -430,10 +429,10 @@ f 5         |              |                |               |
 @end example
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.5b,,142mm,Figure 3.5: Environments created by evaluating (f 5) using the procedures in Figure 3.4.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.5b,,142mm,Figure 3.5: Environments created by evaluating f 5 using the procedures in Figure 3.4.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.5b.std,,142mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.5b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.5:} Environments created by evaluating @code{f 5} @w{using} the procedures in @ref{Figure 3.4}.}
@@ -479,8 +478,8 @@ important aspect of the evaluation process, and we will return to it in detail
 in @ref{Chapter 5}.
 
 @quotation
-@emph{SICP exercise 3.9 is about Scheme itself, so this edition replaces it;
-the exercise below keeps the number and teaches the same section material.}
+@emph{This edition replaces SICP exercise 3.9 with a host-language exercise
+that keeps its number and teaching objective.}
 @strong{@anchor{Exercise 3.9}Exercise 3.9:} In @ref{1.2.1} we analyzed two
 procedures for computing factorials, a recursive version
 
@@ -527,7 +526,7 @@ environment model will not clarify our claim in @ref{1.2.1} that a procedure
 such as @code{fact_iter} can execute in a constant amount of space using tail
 recursion.  OCaml's compiler does guarantee that a call in tail position
 reuses the caller's frame, so the guarantee is a fact of this language and not
-merely of Scheme implementations; what the environment model cannot yet
+merely of one implementation; what the environment model cannot yet
 explain is how a compiler delivers it.  We will discuss the control structure
 behind that delivery in @ref{5.4}.}
 @end quotation
@@ -600,10 +599,10 @@ env       +------------------|--------+
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.6c,,128mm,Figure 3.6: Result of defining make-withdraw in the global environment.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.6c,,128mm,Figure 3.6: Result of defining make_withdraw in the global environment.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.6c.std,,128mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.6c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.6:} Result of defining @code{make_withdraw} in the global environment.}
@@ -660,10 +659,10 @@ env       +-------------------|---------|------------+
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.7b,,145mm,Figure 3.7: Result of evaluating (define W1 (make-withdraw 100)).,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.7b,,145mm,Figure 3.7: Result of evaluating let w1 = make_withdraw 100.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.7b.std,,145mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.7b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.7:} Result of evaluating @code{let w1 = make_withdraw 100}.}
@@ -729,7 +728,7 @@ env       +-------------------|---------|------------+
 @image{../../text/original/figures/chap3/Fig3.8c,,145mm,Figure 3.8: Environments created by applying the procedure object W1.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.8c.std,,145mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.8c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.8:} Environments created by applying the closure bound to @code{w1}.}
@@ -787,7 +786,7 @@ env       +-------------------|---------|------------+
 @image{../../text/original/figures/chap3/Fig3.9b,,147mm,Figure 3.9: Environments after the call to W1.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.9b.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.9b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.9:} Environments after the call to @code{w1}.}
@@ -916,18 +915,18 @@ env       +-------------------|--------|--------|-----+
 @end example
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.10b,,147mm,Figure 3.10: Using (define W2 (make-withdraw 100)) to create a second object.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.10b,,147mm,Figure 3.10: Using let w2 = make_withdraw 100 to create a second object.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.10b.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.10b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.10:} Using @code{let w2 = make_withdraw 100} to create a second object.}
 @end float
 
 @quotation
-@emph{SICP exercise 3.10 is about Scheme itself, so this edition replaces it;
-the exercise below keeps the number and teaches the same section material.}
+@emph{This edition replaces SICP exercise 3.10 with a host-language exercise
+that keeps its number and teaching objective.}
 @strong{@anchor{Exercise 3.10}Exercise 3.10:} In the @code{make_withdraw}
 procedure, the local state is created by the @code{let} binding
 
@@ -944,7 +943,7 @@ let make_withdraw balance =
 @end example
 
 @noindent
-The book's Scheme original contrasts two writings of @code{make-withdraw},
+The book's original text contrasts two writings of @code{make-withdraw},
 one whose parameter stays a plain binding and one wrapped in an explicit
 @code{let}; in OCaml a mutable local has to be built somewhere, and the
 @code{let} above is that place: it is where the cell is allocated, while the
@@ -1036,7 +1035,7 @@ body: let good_enough guess = ...   | sqrt_iter: ...|      |
 @image{../../text/original/figures/chap3/Fig3.11b,,147mm,Figure 3.11: Sqrt procedure with internal definitions.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.11b.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.11b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.11:} @code{Sqrt} procedure with internal definitions.}
@@ -1059,8 +1058,7 @@ evaluating this expression bound the name @code{good_enough} in the first
 frame of E1, to a closure whose associated environment is E1.  Similarly,
 @code{improve} and @code{sqrt_iter} were bound as closures in E1.  For
 conciseness, @ref{Figure 3.11} shows only the closure for
-@code{good_enough}.@footnote{Scheme's internal definitions may appear in any
-order and may refer to one another; OCaml's @code{let @dots{} in} bindings
+@code{good_enough}.@footnote{OCaml's @code{let @dots{} in} bindings
 are evaluated in order and see only the bindings written before them.  The
 body of @code{sqrt} above is already in an order OCaml accepts, and
 @code{sqrt_iter} refers to @code{good_enough} and @code{improve} through E1
@@ -1111,8 +1109,8 @@ reach them.
 @end itemize
 
 @quotation
-@emph{SICP exercise 3.11 is about Scheme itself, so this edition replaces it;
-the exercise below keeps the number and teaches the same section material.}
+@emph{This edition replaces SICP exercise 3.11 with a host-language exercise
+that keeps its number and teaching objective.}
 @strong{@anchor{Exercise 3.11}Exercise 3.11:} In @ref{3.2.3} we saw how the
 environment model described the behavior of procedures with local state.  Now
 we have seen how internal definitions work.  The bank account of

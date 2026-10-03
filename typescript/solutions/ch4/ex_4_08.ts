@@ -2,239 +2,320 @@
 // Original exercise
 
 /**
- * Exercise 4.8: named let. (let name ((v1 e1) ...) body) binds name to a
- * procedure of the binding variables over the body and then calls it with
- * the initializers, so the body can recur through name. Following the
- * book's hint, the transformation wraps a helper lambda whose parameter is
- * the loop name itself: ((lambda (name) (set! name (lambda (v1 ...) ...)
- * body) (name e1 ...)) 'ok). The parameter is the name the body refers
- * to, set! installs the procedure into that binding, and the final call
- * starts the loop; the throwaway initial actual is the fresh symbol ok,
- * standing in for the book's *unassigned*.
+ * Exercise 4.8: named `let`. The named binding is a local named function
+ * over the group's names, called on the initializers: `let loop((v1 e1),
+ * ...) body` becomes `(() => { function loop(v1, ...) { body } return
+ * loop(e1, ...); })()`. The function declaration binds the loop name in
+ * the local frame before the body can call it, so recursive calls in the
+ * body resolve to the loop itself; the call at the end starts it with
+ * the initializers. Plain grouped bindings stay in the same evaluator
+ * through exercise 4.6's derivation, so one lowering handles both.
  */
-import { Effect } from "effect";
-
+import { Session } from "../../packages/ch4/src/01-metacircular.js";
+import type { Env } from "../../packages/ch4/src/runtime/env.js";
+import type { Outcome } from "../../packages/ch4/src/runtime/errors.js";
 import {
-  applyPrimitiveProcedure,
-  assignmentValue,
-  assignmentVariable,
-  beginActions,
-  defineVariableValue,
-  definitionValue,
-  definitionVariable,
-  extendEnvironment,
-  firstExp,
-  firstOperand,
-  ifAlternative,
-  ifConsequent,
-  ifPredicate,
-  isAssignment,
-  isBegin,
-  isDefinition,
-  isIf,
-  isLambda,
-  isLastExp,
-  isPair,
-  isQuoted,
-  isSelfEvaluating,
-  isSymbol,
-  isTrue,
-  isVariable,
-  lambdaBody,
-  lambdaParameters,
-  lookupVariableValue,
-  makeLambda,
-  makeProcedure,
-  noOperands,
-  ok,
-  operands,
-  operator,
-  restExps,
-  restOperands,
-  setVariableValue,
-  symbol,
-  taggedList,
-  textOfQuotation,
-} from "../../packages/ch4/src/01-metacircular.js";
-import type { Env, Evaluate, Value } from "../../packages/ch4/src/core.js";
-import {
-  type EvaluationError,
-  NotAProcedure,
-  RuntimeError,
-  UnknownSyntax,
-} from "../../packages/ch4/src/errors.js";
-import type { Cons, List } from "../../packages/ch4/src/list.js";
-import { cons, list, nil } from "../../packages/ch4/src/list.js";
-import { format } from "../../packages/ch4/src/read.js";
+  type CaseClause,
+  call,
+  type Decl,
+  type Expr,
+  functionDecl,
+  lam,
+  type ObjectField,
+  param,
+  returnStmt,
+  type Stmt,
+} from "../../packages/ch4/src/syntax/ast.js";
 
-const cadrOf = (exp: Cons<Value>): Value => {
-  const rest = exp.tail;
-  return rest._tag === "Cons" ? rest.head : nil;
-};
+/** One binding of a named or grouped binding: a name and its initializer. */
+export interface LoopBinding {
+  readonly name: string;
+  readonly init: Expr;
+}
 
-const caddrOf = (exp: Cons<Value>): Value => {
-  const afterTail = exp.tail;
-  return afterTail._tag === "Cons" && afterTail.tail._tag === "Cons" ? afterTail.tail.head : nil;
-};
+/** The named binding extension node beside the shared syntax. */
+export interface NamedLetNode {
+  readonly tag: "named-let";
+  readonly name: string;
+  readonly bindings: ReadonlyArray<LoopBinding>;
+  readonly body: ReadonlyArray<Decl | Stmt>;
+  readonly span: Expr["span"];
+}
 
-const cddrOf = (exp: Cons<Value>): List<Value> => (exp.tail._tag === "Cons" ? exp.tail.tail : nil);
+/** The grouped binding kept alongside for plain lets. */
+export interface LetNode {
+  readonly tag: "let";
+  readonly bindings: ReadonlyArray<LoopBinding>;
+  readonly body: ReadonlyArray<Decl | Stmt>;
+  readonly span: Expr["span"];
+}
 
-/** The book's plain `let?`: bindings slot is a list, not a name. */
-export const isLet = (exp: Value): exp is Cons<Value> =>
-  taggedList("let", exp) && !isSymbol(cadrOf(exp));
+/** The syntax this exercise evaluates: shared expressions plus its two forms. */
+export type NamedLetExpr = Expr | LetNode | NamedLetNode;
 
-/** A named let: the bindings slot is the loop's name. */
-export const isNamedLet = (exp: Value): exp is Cons<Value> =>
-  taggedList("let", exp) && isSymbol(cadrOf(exp));
+/** Builds a named binding node. */
+export const namedLetNode = (
+  name: string,
+  bindings: ReadonlyArray<LoopBinding>,
+  body: ReadonlyArray<Decl | Stmt>,
+  span: Expr["span"],
+): NamedLetNode => ({ tag: "named-let", name, bindings, body, span });
 
-const letBindingsOf = (exp: Cons<Value>): List<Value> => {
-  const bindings = cadrOf(exp);
-  return bindings._tag === "Cons" || bindings._tag === "Nil" ? bindings : nil;
-};
+/** Builds a grouped binding node. */
+export const letNode = (
+  bindings: ReadonlyArray<LoopBinding>,
+  body: ReadonlyArray<Decl | Stmt>,
+  span: Expr["span"],
+): LetNode => ({ tag: "let", bindings, body, span });
 
-const letBodyOf = (exp: Cons<Value>): List<Value> => cddrOf(exp);
-
-const namedBindingsOf = (exp: Cons<Value>): List<Value> => {
-  const bindings = caddrOf(exp);
-  return bindings._tag === "Cons" || bindings._tag === "Nil" ? bindings : nil;
-};
-
-const namedBodyOf = (exp: Cons<Value>): List<Value> => {
-  const afterBindings = cddrOf(exp);
-  return afterBindings._tag === "Cons" ? afterBindings.tail : nil;
-};
-
-const bindingVariable = (binding: Value): Value => (isPair(binding) ? binding.head : binding);
-
-const bindingInitializer = (binding: Value): Value => (isPair(binding) ? cadrOf(binding) : binding);
-
-const bindingParts = (bindings: List<Value>, part: (binding: Value) => Value): List<Value> =>
-  bindings._tag === "Cons" ? cons(part(bindings.head), bindingParts(bindings.tail, part)) : nil;
-
-/** The book's named-let transformation: bind the loop name with set! and
- * call the loop once with the initializers. */
-export const namedLetToCombination = (exp: Cons<Value>): Value => {
-  const loopName = cadrOf(exp);
-  if (!isSymbol(loopName)) {
-    throw new Error("named let: the loop name must be a symbol");
-  }
-  const bindings = namedBindingsOf(exp);
-  const formals = bindingParts(bindings, bindingVariable);
-  const initializers = bindingParts(bindings, bindingInitializer);
-  const initialActual = cons(symbol("quote"), cons(symbol("ok"), nil));
-  const update = cons(
-    symbol("set!"),
-    cons(loopName, cons(makeLambda(formals, namedBodyOf(exp)), nil)),
-  );
-  const startCall = cons(loopName, initializers);
-  const combiner = makeLambda(list(loopName), cons(update, cons(startCall, nil)));
-  return cons(combiner, cons(initialActual, nil));
-};
-
-/** The plain-let combination of exercise 4.6, so both let shapes share
- * the same evaluator. */
-export const letToCombination = (exp: Cons<Value>): Value =>
-  cons(
-    makeLambda(bindingParts(letBindingsOf(exp), bindingVariable), letBodyOf(exp)),
-    bindingParts(letBindingsOf(exp), bindingInitializer),
+/** Plain grouped bindings derive to the call form (exercise 4.6). */
+export const letToCall = (node: LetNode): Expr =>
+  call(
+    lam(
+      node.bindings.map((binding) => param(binding.name, null, node.span)),
+      node.body,
+      node.span,
+    ),
+    node.bindings.map((binding) => binding.init),
+    node.span,
   );
 
-export const evalWithNamedLet: Evaluate = (exp, env) => {
-  if (isSelfEvaluating(exp)) {
-    return Effect.succeed(exp);
-  }
-  if (isVariable(exp)) {
-    return lookupVariableValue(exp, env);
-  }
-  if (isQuoted(exp)) {
-    return Effect.succeed(textOfQuotation(exp));
-  }
-  if (isAssignment(exp)) {
-    return evalAssignmentLocal(exp, env);
-  }
-  if (isDefinition(exp)) {
-    return evalDefinitionLocal(exp, env);
-  }
-  if (isNamedLet(exp)) {
-    return evalWithNamedLet(namedLetToCombination(exp), env);
-  }
-  if (isLet(exp)) {
-    return evalWithNamedLet(letToCombination(exp), env);
-  }
-  if (isIf(exp)) {
-    return evalIfLocal(exp, env);
-  }
-  if (isLambda(exp)) {
-    return Effect.succeed(makeProcedure(lambdaParameters(exp), lambdaBody(exp), env));
-  }
-  if (isBegin(exp)) {
-    return evalSequenceLocal(beginActions(exp), env);
-  }
-  if (isPair(exp)) {
-    return Effect.flatMap(evalWithNamedLet(operator(exp), env), (procedure) =>
-      Effect.flatMap(listOfValuesLocal(operands(exp), env), (args) => applyLocal(procedure, args)),
-    );
-  }
-  return Effect.fail(new UnknownSyntax({ expr: format(exp) }));
-};
-
-const evalSequenceLocal = (seq: List<Value>, env: Env): Effect.Effect<Value, EvaluationError> => {
-  if (seq._tag === "Nil") {
-    return Effect.fail(new RuntimeError({ message: "Empty sequence: EVAL", detail: "" }));
-  }
-  if (isLastExp(seq)) {
-    return evalWithNamedLet(firstExp(seq), env);
-  }
-  return Effect.flatMap(evalWithNamedLet(firstExp(seq), env), () =>
-    evalSequenceLocal(restExps(seq), env),
+/**
+ * The named form derives to a local named function over the group's
+ * names, called on the initializers.
+ */
+export const namedLetToCall = (node: NamedLetNode): Expr =>
+  call(
+    lam(
+      [],
+      [
+        functionDecl(
+          node.name,
+          node.bindings.map((binding) => param(binding.name, null, node.span)),
+          node.body,
+          null,
+          node.span,
+        ),
+        returnStmt(
+          call(
+            { tag: "variable", name: node.name, span: node.span },
+            node.bindings.map((binding) => binding.init),
+            node.span,
+          ),
+          node.span,
+        ),
+      ],
+      node.span,
+    ),
+    [],
+    node.span,
   );
+
+// ---------------------------------------------------------------------
+// Total lowering: both extension forms anywhere in the tree
+// ---------------------------------------------------------------------
+
+const lowerExpr = (expr: NamedLetExpr): Expr => {
+  if (expr.tag === "named-let") {
+    return namedLetToCall({
+      ...expr,
+      bindings: expr.bindings.map((binding) => ({
+        name: binding.name,
+        init: lowerExpr(binding.init),
+      })),
+      body: lowerItems(expr.body),
+    });
+  }
+  if (expr.tag === "let") {
+    return letToCall({
+      ...expr,
+      bindings: expr.bindings.map((binding) => ({
+        name: binding.name,
+        init: lowerExpr(binding.init),
+      })),
+      body: lowerItems(expr.body),
+    });
+  }
+  switch (expr.tag) {
+    case "number":
+    case "string":
+    case "boolean":
+    case "null":
+    case "undefined":
+    case "variable":
+      return expr;
+    case "template":
+      return { ...expr, exprs: expr.exprs.map(lowerExpr) };
+    case "array":
+      return {
+        ...expr,
+        elements: expr.elements.map((arg) => ({ kind: arg.kind, expr: lowerExpr(arg.expr) })),
+      };
+    case "object": {
+      const fields: ObjectField[] = expr.fields.map((field) => ({
+        key: field.key,
+        value: lowerExpr(field.value),
+        span: field.span,
+      }));
+      return { ...expr, fields };
+    }
+    case "unary":
+      return { ...expr, operand: lowerExpr(expr.operand) };
+    case "binary":
+      return { ...expr, left: lowerExpr(expr.left), right: lowerExpr(expr.right) };
+    case "logical":
+      return { ...expr, left: lowerExpr(expr.left), right: lowerExpr(expr.right) };
+    case "conditional":
+      return {
+        ...expr,
+        test: lowerExpr(expr.test),
+        consequent: lowerExpr(expr.consequent),
+        alternative: lowerExpr(expr.alternative),
+      };
+    case "permanent-assign":
+    case "assign":
+      return { ...expr, target: lowerExpr(expr.target), value: lowerExpr(expr.value) };
+    case "if-fail":
+      return {
+        ...expr,
+        expression: lowerExpr(expr.expression),
+        fallback: lowerExpr(expr.fallback),
+      };
+    case "arrow":
+      return { ...expr, body: { body: lowerItems(expr.body.body), span: expr.body.span } };
+    case "call":
+      return {
+        ...expr,
+        callee: lowerExpr(expr.callee),
+        args: expr.args.map((arg) => ({ kind: arg.kind, expr: lowerExpr(arg.expr) })),
+      };
+    case "member":
+      return { ...expr, object: lowerExpr(expr.object) };
+    case "index":
+      return { ...expr, object: lowerExpr(expr.object), index: lowerExpr(expr.index) };
+    case "new-error":
+      return { ...expr, args: expr.args.map(lowerExpr) };
+    case "new-map":
+      return { ...expr, args: expr.args.map(lowerExpr) };
+    case "new-set":
+      return { ...expr, args: expr.args.map(lowerExpr) };
+    case "delay":
+      return { ...expr, expr: lowerExpr(expr.expr) };
+    case "force":
+      return { ...expr, expr: lowerExpr(expr.expr) };
+    case "require":
+      return { ...expr, condition: lowerExpr(expr.condition) };
+    case "choose":
+      return { ...expr, alternatives: expr.alternatives.map(lowerExpr) };
+    case "ramb":
+      return { ...expr, alternatives: expr.alternatives.map(lowerExpr) };
+  }
 };
 
-const applyLocal = (procedure: Value, args: List<Value>): Effect.Effect<Value, EvaluationError> => {
-  if (procedure._tag === "Primitive") {
-    return applyPrimitiveProcedure(procedure, args);
+function isStmt(item: Decl | Stmt): item is Stmt {
+  switch (item.tag) {
+    case "import":
+    case "type-decl":
+    case "interface-decl":
+    case "var-decl":
+    case "function-decl":
+      return false;
+    default:
+      return true;
   }
-  if (procedure._tag === "Compound") {
-    return Effect.flatMap(extendEnvironment(procedure.params, args, procedure.env), (newEnv) =>
-      evalSequenceLocal(procedure.body, newEnv),
-    );
+}
+
+function lowerNamedLetStmt(item: Stmt): Stmt {
+  const lowered = lowerItem(item);
+  if (!isStmt(lowered)) {
+    throw new Error("statement lowering produced a declaration");
   }
-  return Effect.fail(new NotAProcedure({ value: format(procedure) }));
+  return lowered;
+}
+const lowerItem = (item: Decl | Stmt): Decl | Stmt => {
+  switch (item.tag) {
+    case "import":
+    case "type-decl":
+    case "interface-decl":
+    case "break":
+    case "continue":
+      return item;
+    case "var-decl":
+      return { ...item, init: lowerExpr(item.init) };
+    case "function-decl":
+      return { ...item, body: { body: lowerItems(item.body.body), span: item.body.span } };
+    case "expr-stmt":
+      return { ...item, expr: lowerExpr(item.expr) };
+    case "return":
+      return item.argument === null ? item : { ...item, argument: lowerExpr(item.argument) };
+    case "throw":
+      return { ...item, argument: lowerExpr(item.argument) };
+    case "if": {
+      const alternative = item.alternative === null ? null : lowerNamedLetStmt(item.alternative);
+      return {
+        ...item,
+        test: lowerExpr(item.test),
+        consequent: lowerNamedLetStmt(item.consequent),
+        alternative,
+      };
+    }
+    case "while":
+      return { ...item, test: lowerExpr(item.test), body: lowerNamedLetStmt(item.body) };
+    case "for-of":
+      return { ...item, iterable: lowerExpr(item.iterable), body: lowerNamedLetStmt(item.body) };
+    case "block":
+      return { ...item, body: lowerItems(item.body) };
+    case "switch": {
+      const cases: CaseClause[] = item.cases.map((clause) => ({
+        test: lowerExpr(clause.test),
+        body: lowerItems(clause.body),
+        span: clause.span,
+      }));
+      return {
+        ...item,
+        discriminant: lowerExpr(item.discriminant),
+        cases,
+        defaultBody: item.defaultBody === null ? null : lowerItems(item.defaultBody),
+      };
+    }
+    case "try": {
+      const blockOf = (body: {
+        readonly body: ReadonlyArray<Decl | Stmt>;
+        readonly span: Expr["span"];
+      }): {
+        readonly body: ReadonlyArray<Decl | Stmt>;
+        readonly span: Expr["span"];
+      } => ({ body: lowerItems(body.body), span: body.span });
+      return {
+        ...item,
+        block: blockOf(item.block),
+        handler:
+          item.handler === null
+            ? null
+            : { param: item.handler.param, body: blockOf(item.handler.body) },
+        finalizer: item.finalizer === null ? null : blockOf(item.finalizer),
+      };
+    }
+  }
 };
 
-const listOfValuesLocal = (
-  exps: List<Value>,
+const lowerItems = (items: ReadonlyArray<Decl | Stmt>): ReadonlyArray<Decl | Stmt> =>
+  items.map(lowerItem);
+
+/** The evaluator's case for the derived forms: lower, then evaluate. */
+export const evalWithNamedLet = (
+  expr: NamedLetExpr,
   env: Env,
-): Effect.Effect<List<Value>, EvaluationError> =>
-  noOperands(exps)
-    ? Effect.succeed(nil)
-    : Effect.flatMap(evalWithNamedLet(firstOperand(exps), env), (first) =>
-        Effect.map(listOfValuesLocal(restOperands(exps), env), (rest) => cons(first, rest)),
-      );
-
-const evalIfLocal = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(evalWithNamedLet(ifPredicate(exp), env), (predicate) =>
-    isTrue(predicate)
-      ? evalWithNamedLet(ifConsequent(exp), env)
-      : evalWithNamedLet(ifAlternative(exp), env),
-  );
-
-const evalAssignmentLocal = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(evalWithNamedLet(assignmentValue(exp), env), (value) =>
-    Effect.map(setVariableValue(assignmentVariable(exp), value, env), () => ok),
-  );
-
-const evalDefinitionLocal = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(evalWithNamedLet(definitionValue(exp), env), (value) =>
-    Effect.map(defineVariableValue(definitionVariable(exp), value, env), () => ok),
-  );
+  session: Session = new Session("core"),
+): Outcome => session.evaluate(lowerExpr(expr), env);
 
 export function ex_4_08(): string {
   return (
-    "A named let becomes the combination ((lambda (name) (set! name (lambda formals body)) " +
-    "(name inits)) 'ok): the helper lambda binds the loop name, set! replaces that binding " +
-    "with the loop procedure, and the final call starts the loop with the initializers, so " +
-    "the body can recur through the name. Named let of Fibonacci 10 evaluates to 55, and " +
-    "plain let still evaluates in the same evaluator."
+    "The named binding is a local named function over the group's names, called on the " +
+    "initializers: `namedLetToCall` builds `(() => { function loop(v1, ...) { body } " +
+    "return loop(e1, ...); })()`, and the function declaration is what recursive calls in " +
+    "the body resolve to. Fibonacci 10 by named let is 55, factorial 5 with an accumulator " +
+    "is 120, plain let still answers 7 in the same evaluator, and a named let inside a " +
+    "procedure body recurs through its name to 55."
   );
 }

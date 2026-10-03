@@ -5,7 +5,7 @@
 
 mod ex_2_86 {
     use ch02::sec_2_5::{apply_generic, install_rational_package, make_rational};
-    use sicp_runtime::{Key, OpTable, SchemeError, Value};
+    use sicp_runtime::{Key, OpTable, SicpError, Value};
     use std::rc::Rc;
 
     fn one_tag(a: &str) -> Key {
@@ -26,7 +26,7 @@ mod ex_2_86 {
         clippy::cast_precision_loss,
         reason = "promoting an exact integer or rational into a real for sqrt/atan2 is the operation's point"
     )]
-    fn numeric_value(v: &Value) -> Result<f64, SchemeError> {
+    fn numeric_value(v: &Value) -> Result<f64, SicpError> {
         match v {
             Value::Int(n) => Ok(*n as f64),
             Value::Real(x) => Ok(*x),
@@ -35,7 +35,7 @@ mod ex_2_86 {
                 let (Value::Int(n), Value::Int(d)) =
                     (cell.car.borrow().clone(), cell.cdr.borrow().clone())
                 else {
-                    return Err(SchemeError::TypeMismatch("rational pair".into()));
+                    return Err(SicpError::TypeMismatch("rational pair".into()));
                 };
                 Ok(n as f64 / d as f64)
             }
@@ -43,43 +43,43 @@ mod ex_2_86 {
             Value::Tagged { tag, data } if tag.as_ref() == "rational" || tag.as_ref() == "real" => {
                 numeric_value(data)
             }
-            other => Err(SchemeError::TypeMismatch(format!(
+            other => Err(SicpError::TypeMismatch(format!(
                 "not a generic number: {other}"
             ))),
         }
     }
 
-    fn car(p: &Value) -> Result<Value, SchemeError> {
+    fn car(p: &Value) -> Result<Value, SicpError> {
         match p {
             Value::Pair(cell) => Ok(cell.car.borrow().clone()),
-            other => Err(SchemeError::TypeMismatch(format!("not a pair: {other}"))),
+            other => Err(SicpError::TypeMismatch(format!("not a pair: {other}"))),
         }
     }
 
-    fn cdr(p: &Value) -> Result<Value, SchemeError> {
+    fn cdr(p: &Value) -> Result<Value, SicpError> {
         match p {
             Value::Pair(cell) => Ok(cell.cdr.borrow().clone()),
-            other => Err(SchemeError::TypeMismatch(format!("not a pair: {other}"))),
+            other => Err(SicpError::TypeMismatch(format!("not a pair: {other}"))),
         }
     }
 
-    fn real_part(table: &OpTable, z: &Value) -> Result<Value, SchemeError> {
+    fn real_part(table: &OpTable, z: &Value) -> Result<Value, SicpError> {
         apply_generic(table, "real_part", std::slice::from_ref(z))
     }
 
-    fn imag_part(table: &OpTable, z: &Value) -> Result<Value, SchemeError> {
+    fn imag_part(table: &OpTable, z: &Value) -> Result<Value, SicpError> {
         apply_generic(table, "imag_part", std::slice::from_ref(z))
     }
 
-    fn magnitude(table: &OpTable, z: &Value) -> Result<Value, SchemeError> {
+    fn magnitude(table: &OpTable, z: &Value) -> Result<Value, SicpError> {
         apply_generic(table, "magnitude", std::slice::from_ref(z))
     }
 
-    fn generic_add(table: &OpTable, a: &Value, b: &Value) -> Result<Value, SchemeError> {
+    fn generic_add(table: &OpTable, a: &Value, b: &Value) -> Result<Value, SicpError> {
         ch02::sec_2_5::add(table, a, b)
     }
 
-    fn generic_mul(table: &OpTable, a: &Value, b: &Value) -> Result<Value, SchemeError> {
+    fn generic_mul(table: &OpTable, a: &Value, b: &Value) -> Result<Value, SicpError> {
         ch02::sec_2_5::mul(table, a, b)
     }
 
@@ -128,10 +128,10 @@ mod ex_2_86 {
         );
     }
 
-    fn make_from_real_imag(table: &OpTable, re: Value, im: Value) -> Result<Value, SchemeError> {
+    fn make_from_real_imag(table: &OpTable, re: Value, im: Value) -> Result<Value, SicpError> {
         let make = table
             .get(&Key::sym("make-from-real-imag"), &Key::sym("rectangular"))
-            .ok_or_else(|| SchemeError::TypeMismatch("no rectangular constructor".into()))?;
+            .ok_or_else(|| SicpError::TypeMismatch("no rectangular constructor".into()))?;
         let rect = make(&[re, im])?;
         Ok(Value::tagged("complex", rect))
     }
@@ -175,7 +175,7 @@ mod ex_2_86 {
     /// and `4`, giving magnitude 5 through the generic tower rather than a
     /// hardwired `f64` pair, and `add` on two such numbers doubling both
     /// generic parts.
-    pub fn ex_2_86() -> Result<(String, String, String), SchemeError> {
+    pub fn ex_2_86() -> Result<(String, String, String), SicpError> {
         let table = Rc::new(OpTable::new());
         install_rational_package(&table);
         install_generic_complex(&table);

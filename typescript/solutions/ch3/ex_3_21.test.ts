@@ -27,27 +27,27 @@ const benSession = (): Queue<string> => {
 
 describe("exercise 3.21", () => {
   it("printQueue renders the item sequence after the figure 3.18 session", () => {
-    expect(printQueue(benSession())).toBe("(c d)");
+    expect(printQueue(benSession())).toBe("[c, d]");
   });
 
   it("benPrintQueue exposes the rear pointer the printer trips over", () => {
     const q = benSession();
     const ben = benPrintQueue(q);
-    expect(ben).toContain("(c d)");
+    expect(ben).toContain("[c, d]");
     expect(ben).toContain("rear");
     expect(ben).not.toBe(printQueue(q));
-    expect(ben).toBe("(front (c d) rear (d))");
+    expect(ben).toBe("[front [c, d], rear [d]]");
   });
 
   it("Ben's transcript states come out of the raw view", () => {
     const q = makeQueue<string>();
     insertQueue(q, "a");
-    expect(printQueue(q)).toBe("(a)");
-    expect(benPrintQueue(q)).toBe("(front (a) rear (a))");
+    expect(printQueue(q)).toBe("[a]");
+    expect(benPrintQueue(q)).toBe("[front [a], rear [a]]");
     insertQueue(q, "b");
-    expect(benPrintQueue(q)).toBe("(front (a b) rear (b))");
+    expect(benPrintQueue(q)).toBe("[front [a, b], rear [b]]");
     deleteQueue(q);
-    expect(benPrintQueue(q)).toBe("(front (b) rear (b))");
+    expect(benPrintQueue(q)).toBe("[front [b], rear [b]]");
   });
 
   it("after the queue empties, the rear pointer is cleared here", () => {
@@ -56,7 +56,7 @@ describe("exercise 3.21", () => {
     insertQueue(q, "b");
     deleteQueue(q);
     deleteQueue(q);
-    expect(printQueue(q)).toBe("()");
-    expect(benPrintQueue(q)).toBe("(front () rear null)");
+    expect(printQueue(q)).toBe("[]");
+    expect(benPrintQueue(q)).toBe("[front [], rear null]");
   });
 });

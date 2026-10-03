@@ -7,7 +7,7 @@ import {
   type Expr,
   makeProduct,
   makeSum,
-  qnum,
+  numDatum,
   variable,
 } from "../../packages/ch2/src/03-symbolic-data.js";
 
@@ -33,7 +33,7 @@ const atom = (d: Datum): Expr =>
   d._tag === "Num" ? constant(d.n) : d._tag === "Sym" ? variable(d.name) : parseInfix(d);
 
 /** a. The fully parenthesized infix form: every sum or product is a
- * three-item datum `(a op b)`, with bare symbols and numbers as
+ * three-item datum `[a, op, b]`, with bare symbols and numbers as
  * leaves. */
 export function parseInfix(d: Datum): Expr {
   if (d._tag !== "Lst") {
@@ -41,7 +41,7 @@ export function parseInfix(d: Datum): Expr {
   }
   const items = itemsOf(d);
   if (items.length === 1) {
-    return atom(items[0] ?? qnum(0));
+    return atom(items[0] ?? numDatum(0));
   }
   const [left, op, right] = items;
   if (left === undefined || op === undefined || right === undefined || op._tag !== "Sym") {

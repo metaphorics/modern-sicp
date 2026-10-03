@@ -1,44 +1,27 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Original exercise
 // Chapter 4, exercise 4.8
 
 package sicp.ch4.exercises
 
-import arrow.core.raise.Raise
-import sicp.ch4.EvalStep
-import sicp.ch4.Evaluator
-import sicp.runtime.AppE
-import sicp.runtime.Env
-import sicp.runtime.Expr
 import sicp.runtime.PendingSolution
-import sicp.runtime.SchemeError
-import sicp.runtime.Value
 
 /**
- * Exercise 4.8: named `let`. The grammar's parser rejects the named shape
- * `(let name bindings body)` -- a symbol in the bindings slot -- so
- * [namedLetExpansion] renames it to `named-let` at the datum level, and the
- * parser delivers that as the application the step seam expects.
- * [namedLetToCombination] derives the form to the set!-based wrapper
- * `((lambda (name) (set! name (lambda bindings body)) (name inits))
- * '*named-let*)`: the wrapper's frame binds `name`, the `set!` installs the
- * loop procedure into that binding, and the body's recursive self-calls
- * resolve it there. The book's named-let Fibonacci answers 55.
+ * Exercise 4.8: named `let`. The derived rewrite turns
+ * `let loop(bindings) { body }` into a `GLetRec` that binds the loop's
+ * lambda before the initial call, so the body's recursive self-calls
+ * resolve the name in that recursive frame. The loop name stays local,
+ * so an outer binding of the same name survives; a plain `let` still
+ * evaluates.
+ *
+ * Expected: the named-let Fibonacci probe over 10 answers 55; the probe
+ * with an outer name answers 1 from the loop and then reads 7 outside;
+ * the plain-let probe answers 3.
  */
-public class WithNamedLet(
-    global: Env,
-) : Evaluator(global) {
-    context(r: Raise<SchemeError>)
-    override fun step(
-        expr: Expr,
-        env: Env,
-    ): EvalStep = throw PendingSolution()
-}
+public fun namedLetFibonacciTranscript(): String = throw PendingSolution()
 
-/** The datum-level parse seam: `(let name bindings body...)` becomes
- * `(named-let name bindings body...)`, recursively; quoted data passes
- * through untouched. */
-public fun namedLetExpansion(datum: Value): Value = throw PendingSolution()
+/** The loop name stays local to the wrapper frame. => "1\n7\n" */
+public fun loopNameLocalTranscript(): String = throw PendingSolution()
 
-/** The book's named-let derivation: the set!-based wrapper application. */
-context(r: Raise<SchemeError>)
-public fun namedLetToCombination(expr: AppE): Expr = throw PendingSolution()
+/** Plain let still evaluates. => "3\n" */
+public fun plainLetTranscript(): String = throw PendingSolution()

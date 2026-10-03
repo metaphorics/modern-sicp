@@ -4,7 +4,7 @@
 //! The reference solution of exercise 2.56, one module and one test.
 
 mod ex_2_56 {
-    use sicp_runtime::{SchemeError, Symbol};
+    use sicp_runtime::{SicpError, Symbol};
     use std::fmt;
 
     /// The section's `Expr`, extended with exponentiation: this
@@ -36,7 +36,7 @@ mod ex_2_56 {
         matches!(e, Expr::Num(x) if *x == n)
     }
 
-    fn make_sum(a1: Expr, a2: Expr) -> Result<Expr, SchemeError> {
+    fn make_sum(a1: Expr, a2: Expr) -> Result<Expr, SicpError> {
         if is_number(&a1, 0) {
             return Ok(a2);
         }
@@ -44,12 +44,12 @@ mod ex_2_56 {
             return Ok(a1);
         }
         if let (Expr::Num(x), Expr::Num(y)) = (&a1, &a2) {
-            return Ok(Expr::Num(x.checked_add(*y).ok_or(SchemeError::Overflow)?));
+            return Ok(Expr::Num(x.checked_add(*y).ok_or(SicpError::Overflow)?));
         }
         Ok(Expr::Sum(Box::new(a1), Box::new(a2)))
     }
 
-    fn make_product(m1: Expr, m2: Expr) -> Result<Expr, SchemeError> {
+    fn make_product(m1: Expr, m2: Expr) -> Result<Expr, SicpError> {
         if is_number(&m1, 0) || is_number(&m2, 0) {
             return Ok(Expr::Num(0));
         }
@@ -60,7 +60,7 @@ mod ex_2_56 {
             return Ok(m1);
         }
         if let (Expr::Num(x), Expr::Num(y)) = (&m1, &m2) {
-            return Ok(Expr::Num(x.checked_mul(*y).ok_or(SchemeError::Overflow)?));
+            return Ok(Expr::Num(x.checked_mul(*y).ok_or(SicpError::Overflow)?));
         }
         Ok(Expr::Product(Box::new(m1), Box::new(m2)))
     }
@@ -83,10 +83,10 @@ mod ex_2_56 {
     /// exponent.
     ///
     /// # Errors
-    /// [`SchemeError::TypeMismatch`] if an exponent is not a constant
-    /// number; [`SchemeError::Overflow`] on a numeric fold past the
+    /// [`SicpError::TypeMismatch`] if an exponent is not a constant
+    /// number; [`SicpError::Overflow`] on a numeric fold past the
     /// `i128` range.
-    fn deriv(exp: &Expr, var: &Symbol) -> Result<Expr, SchemeError> {
+    fn deriv(exp: &Expr, var: &Symbol) -> Result<Expr, SicpError> {
         match exp {
             Expr::Num(_) => Ok(Expr::Num(0)),
             Expr::Var(x) => Ok(Expr::Num(i128::from(x == var))),
@@ -98,7 +98,7 @@ mod ex_2_56 {
             }
             Expr::Pow(base, exponent) => {
                 let Expr::Num(n) = exponent.as_ref() else {
-                    return Err(SchemeError::TypeMismatch(
+                    return Err(SicpError::TypeMismatch(
                         "exponent must be a constant integer".to_string(),
                     ));
                 };

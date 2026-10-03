@@ -6,14 +6,8 @@ package sicp.ch2.exercises
 import arrow.core.raise.Raise
 
 /**
- * Exercise 2.80: define a generic predicate `=zero?` and install it in
- * the generic arithmetic package, working for ordinary numbers, rational
- * numbers, and complex numbers. [installIsZero] installs it per level on
- * any table; [ex_2_80] proves each level's install on a fresh one. The
- * polynomial install that lets `adjoin-term` drop zero terms of nested
- * polys is exercise 2.87's own extension.
- *
- * Installs `=zero?` for the number levels of the tower.
+ * Install the zero predicate for integer, rational, real, and complex tower
+ * values. Exercise 2.87 extends the predicate to polynomials.
  */
 public fun installIsZero(table: NumTable) {
     table.put("=zero?", listOf("integer")) { args ->

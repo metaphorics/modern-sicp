@@ -12,6 +12,6 @@ public class E2_05Test :
         test("Exercise 2.5: consPow(3, 4) recovers as the pair (3, 4)").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            ex_2_05() shouldBe (3L to 4L)
+            ex_2_05() shouldBe Pair(3L, 4L)
         }
     })

@@ -2,10 +2,9 @@
 // Adapted-from-SICP: section 4.1
 
 /**
- * The cons list. Effect v4 ships no persistent `List` module, so the edition
- * hand-writes the book's pairs as a discriminated union: sections 0.4 and 2.2
- * introduce this shape in their listings, and the chapter 4 evaluator uses it
- * for quoted data and parameter lists.
+ * Host-side teaching lists for query and machine domain values (consumer
+ * contract section 1). Guest pairs remain ordinary guest records; these
+ * Nil/Cons values are separate typed host data.
  */
 import { Option } from "effect";
 

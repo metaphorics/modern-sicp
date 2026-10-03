@@ -12,6 +12,6 @@ public class E5_43Test :
         test("Exercise 5.43: both body shapes are shown and the scanned program answers").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            scanOutShapes() shouldBe emptyList()
+            scanOutShapes().first() shouldBe "the two programs answer alike: true"
         }
     })

@@ -31,6 +31,7 @@ import {
   equalsNumber,
   intersectionSetOrdered,
   intersectionSetUnordered,
+  listDatum,
   lookupUnordered,
   makeCodeTree,
   makeLeaf,
@@ -40,33 +41,34 @@ import {
   makeTreeSet,
   memq,
   naiveConstructors,
-  qlist,
-  qnum,
-  qsym,
+  numDatum,
   showDataList,
   showDatum,
   showExpr,
   showSymbols,
   sym,
+  symDatum,
   variable,
   weightOf,
 } from "./03-symbolic-data.js";
 
 const abcd = list(sym("a"), sym("b"), sym("c"), sym("d"));
-const nameAges = qlist(
-  qlist(qsym("Norah"), qnum(12)),
-  qlist(qsym("Molly"), qnum(9)),
-  qlist(qsym("Anna"), qnum(7)),
-  qlist(qsym("Lauren"), qnum(6)),
-  qlist(qsym("Charlotte"), qnum(4)),
+const nameAges = listDatum(
+  listDatum(symDatum("Norah"), numDatum(12)),
+  listDatum(symDatum("Molly"), numDatum(9)),
+  listDatum(symDatum("Anna"), numDatum(7)),
+  listDatum(symDatum("Lauren"), numDatum(6)),
+  listDatum(symDatum("Charlotte"), numDatum(4)),
 );
-const abc = list(qsym("a"), qsym("b"), qsym("c"));
+const abc = list(symDatum("a"), symDatum("b"), symDatum("c"));
 
 describe("section 2.3: symbolic data", () => {
   it("2.3.1 builds lists of symbols and prints them like the book", () => {
-    expect(showSymbols(abcd)).toBe("(a b c d)");
-    expect(showList(list(23, 45, 17))).toBe("(23 45 17)");
-    expect(showDatum(nameAges)).toBe("((Norah 12) (Molly 9) (Anna 7) (Lauren 6) (Charlotte 4))");
+    expect(showSymbols(abcd)).toBe("[a, b, c, d]");
+    expect(showList(list(23, 45, 17))).toBe("[23, 45, 17]");
+    expect(showDatum(nameAges)).toBe(
+      "[[Norah, 12], [Molly, 9], [Anna, 7], [Lauren, 6], [Charlotte, 4]]",
+    );
     expect(
       showExpr(
         naiveConstructors.makeProduct(
@@ -74,38 +76,38 @@ describe("section 2.3: symbolic data", () => {
           naiveConstructors.makeSum(variable("x"), constant(9)),
         ),
       ),
-    ).toBe("(* (+ 23 45) (+ x 9))");
+    ).toBe("(23 + 45) * (x + 9)");
   });
 
   it("2.3.1 distinguishes symbols from the values of names", () => {
     const a = 1;
     const b = 2;
-    expect(showList(list(a, b))).toBe("(1 2)");
-    expect(showSymbols(list(sym("a"), sym("b")))).toBe("(a b)");
-    expect(showDatum(qlist(qsym("a"), qnum(b)))).toBe("(a 2)");
+    expect(showList(list(a, b))).toBe("[1, 2]");
+    expect(showSymbols(list(sym("a"), sym("b")))).toBe("[a, b]");
+    expect(showDatum(listDatum(symDatum("a"), numDatum(b)))).toBe("[a, 2]");
   });
 
   it("2.3.1 takes quoted lists apart with the list primitives", () => {
-    expect(showDatum(getOrElse(car(abc), qsym("")))).toBe("a");
-    expect(showDataList(getOrElse(cdr(abc), nil))).toBe("(b c)");
+    expect(showDatum(getOrElse(car(abc), symDatum("")))).toBe("a");
+    expect(showDataList(getOrElse(cdr(abc), nil))).toBe("[b, c]");
   });
 
   it("2.3.1 memq returns the sublist from the first eq? hit", () => {
-    const noApple = list(qsym("pear"), qsym("banana"), qsym("prune"));
-    expect(memq(qsym("apple"), noApple)).toStrictEqual({ _tag: "None" });
+    const noApple = list(symDatum("pear"), symDatum("banana"), symDatum("prune"));
+    expect(memq(symDatum("apple"), noApple)).toStrictEqual({ _tag: "None" });
     const withApple = list(
-      qsym("x"),
-      qlist(qsym("apple"), qsym("sauce")),
-      qsym("y"),
-      qsym("apple"),
-      qsym("pear"),
+      symDatum("x"),
+      listDatum(symDatum("apple"), symDatum("sauce")),
+      symDatum("y"),
+      symDatum("apple"),
+      symDatum("pear"),
     );
-    const hit = memq(qsym("apple"), withApple);
+    const hit = memq(symDatum("apple"), withApple);
     expect(hit).toStrictEqual({
       _tag: "Some",
-      value: list(qsym("apple"), qsym("pear")),
+      value: list(symDatum("apple"), symDatum("pear")),
     });
-    expect(showDataList(getOrElse(hit, nil))).toBe("(apple pear)");
+    expect(showDataList(getOrElse(hit, nil))).toBe("[apple, pear]");
   });
 
   it("2.3.2 prints the unsimplified derivatives of the book's three examples", () => {
@@ -115,10 +117,10 @@ describe("section 2.3: symbolic data", () => {
     const prodXY = naiveConstructors.makeProduct(x, y);
     const third = naiveConstructors.makeProduct(prodXY, sumX3);
     const n = naiveConstructors;
-    expect(showExpr(derivVia(sumX3, sym("x"), n))).toBe("(+ 1 0)");
-    expect(showExpr(derivVia(prodXY, sym("x"), n))).toBe("(+ (* x 0) (* 1 y))");
+    expect(showExpr(derivVia(sumX3, sym("x"), n))).toBe("1 + 0");
+    expect(showExpr(derivVia(prodXY, sym("x"), n))).toBe("x * 0 + 1 * y");
     expect(showExpr(derivVia(third, sym("x"), n))).toBe(
-      "(+ (* (* x y) (+ 1 0)) (* (+ (* x 0) (* 1 y)) (+ x 3)))",
+      "x * y * (1 + 0) + (x * 0 + 1 * y) * (x + 3)",
     );
   });
 
@@ -130,7 +132,7 @@ describe("section 2.3: symbolic data", () => {
     const third = makeProduct(prodXY, sumX3);
     expect(showExpr(deriv(sumX3, sym("x")))).toBe("1");
     expect(showExpr(deriv(prodXY, sym("x")))).toBe("y");
-    expect(showExpr(deriv(third, sym("x")))).toBe("(+ (* x y) (* y (+ x 3)))");
+    expect(showExpr(deriv(third, sym("x")))).toBe("x * y + y * (x + 3)");
   });
 
   it("2.3.2 the simplifying constructors fold constants and absorb 0 and 1", () => {
@@ -145,17 +147,17 @@ describe("section 2.3: symbolic data", () => {
   it("2.3.3 the unordered representation scans and conses", () => {
     expect(elementOfSetUnordered(6, list(1, 3, 6, 10))).toBe(true);
     expect(elementOfSetUnordered(7, list(1, 3, 6, 10))).toBe(false);
-    expect(showList(adjoinSetUnordered(5, list(3, 7)))).toBe("(5 3 7)");
-    expect(showList(adjoinSetUnordered(3, list(3, 7)))).toBe("(3 7)");
-    expect(showList(intersectionSetUnordered(list(1, 3, 6, 10), list(3, 6, 7)))).toBe("(3 6)");
+    expect(showList(adjoinSetUnordered(5, list(3, 7)))).toBe("[5, 3, 7]");
+    expect(showList(adjoinSetUnordered(3, list(3, 7)))).toBe("[3, 7]");
+    expect(showList(intersectionSetUnordered(list(1, 3, 6, 10), list(3, 6, 7)))).toBe("[3, 6]");
   });
 
   it("2.3.3 the ordered representation stops early and intersects in one pass", () => {
     expect(elementOfSetOrdered(6, list(1, 3, 6, 10))).toBe(true);
     expect(elementOfSetOrdered(0, list(1, 3, 6, 10))).toBe(false);
     expect(elementOfSetOrdered(11, list(1, 3, 6, 10))).toBe(false);
-    expect(showList(intersectionSetOrdered(list(1, 3, 6, 10), list(3, 6, 7)))).toBe("(3 6)");
-    expect(showList(intersectionSetOrdered(list(1, 3, 6, 10), list(11, 13)))).toBe("()");
+    expect(showList(intersectionSetOrdered(list(1, 3, 6, 10), list(3, 6, 7)))).toBe("[3, 6]");
+    expect(showList(intersectionSetOrdered(list(1, 3, 6, 10), list(11, 13)))).toBe("[]");
   });
 
   it("2.3.3 the tree representation narrows its way down", () => {
@@ -193,10 +195,10 @@ describe("section 2.3: symbolic data", () => {
   });
 
   it("2.3.3 lookup walks the unordered record list", () => {
-    const records = list<[number, Datum]>([1, qsym("Anna")], [2, qsym("Norah")]);
+    const records = list<[number, Datum]>([1, symDatum("Anna")], [2, symDatum("Norah")]);
     expect(lookupUnordered(2, records)).toStrictEqual({
       _tag: "Some",
-      value: [2, qsym("Norah")],
+      value: [2, symDatum("Norah")],
     });
     expect(lookupUnordered(3, records)).toStrictEqual({ _tag: "None" });
   });
@@ -234,10 +236,10 @@ describe("section 2.3: symbolic data", () => {
       _tag: "Ok",
       value: list(sym("a"), sym("b"), sym("c")),
     });
-    expect(decoded._tag === "Ok" ? showSymbols(decoded.value) : "").toBe("(a b c)");
-    expect(decode(list(2), tree)).toStrictEqual(err("bad bit: CHOOSE-BRANCH 2"));
+    expect(decoded._tag === "Ok" ? showSymbols(decoded.value) : "").toBe("[a, b, c]");
+    expect(decode(list(2), tree)).toStrictEqual(err("chooseBranch: bad bit 2"));
     expect(chooseBranch(0, makeLeaf(sym("a"), 1))).toStrictEqual(
-      err("bad position: CHOOSE-BRANCH cannot branch at a leaf"),
+      err("chooseBranch: cannot branch at a leaf"),
     );
   });
 

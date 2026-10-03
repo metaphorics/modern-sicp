@@ -6,7 +6,6 @@ package sicp.ch4.exercises
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.core.test.Enabled
 import io.kotest.matchers.shouldBe
-import sicp.runtime.VInt
 
 public class E4_24Test :
     FunSpec({
@@ -15,8 +14,8 @@ public class E4_24Test :
         ) {
             val direct = directEvaluatorTiming()
             val analyzed = analyzerTiming()
-            direct.value shouldBe VInt(144)
-            analyzed.value shouldBe VInt(144)
+            direct.value shouldBe 144L
+            analyzed.value shouldBe 144L
             (direct.medianNanos > 0.0) shouldBe true
             (analyzed.medianNanos > 0.0) shouldBe true
         }

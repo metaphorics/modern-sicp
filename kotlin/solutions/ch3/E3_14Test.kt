@@ -5,41 +5,42 @@ package sicp.ch3.exercises
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.runtime.VPair
-import sicp.runtime.VSym
-import sicp.runtime.vlist
+import sicp.runtime.PairCell
+import sicp.runtime.Symbol
+import sicp.runtime.datumList
+import sicp.runtime.structurallyEqual
 
 public class E3_14Test :
     FunSpec({
-        test("the book's session: v prints (a) and w prints (d c b a)") {
-            val v = vlist(VSym("a"), VSym("b"), VSym("c"), VSym("d")) as VPair
+        test("the result contains the reversed elements") {
+            val v = datumList(Symbol("a"), Symbol("b"), Symbol("c"), Symbol("d")) as PairCell
 
             val w = mystery(v)
 
-            v.toString() shouldBe "(a)"
-            w.toString() shouldBe "(d c b a)"
+            structurallyEqual(v, datumList(Symbol("a"))) shouldBe true
+            structurallyEqual(w, datumList(Symbol("d"), Symbol("c"), Symbol("b"), Symbol("a"))) shouldBe true
         }
 
-        test("the reversal is in place: w's cells are v's original cells reversed") {
-            val v = vlist(VSym("a"), VSym("b"), VSym("c"), VSym("d")) as VPair
-            val second = v.cdr as VPair
-            val third = second.cdr as VPair
-            val last = third.cdr as VPair
+        test("the reversed links reuse v's original cells") {
+            val v = datumList(Symbol("a"), Symbol("b"), Symbol("c"), Symbol("d")) as PairCell
+            val second = v.second as PairCell
+            val third = second.second as PairCell
+            val last = third.second as PairCell
 
             val w = mystery(v)
 
             (w === last) shouldBe true
-            (w.cdr === third) shouldBe true
-            ((w.cdr as VPair).cdr === second) shouldBe true
-            (((w.cdr as VPair).cdr as VPair).cdr === v) shouldBe true
+            (w.second === third) shouldBe true
+            ((w.second as PairCell).second === second) shouldBe true
+            (((w.second as PairCell).second as PairCell).second === v) shouldBe true
         }
 
         test("a one-pair chain is its own reverse") {
-            val v = vlist(VSym("a")) as VPair
+            val v = datumList(Symbol("a")) as PairCell
 
             val w = mystery(v)
 
             (w === v) shouldBe true
-            v.toString() shouldBe "(a)"
+            structurallyEqual(v, datumList(Symbol("a"))) shouldBe true
         }
     })

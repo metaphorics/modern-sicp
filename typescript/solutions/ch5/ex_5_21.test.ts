@@ -2,7 +2,7 @@
 // Original exercise
 
 import { describe, expect, it } from "vitest";
-import { countLeavesRuns } from "./ex_5_21.js";
+import { countLeavesRuns } from "./ex_5_21.ts";
 
 describe("exercise 5.21 count-leaves machines", () => {
   it("both machines agree with the host definition, with recursion using more stack", () => {

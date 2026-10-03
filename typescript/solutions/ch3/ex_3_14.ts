@@ -7,7 +7,7 @@ import { isMNil, type MList, mnil, setCdr } from "../../packages/ch3/src/03-muta
  * Exercise 3.14: mystery. The book's inner `loop` reverses the
  * pointers of the input list in place: it walks the chain holding the
  * old tail in a temporary, points each pair's tail back at the
- * accumulator with `setCdr` (the book's `set-cdr!`), and returns the
+ * accumulator with `setCdr` (the book's `setCdr`), and returns the
  * last pair, which is now the front of the reversed chain. The
  * original front ends up as the last pair, its tail the empty list, so
  * the caller's binding prints the one-element list.

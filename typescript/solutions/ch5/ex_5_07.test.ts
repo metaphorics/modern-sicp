@@ -2,7 +2,7 @@
 // Original exercise
 
 import { describe, expect, it } from "vitest";
-import { runGcd, simulatedExptRuns } from "./ex_5_07.js";
+import { runGcd, simulatedExptRuns } from "./ex_5_07.ts";
 
 describe("exercise 5.7 designed machines on the simulator", () => {
   it("runs the 5.4 expt machines against the host oracle", () => {

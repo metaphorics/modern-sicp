@@ -1,23 +1,25 @@
 @node	5.4, 5.5, 5.3, Chapter 5
 @section The Explicit-Control Evaluator
 
-In @ref{5.1} we saw how to transform simple Scheme programs into
+In @ref{5.1} we saw how to transform simple guest programs into
 descriptions of register machines.  We will now perform this transformation on
 a more complex program, the metacircular evaluator of 
-@ref{4.1.1}--@ref{4.1.4}, which shows how the behavior of a Scheme interpreter
-can be described in terms of the procedures @code{eval} and @code{apply}. The
+@ref{4.1.1}--@ref{4.1.4}, which shows how the behavior of the guest
+interpreter can be described in terms of the procedures @code{evaluate} and
+@code{apply}. The
 @newterm{explicit-control evaluator} that we develop in this section shows how
 the underlying procedure-calling and argument-passing mechanisms used in the
 evaluation process can be described in terms of operations on registers and
 stacks.  In addition, the explicit-control evaluator can serve as an
-implementation of a Scheme interpreter, written in a language that is very
-similar to the native machine language of conventional computers.  The
+implementation of the guest interpreter, written in the machine's instruction
+language, which is very similar to the native machine language of
+conventional computers.  The
 evaluator can be executed by the register-machine simulator of 
 @ref{5.2}.  Alternatively, it can be used as a starting point for building a
-machine-language implementation of a Scheme evaluator, or even a
-special-purpose machine for evaluating Scheme expressions.  @ref{Figure 5.16}
-shows such a hardware implementation: a silicon chip that acts as an evaluator
-for Scheme.  The chip designers started with the data-path and controller
+machine-language implementation of a guest evaluator, or even a
+special-purpose machine for evaluating guest expressions.  @ref{Figure 5.16}
+shows such a hardware implementation: a silicon chip that acts as a language
+evaluator.  The chip designers started with the data-path and controller
 specifications for a register machine similar to the evaluator described in
 this section and used design automation programs to construct the
 integrated-circuit layout.@footnote{See @ref{Batali et al. 1982} for more information
@@ -27,33 +29,31 @@ on the chip and the method by which it was designed.}
 @anchor{Figure 5.16}
 @ifinfo
 @quotation
-@strong{Figure 5.16:} A silicon-chip implementation of an evaluator for Scheme.
+@strong{Figure 5.16:} A silicon-chip implementation of a language evaluator.
 
 [A photograph of chip layout]
 
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap5/chip,,,Figure 5.16: A silicon-chip implementation of an evaluator for Scheme.,.std.svg}
+@image{../../text/original/figures/chap5/chip,,,Figure 5.16: A silicon-chip implementation of a language evaluator.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap5/chip.std,,,,.pdf}
+@image{../../text/original/figures/pdf/chap5/chip.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 5.16:} A silicon-chip implementation of an evaluator for Scheme.}
+@caption{@strong{Figure 5.16:} A silicon-chip implementation of a language evaluator.}
 @end float
 
 In this edition the explicit-control evaluator is the module
-@code{ch05::sec_5_4}: the controller in the book's notation below,
-assembled by the simulator of @ref{5.2}, and the operations table of
-@ref{4.1} typed over machine words.  The runtime value type is the
-word type, the 5.3 precedent: object values and object-language
-expressions are the reader's list structure, and the evaluator's own
-data are tagged words no object-language value can spell, the
-environment words, the procedure words, and the words the exercises
-of this section add.  The controller listings of this section are the
-text the edition actually executes: the simulator reads them into
-datums and assembles one execution procedure per instruction.
+@code{ch05::sec_5_4}: a @code{Control}-state machine over typed @code{HIR},
+sharing the leaf semantics of @code{host::ops}.  The controller notation below
+is the design language, not executed text: nothing here is parsed from datums,
+and no execution procedures are assembled.  A checked program enters through
+@code{admit} and runs under @code{Eceval::run}, or a source string runs under
+@code{run_session}; the machine's registers are the control state, the value
+and procedure registers, the argument list, and the frame, and its observable
+answer is the run outcome.
 
 @subsubheading Registers and operations
 
@@ -73,7 +73,7 @@ implemented in hardware, we would replace these operations by more elementary
 operations, using the list-structure implementation we described in 
 @ref{5.3}.
 
-Our Scheme evaluator register machine includes a stack and seven registers:
+Our evaluator register machine includes a stack and seven registers:
 @code{exp}, @code{env}, @code{val}, @code{continue}, @code{proc}, @code{argl},
 and @code{unev}.  @code{Exp} is used to hold the expression to be evaluated,
 and @code{env} contains the environment in which the evaluation is to be
@@ -85,15 +85,19 @@ evaluating an expression requires evaluating its subexpressions.)  The
 registers @code{proc}, @code{argl}, and @code{unev} are used in evaluating
 combinations.
 
-In this edition a machine word is what a register holds, and the
-evaluator's registers carry more than object values: @code{exp} and
-@code{unev} hold the expressions the reader produced as list
-structure, @code{argl} an accumulated operand list, @code{env} an
-environment word naming a frame in the environment table, and
-@code{continue} a label the assembler's @code{(goto (reg continue))}
-consumes.  Because the words are values, the syntax operations of
-@ref{4.1.2} run as predicates over list structure, and the machine's
-stack carries words unchanged.
+In this edition the three word models are deliberately distinct: the lesson
+machines of @ref{5.1} and @ref{5.2} move the integer @code{MachineValue}, the
+memory of @ref{5.3} stores @code{Word} pairs, and the registers of this
+section and @ref{5.5} carry guest values---the typed object values of the
+checked language.  Here @code{exp} and @code{unev} hold typed expression
+data, @code{argl} an accumulated operand vector, @code{env} an arena
+reference into the environment table, and @code{continue} a control state the
+machine's dispatch consumes.  The engine names those states as data:
+@code{ch05::sec_5_4::Control} covers @code{Eval}, @code{Exec}, @code{Args},
+@code{Binop}, @code{MatchArms}, @code{TestPattern}, @code{Apply}, @code{Loop},
+and @code{Halt}, and every transition answers a typed @code{Signal}.  Because
+the words are values, the syntax operations of @ref{4.1.2} run as predicates
+over typed data, and the machine's stack carries words unchanged.
 
 We will not provide a data-path diagram to show how the registers and
 operations of the evaluator are connected, nor will we give the complete list
@@ -122,7 +126,7 @@ analysis on the syntactic type of the expression to be evaluated.@footnote{In
 our controller, the dispatch is written as a sequence of @code{test} and
 @code{branch} instructions.  Alternatively, it could have been written in a
 data-directed style (and in a real system it probably would have been) to avoid
-the need to perform sequential tests and to simplify the definition of new expression types. A machine designed to run Lisp would probably include a
+the need to perform sequential tests and to simplify the definition of new expression types. A machine designed to run the guest language would probably include a
 @code{dispatch-on-type} instruction that would efficiently execute such
 data-directed dispatches.}
 
@@ -207,7 +211,7 @@ of the stack to save registers that will be restored after the recursive call
 returns.  Before each call we will be careful to identify which registers must
 be saved (because their values will be needed later).@footnote{This is an
 important but subtle point in translating algorithms from a procedural
-language, such as Lisp, to a register-machine language.  As an alternative to
+high-level language to a register-machine language.  As an alternative to
 saving only what is needed, we could save all the registers (except @code{val})
 before each recursive call. This is called a @newterm{framed-stack} discipline.
 This would work but might save more registers than necessary; this could be an
@@ -253,14 +257,11 @@ procedures in @ref{4.1.3} the following two procedures for manipulating
 argument lists:
 
 @example rust
-// The argument-list word is plain list structure: the empty
-// operand list, and adjoin-arg appending at the end, the
-// book's order.
-operation("empty-arglist", |_| Ok(Value::Nil)),
-operation("adjoin-arg", |args| @{
-    let (word, argl) = two("adjoin-arg", args)?;
-    adjoin_arg(word, &argl)
-@}),
+// The argument-list register holds Vec<HostValue>: the empty operand
+// list is the empty vector, and adjoining appends one value at the
+// end, the book's order.
+let mut argl: Vec<HostValue> = Vec::new();
+argl.push(word);
 @end example
 
 @noindent
@@ -268,10 +269,8 @@ We also use an additional syntax procedure to test for the last operand in a
 combination:
 
 @example rust
-operation("last-operand?", |args| @{
-    let (_, last) = sequence_flags("last-operand?", &one("last-operand?", args)?.0)?;
-    Ok(Value::boolean(last))
-@})
+// The last-operand? test answers a Bool over the remaining operands.
+HostValue::Bool(operands.len() == 1)
 @end example
 }
 
@@ -368,7 +367,7 @@ The details of the argument-evaluation loop determine the order in which the
 interpreter evaluates the operands of a combination (e.g., left to right or
 right to left---see @ref{Exercise 3.8}).  This order is not determined by the
 metacircular evaluator, which inherits its control structure from the
-underlying Scheme in which it is implemented.@footnote{The order of operand
+underlying guest language in which it is implemented.@footnote{The order of operand
 evaluation in the metacircular evaluator is determined by the order of
 evaluation of the arguments to @code{cons} in the procedure
 @code{list-of-values} of @ref{4.1.1} (see @ref{Exercise 4.1}).} Because
@@ -412,7 +411,7 @@ process rather than the details of the primitives, we will instead just use an
 @code{apply-primitive-procedure} operation that applies the procedure in
 @code{proc} to the arguments in @code{argl}.  For the purpose of simulating the
 evaluator with the simulator of @ref{5.2} we use the procedure
-@code{apply-primitive-procedure}, which calls on the underlying Scheme system
+@code{apply-primitive-procedure}, which calls on the host's shared leaf semantics
 to perform the application, just as we did for the metacircular evaluator in
 @ref{4.1.4}.  After computing the value of the primitive application,
 we restore @code{continue} and go to the designated entry point.
@@ -535,11 +534,14 @@ ev-sequence-last-exp
 
 In @ref{Chapter 1} we said that the process described by a procedure such as
 
-@example
-(define (sqrt-iter guess x)
-  (if (good-enough? guess x)
-      guess
-      (sqrt-iter (improve guess x) x)))
+@example rust
+fn sqrt_iter(guess: i64, x: i64) -> i64 @{
+    if good_enough(guess, x) @{
+        guess
+    @} else @{
+        sqrt_iter(improve(guess, x), x)
+    @}
+@}
 @end example
 
 @noindent
@@ -553,7 +555,7 @@ fixed set of registers.} An evaluator that can execute a procedure such as
 continues to call itself is called a @newterm{tail-recursive} evaluator.  The
 metacircular implementation of the evaluator in @ref{Chapter 4} does not
 specify whether the evaluator is tail-recursive, because that evaluator
-inherits its mechanism for saving state from the underlying Scheme.  With the
+inherits its mechanism for saving state from the machine's explicit stack.  With the
 explicit-control evaluator, however, we can trace through the evaluation
 process to see when procedure calls cause a net accumulation of information on
 the stack.
@@ -579,10 +581,8 @@ repeating this until all the expressions have been evaluated:@footnote{We can
 define @code{no-more-exps?} as follows:
 
 @example rust
-operation("no-more-exps?", |args| @{
-    let (empty, _) = sequence_flags("no-more-exps?", &one("no-more-exps?", args)?.0)?;
-    Ok(Value::boolean(empty))
-@})
+// The no-more-exps? test answers a Bool over the unevaluated sequence.
+HostValue::Bool(unev.is_empty())
 @end example
 }
 
@@ -619,11 +619,11 @@ proportional to the number of iterations rather than requiring constant space.
 This difference can be significant.  For example, with tail recursion, an
 infinite loop can be expressed using only the procedure-call mechanism:
 
-@example
-(define (count n)
-  (newline)
-  (display n)
-  (count (+ n 1)))
+@example rust
+fn count(n: i64) -> i64 @{
+    println!("@{@}", n);
+    count(n + 1)
+@}
 @end example
 
 @noindent
@@ -747,19 +747,19 @@ ev-definition-1
 
 @quotation
 @strong{@anchor{Exercise 5.23}Exercise 5.23:} Extend the evaluator to handle
-derived expressions such as @code{cond}, @code{let}, and so on 
+derived expressions such as the case form and @code{Let} of 
 (@ref{4.1.2}).  You may ``cheat'' and assume that the syntax transformers such
-as @code{cond->if} are available as machine operations.@footnote{This isn't
+as @code{case_to_if} are available as machine operations.@footnote{This isn't
 really cheating.  In an actual implementation built from scratch, we would use
-our explicit-control evaluator to interpret a Scheme program that performs
-source-level transformations like @code{cond->if} in a syntax phase that runs
+our explicit-control evaluator to interpret a guest program that performs
+source-level transformations like @code{case_to_if} in a syntax phase that runs
 before execution.}
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 5.24}Exercise 5.24:} Implement @code{cond} as a new
-basic special form without reducing it to @code{if}.  You will have to
-construct a loop that tests the predicates of successive @code{cond} clauses
+@strong{@anchor{Exercise 5.24}Exercise 5.24:} Implement the case form as a new
+basic special form without reducing it to @code{If}.  You will have to
+construct a loop that tests the predicates of successive case arms
 until you find one that is true, and then use @code{ev-sequence} to evaluate
 the actions of the clause.
 @end quotation
@@ -777,7 +777,7 @@ a development, begun in @ref{Chapter 1}, in which we have explored successively
 more precise models of the evaluation process.  We started with the relatively
 informal substitution model, then extended this in @ref{Chapter 3} to the
 environment model, which enabled us to deal with state and change.  In the
-metacircular evaluator of @ref{Chapter 4}, we used Scheme itself as a language
+metacircular evaluator of @ref{Chapter 4}, we used the guest language itself as a language
 for making more explicit the environment structure constructed during
 evaluation of an expression.  Now, with register machines, we have taken a
 close look at the evaluator's mechanisms for storage management, argument
@@ -786,7 +786,10 @@ issues and resolve ambiguities that were not apparent at the previous, less
 precise treatment of evaluation.  To understand the behavior of the
 explicit-control evaluator, we can simulate it and monitor its performance.
 
-We will install a driver loop in our evaluator machine.  This plays the role of
+We will install a driver loop in our evaluator machine.  In this edition the
+machine is @code{ch05::sec_5_4::Eceval}: @code{Eceval::run} executes a checked
+program's @code{main}, and @code{run_session} is the admit-then-run entry the
+conformance checks call.  This plays the role of
 the @code{driver-loop} procedure of @ref{4.1.4}.  The evaluator will
 repeatedly print a prompt, read an expression, evaluate the expression by going
 to @code{eval-dispatch}, and print the result.  The following instructions form
@@ -798,24 +801,12 @@ extremely complex operations.  In practice, they would be implemented using
 low-level input-output operations such as transferring single characters to and
 from a device.
 
-To support the @code{get-global-environment} operation we define
-
-@example rust
-// The global environment is built once when the evaluator is
-// constructed: `true` and `false`, and the object-language
-// primitives as procedure words.  Entering it in the environment
-// table answers the environment word the `env` register holds.
-let global_env = Env::global();
-global_env.define("true".into(), Value::boolean(true));
-global_env.define("false".into(), Value::boolean(false));
-for name in OBJECT_PRIMITIVES @{
-    global_env.define((*name).into(), primitive_word(name));
-@}
-let global = intern_environment(global_env);
-
-// The get-global-environment operation answers that word.
-let get_global = word_op("get-global-environment", move |_| Ok(global.clone()));
-@end example
+To support the @code{get-global-environment} operation we note where names
+live: frames are built from the admitted program when the evaluator is
+constructed, with bindings resolved to slots by the checker, so @code{true}
+and @code{false} enter as @code{HostValue::Bool} values and the
+object-language primitives as procedure values; the @code{env} register holds
+the current frame index.
 }
 
 @example
@@ -865,68 +856,51 @@ undefined variable) interrupts an evaluation.@footnote{We could perform the
 stack initialization only after errors, but doing it in the driver loop will be
 convenient for monitoring the evaluator's performance, as described below.}
 
-If we combine all the code fragments presented in 
-@ref{5.4.1}--@ref{5.4.4}, we can create an evaluator machine model that we can
-run using the register-machine simulator of @ref{5.2}.
+If we combine all the code fragments presented in
+@ref{5.4.1}--@ref{5.4.4}, we have designed the evaluator the edition runs:
+no controller text is parsed and no execution procedures are assembled.
+A checked program is admitted and run by the entries below.
 
 @example rust
-// The section's evaluator machine: the controller is the
-// concatenation of the fragments above and the registers are
-// the book's seven.
-let machine = make_machine(EVALUATOR_REGISTERS, &table, controller)?;
+// The section's evaluator: admit one checked program, then run it.
+let program = sicp_runtime::host::admit(source)?;
+let outcome = Eceval::run(&program);
+let transcript = &outcome.stdout;
 @end example
 
 @noindent
-We must define Scheme procedures to simulate the operations used as primitives
-by the evaluator.  These are the same procedures we used for the metacircular
-evaluator in @ref{4.1}, together with the few additional ones defined
-in footnotes throughout @ref{5.4}.
+The leaf semantics the evaluator shares with the engines of
+@ref{4.1} are the operations of @code{sicp_runtime::host::ops}, together
+with the few additional HostValue-typed operations defined in footnotes
+throughout @ref{5.4}: there is no operation table to install.
 
 @example rust
-// The complete table the controller names: the syntax,
-// sequence, operand-list, procedure, and environment
-// operations of 4.1 typed over words, plus the driver's own
-// operations and any exercise's additions.
-let mut table: Vec<(&'static str, OpHandler)> = base_operations();
-table.extend(driver_operations(&output, &input, &global));
-table.extend(operations.iter().cloned());
-@end example
-
-@noindent
-Finally, we can initialize the global environment and run the evaluator:
-
-@example rust
-// The program is read into the input queue when the evaluator is
-// built, and the driver loop runs it to the end of the queue,
-// answering the transcript the driver printed.
-let mut evaluator = make_evaluator(&base_controller(), &[], program)?;
-evaluator.run()?;
-let transcript = evaluator.transcript();
+// A source string runs in one call, admitting and running together.
+let outcome = run_session(source)?;
+let transcript = &outcome.stdout;
 @end example
 
 @example
 @i{;;; EC-Eval input:}
-(define (append x y)
-  (if (null? x)
-      y
-      (cons (car x) (append (cdr x) y))))
+fn append(x: &Vec<i64>, y: &Vec<i64>) -> Vec<i64> @{
+    let mut result = x.clone();
+    for item in y @{ result.push(*item); @}
+    result
+@}
+fn main() @{
+    println!(\"@{:@?@}\", append(&vec![1, 2, 3], &vec![4, 5, 6]));
+@}
 
 @i{;;; EC-Eval value:}
-@i{ok}
-
-@i{;;; EC-Eval input:}
-(append '(a b c) '(d e f))
-
-@i{;;; EC-Eval value:}
-@i{(a b c d e f)}
+@i{[1, 2, 3, 4, 5, 6]}
 @end example
 
 @noindent
 Of course, evaluating expressions in this way will take much longer than if we
-had directly typed them into Scheme, because of the multiple levels of
-simulation involved.  Our expressions are evaluated by the
-explicit-control-evaluator machine, which is being simulated by a Scheme
-program, which is itself being evaluated by the Scheme interpreter.
+had run the guest program directly with the direct evaluator of @ref{4.1},
+because of the multiple levels of interpretation involved.  Our expressions
+are evaluated by the explicit-control-evaluator machine, whose steps the
+engine performs one at a time.
 
 @subsubheading Monitoring the performance of the evaluator
 
@@ -954,16 +928,11 @@ Interactions with the evaluator now look like this:
 
 @example
 @i{;;; EC-Eval input:}
-(define (factorial n)
-  (if (= n 1) 1 (* (factorial (- n 1)) n)))
-@i{(total-pushes = 3 maximum-depth = 3)}
-
-@i{;;; EC-Eval value:}
-@i{ok}
-
-@i{;;; EC-Eval input:}
-(factorial 5)
-@i{(total-pushes = 144 maximum-depth = 28)}
+fn factorial(n: i64) -> i64 @{
+    if n == 1 @{ 1 @} else @{ factorial(n - 1) * n @}
+@}
+fn main() @{ println!("@{@}", factorial(5)); @}
+@i{(total-pushes = ⟨@var{pushes}⟩ maximum-depth = ⟨@var{depth}⟩)}
 
 @i{;;; EC-Eval value:}
 @i{120}
@@ -980,14 +949,22 @@ explore the tail-recursive property of the evaluator (@ref{5.4.2}).
 Start the evaluator and define the iterative @code{factorial} procedure from
 @ref{1.2.1}:
 
-@example
-(define (factorial n)
-  (define (iter product counter)
-    (if (> counter n)
-        product
-        (iter (* counter product)
-              (+ counter 1))))
-  (iter 1 1))
+@example rust
+// The iterative algorithm is a loop
+// in guest source: Rust gives no
+// tail-call guarantee, so constant-space
+// iteration is written with loop and
+// break exactly as the machine's
+// controller loops.
+fn factorial(n: i64) -> i64 @{
+    let mut product = 1;
+    let mut counter = 1;
+    loop @{
+        if counter > n @{ break product; @}
+        product = counter * product;
+        counter += 1;
+    @}
+@}
 @end example
 
 Run the procedure with some small values of @math{n}.  Record the maximum stack
@@ -1014,11 +991,10 @@ by two constants.
 explore the behavior of the following procedure for computing factorials
 recursively:
 
-@example
-(define (factorial n)
-  (if (= n 1)
-      1
-      (* (factorial (- n 1)) n)))
+@example rust
+fn factorial(n: i64) -> i64 @{
+    if n == 1 @{ 1 @} else @{ factorial(n - 1) * n @}
+@}
 @end example
 
 By running this procedure with the monitored stack, determine, as a function of
@@ -1069,11 +1045,10 @@ their input.
 @strong{@anchor{Exercise 5.29}Exercise 5.29:} Monitor the stack operations in
 the tree-recursive Fibonacci computation:
 
-@example
-(define (fib n)
-  (if (< n 2)
-      n
-      (+ (fib (- n 1)) (fib (- n 2)))))
+@example rust
+fn fib(n: i64) -> i64 @{
+    if n < 2 @{ n @} else @{ fib(n - 1) + fib(n - 2) @}
+@}
 @end example
 
 @enumerate a
@@ -1100,11 +1075,11 @@ constant @math{k} that is independent of @math{n}.  Give the formula, and say wh
 @quotation
 @strong{@anchor{Exercise 5.30}Exercise 5.30:} Our evaluator currently catches
 and signals only two kinds of errors---unknown expression types and unknown
-procedure types.  Other errors will take us out of the evaluator
-read-eval-print loop.  When we run the evaluator using the register-machine
-simulator, these errors are caught by the underlying Scheme system.  This is
-analogous to the computer crashing when a user program makes an
-error.@footnote{Regrettably, this is the normal state of affairs in
+procedure types.  Other errors will take us out of the evaluator's
+driver loop.  When we run the evaluator through the engine, these errors are
+reported as typed traps (@code{TrapReport}) naming the fault and its source
+span.  A trap ends the run the way the computer crashes when a user program
+makes an error---and the typed report is what the machine can recover from.@footnote{Regrettably, this is the normal state of affairs in
 conventional compiler-based language systems such as C.  In @abbr{UNIX}(tm)
 the system ``dumps core,'' and in @abbr{DOS}/Windows(tm) it becomes
 catatonic.  The Macintosh(tm) displays a picture of an exploding bomb and

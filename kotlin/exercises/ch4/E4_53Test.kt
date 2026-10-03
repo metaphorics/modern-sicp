@@ -12,6 +12,6 @@ public class E4_53Test :
         test("Exercise 4.53: the accumulated pairs survive the final failure").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            pairsResult() shouldBe "((8 35) (3 110) (3 20))"
+            pairsResult() shouldBe "([8, 35] [3, 110] [3, 20])"
         }
     })

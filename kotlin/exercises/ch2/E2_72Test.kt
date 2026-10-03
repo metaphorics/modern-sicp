@@ -12,6 +12,6 @@ public class E2_72Test :
         test("Exercise 2.72: for n = 5 the most frequent symbol costs 4 steps and the least frequent 10").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            ex_2_72(5) shouldBe (4 to 10)
+            ex_2_72(5) shouldBe Pair(4, 10)
         }
     })

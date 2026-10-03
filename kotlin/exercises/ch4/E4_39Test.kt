@@ -12,7 +12,7 @@ public class E4_39Test :
         test("Exercise 4.39: both orders answer the same assignment").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            dwellingAnswer() shouldBe "((baker 3) (cooper 2) (fletcher 4) (miller 5) (smith 1))"
+            dwellingAnswer() shouldBe "[[baker, 3], [cooper, 2], [fletcher, 4], [miller, 5], [smith, 1]]"
         }
 
         test("Exercise 4.39: the book order costs 1470 backtracks to the first answer").config(

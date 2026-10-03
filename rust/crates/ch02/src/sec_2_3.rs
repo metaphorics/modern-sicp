@@ -9,7 +9,7 @@
 //! by an interpreter. `eq?` on symbols becomes `Symbol` (`Rc<str>`)
 //! comparison. Symbolic differentiation (2.3.2) represents expressions
 //! as the closed enum [`Expr`]; `deriv` is an exhaustive `match`, so the
-//! book's `(error "unknown expression type: DERIV" exp)` case is
+//! book's unknown-expression error case is
 //! structurally unreachable. Sets (2.3.3) are `Vec<i128>` for the
 //! unordered and ordered representations and a binary-search-tree enum
 //! for the third; the book restricts sets to numbers once it reaches the
@@ -17,13 +17,13 @@
 //! one consistent element type. Huffman trees (2.3.4) are an enum
 //! carrying aggregate weight and symbol set at every node, and a bit is
 //! a `bool` rather than an unconstrained value, so `choose-branch`'s
-//! `(error "bad bit...")` case is likewise structurally unreachable.
+//! The bad-bit error case is likewise structurally unreachable.
 
 use std::cmp::Ordering;
 use std::fmt;
 use std::rc::Rc;
 
-use sicp_runtime::{SchemeError, Symbol};
+use sicp_runtime::{SicpError, Symbol};
 
 use crate::sec_2_2::List;
 
@@ -99,7 +99,7 @@ pub fn is_number(exp: &Expr, num: i128) -> bool {
 }
 
 /// Checks whether `exp` is the variable `var`: the book's
-/// `(same-variable? exp var)`, called from inside `deriv` where `exp`
+/// the same-variable test, called from inside `deriv` where `exp`
 /// is the expression under the `Var` case and `var` is the
 /// differentiation variable.
 #[must_use]
@@ -126,9 +126,9 @@ pub fn make_product_unsimplified(m1: Expr, m2: Expr) -> Expr {
 /// `make-sum`.
 ///
 /// # Errors
-/// [`SchemeError::Overflow`] when both summands are numbers whose sum
+/// [`SicpError::Overflow`] when both summands are numbers whose sum
 /// leaves the `i128` range.
-pub fn make_sum(a1: Expr, a2: Expr) -> Result<Expr, SchemeError> {
+pub fn make_sum(a1: Expr, a2: Expr) -> Result<Expr, SicpError> {
     if is_number(&a1, 0) {
         return Ok(a2);
     }
@@ -136,7 +136,7 @@ pub fn make_sum(a1: Expr, a2: Expr) -> Result<Expr, SchemeError> {
         return Ok(a1);
     }
     if let (Expr::Num(x), Expr::Num(y)) = (&a1, &a2) {
-        return Ok(Expr::Num(x.checked_add(*y).ok_or(SchemeError::Overflow)?));
+        return Ok(Expr::Num(x.checked_add(*y).ok_or(SicpError::Overflow)?));
     }
     Ok(Expr::Sum(Box::new(a1), Box::new(a2)))
 }
@@ -146,9 +146,9 @@ pub fn make_sum(a1: Expr, a2: Expr) -> Result<Expr, SchemeError> {
 /// their numeric product: the book's refined `make-product`.
 ///
 /// # Errors
-/// [`SchemeError::Overflow`] when both factors are numbers whose
+/// [`SicpError::Overflow`] when both factors are numbers whose
 /// product leaves the `i128` range.
-pub fn make_product(m1: Expr, m2: Expr) -> Result<Expr, SchemeError> {
+pub fn make_product(m1: Expr, m2: Expr) -> Result<Expr, SicpError> {
     if is_number(&m1, 0) || is_number(&m2, 0) {
         return Ok(Expr::Num(0));
     }
@@ -159,7 +159,7 @@ pub fn make_product(m1: Expr, m2: Expr) -> Result<Expr, SchemeError> {
         return Ok(m1);
     }
     if let (Expr::Num(x), Expr::Num(y)) = (&m1, &m2) {
-        return Ok(Expr::Num(x.checked_mul(*y).ok_or(SchemeError::Overflow)?));
+        return Ok(Expr::Num(x.checked_mul(*y).ok_or(SicpError::Overflow)?));
     }
     Ok(Expr::Product(Box::new(m1), Box::new(m2)))
 }
@@ -176,9 +176,9 @@ pub fn make_product(m1: Expr, m2: Expr) -> Result<Expr, SchemeError> {
 pub fn deriv_via(
     exp: &Expr,
     var: &Symbol,
-    make_sum: &impl Fn(Expr, Expr) -> Result<Expr, SchemeError>,
-    make_product: &impl Fn(Expr, Expr) -> Result<Expr, SchemeError>,
-) -> Result<Expr, SchemeError> {
+    make_sum: &impl Fn(Expr, Expr) -> Result<Expr, SicpError>,
+    make_product: &impl Fn(Expr, Expr) -> Result<Expr, SicpError>,
+) -> Result<Expr, SicpError> {
     match exp {
         Expr::Num(_) => Ok(Expr::Num(0)),
         Expr::Var(x) => Ok(Expr::Num(i128::from(x == var))),
@@ -201,7 +201,7 @@ pub fn deriv_via(
 ///
 /// # Errors
 /// Never, in practice; see above.
-pub fn deriv_unsimplified(exp: &Expr, var: &Symbol) -> Result<Expr, SchemeError> {
+pub fn deriv_unsimplified(exp: &Expr, var: &Symbol) -> Result<Expr, SicpError> {
     deriv_via(
         exp,
         var,
@@ -214,9 +214,9 @@ pub fn deriv_unsimplified(exp: &Expr, var: &Symbol) -> Result<Expr, SchemeError>
 /// the book's `deriv`, run against the refined constructors.
 ///
 /// # Errors
-/// [`SchemeError::Overflow`] when a numeric fold leaves the `i128`
+/// [`SicpError::Overflow`] when a numeric fold leaves the `i128`
 /// range.
-pub fn deriv(exp: &Expr, var: &Symbol) -> Result<Expr, SchemeError> {
+pub fn deriv(exp: &Expr, var: &Symbol) -> Result<Expr, SicpError> {
     deriv_via(exp, var, &make_sum, &make_product)
 }
 
@@ -501,7 +501,7 @@ impl HuffmanTree {
 /// `0`) takes the left branch, `true` (the book's `1`) takes the
 /// right. Returns `None` when `branch` is already a leaf, which
 /// [`decode`] never lets happen: a `bool` has no third value, so the
-/// book's `(error "bad bit..." bit)` case is structurally unreachable
+/// book's bad-bit error case is structurally unreachable
 /// here, unlike the leaf-with-no-more-bits case this signature still
 /// has to name.
 #[must_use]
@@ -521,15 +521,15 @@ pub fn choose_branch(bit: bool, branch: &HuffmanTree) -> Option<&HuffmanTree> {
 /// same restart-at-the-root behavior as a loop.
 ///
 /// # Errors
-/// [`SchemeError::Parse`] if a bit is consumed at a leaf, which means
+/// [`SicpError::Parse`] if a bit is consumed at a leaf, which means
 /// `bits` and `tree` are inconsistent (more bits than the encoding
 /// produced).
-pub fn decode(bits: &[bool], tree: &HuffmanTree) -> Result<Vec<Symbol>, SchemeError> {
+pub fn decode(bits: &[bool], tree: &HuffmanTree) -> Result<Vec<Symbol>, SicpError> {
     let mut result = Vec::new();
     let mut current = tree;
     for &bit in bits {
         let next = choose_branch(bit, current)
-            .ok_or_else(|| SchemeError::Parse("decode: bit consumed at a leaf".to_string()))?;
+            .ok_or_else(|| SicpError::Parse("decode: bit consumed at a leaf".to_string()))?;
         if let HuffmanTree::Leaf(symbol, _) = next {
             result.push(symbol.clone());
             current = tree;
@@ -581,11 +581,11 @@ pub fn make_leaf_set(pairs: &[(Symbol, u32)]) -> Vec<HuffmanTree> {
 /// convention that a scaffold's real work stays local to the exercise.
 ///
 /// # Errors
-/// [`SchemeError::TypeMismatch`] if `symbol` does not appear in `tree`.
-pub fn encode_symbol(symbol: &Symbol, tree: &HuffmanTree) -> Result<Vec<bool>, SchemeError> {
+/// [`SicpError::TypeMismatch`] if `symbol` does not appear in `tree`.
+pub fn encode_symbol(symbol: &Symbol, tree: &HuffmanTree) -> Result<Vec<bool>, SicpError> {
     match tree {
         HuffmanTree::Leaf(s, _) if s == symbol => Ok(Vec::new()),
-        HuffmanTree::Leaf(..) => Err(SchemeError::TypeMismatch(format!(
+        HuffmanTree::Leaf(..) => Err(SicpError::TypeMismatch(format!(
             "symbol not in tree: {symbol}"
         ))),
         HuffmanTree::Node(left, right, ..) => {
@@ -598,7 +598,7 @@ pub fn encode_symbol(symbol: &Symbol, tree: &HuffmanTree) -> Result<Vec<bool>, S
                 bits.extend(encode_symbol(symbol, right)?);
                 Ok(bits)
             } else {
-                Err(SchemeError::TypeMismatch(format!(
+                Err(SicpError::TypeMismatch(format!(
                     "symbol not in tree: {symbol}"
                 )))
             }
@@ -611,7 +611,7 @@ pub fn encode_symbol(symbol: &Symbol, tree: &HuffmanTree) -> Result<Vec<bool>, S
 ///
 /// # Errors
 /// Propagates [`encode_symbol`]'s error for any symbol not in `tree`.
-pub fn encode(message: &[Symbol], tree: &HuffmanTree) -> Result<Vec<bool>, SchemeError> {
+pub fn encode(message: &[Symbol], tree: &HuffmanTree) -> Result<Vec<bool>, SicpError> {
     let mut bits = Vec::new();
     for symbol in message {
         bits.extend(encode_symbol(symbol, tree)?);
@@ -624,13 +624,13 @@ pub fn encode(message: &[Symbol], tree: &HuffmanTree) -> Result<Vec<bool>, Schem
 /// messages, e.g. `"0110010101111"`.
 ///
 /// # Errors
-/// [`SchemeError::Parse`] on any character other than `0` or `1`.
-pub fn bits_from_str(s: &str) -> Result<Vec<bool>, SchemeError> {
+/// [`SicpError::Parse`] on any character other than `0` or `1`.
+pub fn bits_from_str(s: &str) -> Result<Vec<bool>, SicpError> {
     s.chars()
         .map(|c| match c {
             '0' => Ok(false),
             '1' => Ok(true),
-            other => Err(SchemeError::Parse(format!("not a bit: {other}"))),
+            other => Err(SicpError::Parse(format!("not a bit: {other}"))),
         })
         .collect()
 }

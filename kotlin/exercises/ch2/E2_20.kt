@@ -3,16 +3,13 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
- * Exercise 2.20: Write a procedure `sameParity` using Kotlin's vararg parameters (the
- * replacement for Scheme's dotted-tail notation) that takes one or more
- * integers and returns a list of all the arguments that have the same
- * even-odd parity as the first argument.
+ * Exercise 2.20: use Kotlin's `vararg` parameter to accept one first integer
+ * and any number of additional integers. Return the values whose even-odd
+ * parity matches the first argument.
  *
  * The statement lives in the section 2.2 chapter text.
  *
  * The scaffold returns `sameParity(1, 2, 3, 4, 5, 6, 7)`.
  */
-public fun ex_2_20(): List<Long> = throw PendingSolution()
+public fun ex_2_20(): List<Long> = throw PendingExercise()

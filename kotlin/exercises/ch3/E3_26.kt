@@ -3,8 +3,8 @@
 
 package sicp.ch3.exercises
 
+import sicp.runtime.Datum
 import sicp.runtime.PendingSolution
-import sicp.runtime.Value
 
 /**
  * Exercise 3.26: a table whose (key, value) records are organized as a
@@ -15,10 +15,10 @@ import sicp.runtime.Value
  * comparison between the two.
  */
 public class TreeTable {
-    public fun lookup(key: Value): Value? = throw PendingSolution()
+    public fun lookup(key: Datum): Datum? = throw PendingSolution()
 
     public fun insert(
-        key: Value,
-        value: Value,
+        key: Datum,
+        value: Datum,
     ): Unit = throw PendingSolution()
 }

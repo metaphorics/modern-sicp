@@ -90,7 +90,10 @@ of @ref{2.2.3}:
 
 @example rust
 fn sum_primes(a: i128, b: i128) -> i128 @{
-    stream_filter(|n| is_prime(*n, &primes()), &stream_enumerate_interval(a, b))
+    stream_filter(
+        |n| is_prime(*n, &primes()),
+        &stream_enumerate_interval(a, b),
+    )
         .iter()
         .sum()
 @}
@@ -152,7 +155,7 @@ There is a distinguishable object, @code{Stream::Empty}, the empty stream,
 which cannot be the result of any @code{cons_stream} operation, and which can
 be identified with the predicate @code{is_empty}.@footnote{In this edition
 the empty stream is a constructor of the stream type, so
-@code{stream_null?} in the book's Scheme is the method
+the book's @code{stream-null?} is the method
 @code{is_empty}: @code{s.is_empty()}.}  Thus we can make and use streams, in
 just the same way as we can make and use lists, to represent aggregate data
 arranged in a sequence.  In particular, we can build stream analogs of the
@@ -200,7 +203,7 @@ where
 @end example
 
 @noindent
-@code{Stream_for_each} is useful for viewing streams:
+@code{stream_for_each} is useful for viewing streams:
 
 @example rust
 fn display_line<A: Display>(x: &A) -> String @{
@@ -244,19 +247,20 @@ streams are the same as lists.  The difference is the time at which the
 elements are evaluated.  With ordinary lists, both the @code{cons} and the
 elements are evaluated at construction time.  With streams, the
 @code{cons_stream} is evaluated at construction time.  Our implementation of
-streams will be based on a special form called @code{delay}.  Evaluating
-@code{(delay ⟨@var{exp}⟩)} does not evaluate the expression
-@code{⟨@var{exp}⟩}, but rather returns a so-called
+streams will be based on a pair of operations the book calls @code{delay} and
+@code{force}.  Calling @code{delay} does not evaluate the expression it
+closes over---it takes that expression as a closure, unrun---but rather
+returns a so-called
 @newterm{delayed object}, which we can think of as a ``promise'' to evaluate
-@code{⟨@var{exp}⟩} at some future time.  As a companion to
-@code{delay}, there is a procedure called @code{force} that takes a delayed
+the expression at some future time.  As a companion to
+@code{delay}, the operation @code{force} takes a delayed
 object as an argument and performs the evaluation---in effect, forcing the
 @code{delay} to fulfill its promise.  We will see below how @code{delay} and
 @code{force} can be implemented, but first let us use these to construct
 streams.
 
-@code{Cons_stream} is defined so that @code{(cons-stream ⟨@var{a}⟩ ⟨@var{b}⟩)}
-is equivalent to @code{(cons ⟨@var{a}⟩ (delay ⟨@var{b}⟩))}.
+@code{cons_stream} pairs its first argument's value with a delay of its
+second, so the rest of the stream stays a promise.
 What this means is that we will construct streams using
 the constructor @code{cons_stream}, whose second argument is a thunk: in Rust
 the delay is explicit, because a plain argument would be evaluated before the
@@ -272,7 +276,7 @@ pub fn cons_stream<A: 'static>(
 @end example
 
 @noindent
-@code{Stream_head} and @code{stream_tail} can now be defined as procedures:
+@code{stream_head} and @code{stream_tail} can now be defined as procedures:
 
 @example rust
 pub fn stream_head<A: 'static>(s: &Stream<A>) -> &A @{
@@ -285,13 +289,13 @@ pub fn stream_tail<A: Clone + 'static>(s: &Stream<A>) -> Stream<A> @{
 @end example
 
 @noindent
-@code{Stream_tail} selects the tail of the pair and forces the delayed
+@code{stream_tail} selects the tail of the pair and forces the delayed
 expression found there to obtain the rest of the stream.@footnote{Although
 @code{stream_head} and @code{stream_tail} can be defined as ordinary
 functions, @code{cons_stream} must take the tail as a thunk.  If
 @code{cons_stream} took an eagerly evaluated tail, then, by the model of
-evaluation, evaluating @code{(cons-stream ⟨@var{a}⟩ ⟨@var{b}⟩)}
-would automatically cause @code{⟨@var{b}⟩} to be evaluated, which
+evaluation, evaluating @code{cons_stream(a, b)}
+would automatically cause the tail expression to be evaluated, which
 is precisely what we do not want to happen.  For the same reason, the
 @code{delay} of this edition is a function taking a closure, though
 @code{force} is an ordinary procedure.}  The stream implementation in action
@@ -309,7 +313,7 @@ stream_head(&stream_tail(&stream_filter(
 We will see that it does indeed work efficiently.
 
 We begin by calling @code{stream_enumerate_interval} with the arguments 10,000
-and 1,000,000.  @code{Stream_enumerate_interval} is the stream analog of
+and 1,000,000.  @code{stream_enumerate_interval} is the stream analog of
 @code{enumerate_interval} (@ref{2.2.3}):
 
 @example rust
@@ -326,8 +330,8 @@ and thus the result returned by @code{stream_enumerate_interval}, formed by
 @code{cons_stream}, is@footnote{The numbers shown here do not really appear
 in the delayed expression.  What actually appears is the original expression,
 in an environment in which the variables are bound to the appropriate
-numbers.  For example, @code{(+ low 1)} with @code{low} bound to 10,000
-actually appears where @code{10001} is shown.}
+numbers.  For example, @code{low + 1} with @code{low} bound to 10,000
+actually appears where @code{10_001} is shown.}
 
 @example rust
 cons_stream(10_000, || stream_enumerate_interval(10_001, 1_000_000))
@@ -352,19 +356,21 @@ where
     let head = s.head().clone();
     if pred(&head) @{
         let source = s.clone();
-        return cons_stream(head, move || stream_filter(pred, &source.tail()));
+        return cons_stream(head, move || @{
+            stream_filter(pred, &source.tail())
+        @});
     @}
     stream_filter(pred, &s.tail())
 @}
 @end example
 
 @noindent
-@code{Stream_filter} tests the @code{head} of the stream (the @code{head}
+@code{stream_filter} tests the @code{head} of the stream (the @code{head}
 of the pair, which is 10,000).  Since this is not prime,
 @code{stream_filter} examines the @code{tail} of its input stream.  The call
 to @code{stream_tail} forces evaluation of the delayed
 @code{stream_enumerate_interval}, which returns another stream (beginning
-with 10,001).  @code{Stream_filter} now looks at the @code{head} of this
+with 10,001).  @code{stream_filter} now looks at the @code{head} of this
 stream, sees that this is not prime either, forces another
 @code{stream_tail}, and so on, until @code{stream_enumerate_interval} yields
 the prime 10,007, whereupon @code{stream_filter}, according to its
@@ -373,7 +379,9 @@ the prime 10,007, whereupon @code{stream_filter}, according to its
 @example rust
 cons_stream(
     10_007,
-    || stream_filter(prime, &stream_enumerate_interval(10_008, 1_000_000)),
+    || stream_filter(
+        prime, &stream_enumerate_interval(10_008, 1_000_000),
+    ),
 )
 @end example
 
@@ -387,12 +395,14 @@ original expression is
 @example rust
 cons_stream(
     10_009,
-    || stream_filter(prime, &stream_enumerate_interval(10_010, 1_000_000)),
+    || stream_filter(
+        prime, &stream_enumerate_interval(10_010, 1_000_000),
+    ),
 )
 @end example
 
 @noindent
-@code{Stream_head} returns 10,009, and the computation is complete.  Only as
+@code{stream_head} returns 10,009, and the computation is complete.  Only as
 many integers were tested for primality as were necessary to find the second
 prime, and the interval was enumerated only as far as was necessary to feed
 the prime filter.  In general, we can think of delayed evaluation as
@@ -406,18 +416,12 @@ incrementally, as in traditional programming styles.
 @subsubheading Implementing @code{delay} and @code{force}
 
 Although @code{delay} and @code{force} may seem like mysterious operations,
-their implementation is really quite straightforward.  @code{Delay} must
+their implementation is really quite straightforward.  @code{delay} must
 package an expression so that it can be evaluated later on demand, and we can
 accomplish this simply by treating the expression as the body of a
-procedure.  @code{Delay} cannot be a special form such that
-@code{(delay ⟨@var{exp}⟩)} is syntactic sugar for
-
-@example
-(lambda () ⟨@var{exp}⟩)
-@end example
-
-@noindent
-because in Rust a function call evaluates its arguments first; the delay of
+procedure.  @code{delay} cannot be a special form here---one that turns its
+expression into the body of a nullary procedure---because in Rust a function
+call evaluates its arguments first; the delay of
 this edition is a function taking a closure, and forcing it is a call:
 
 @example rust
@@ -448,7 +452,9 @@ is run, it saves the computed result.  On subsequent evaluations, it simply
 returns the result.
 
 @example rust
-fn memo_proc<T>(proc: impl FnOnce() -> T + Clone + 'static) -> impl Fn() -> T @{
+fn memo_proc<T>(
+    proc: impl FnOnce() -> T + Clone + 'static,
+) -> impl Fn() -> T @{
     let already_run = Rc::new(Cell::new(false));
     let result: Rc<RefCell<Option<T>>> = Rc::new(RefCell::new(None));
     move || @{
@@ -490,8 +496,8 @@ impl<T: 'static> Lazy<T> @{
 @end example
 
 @noindent
-Thus @code{(delay ⟨@var{exp}⟩)} of the book is
-@code{delay(|| ⟨@var{exp}⟩)} over this @code{Lazy}, and
+Thus the book's delay of an expression is @code{delay} of the closure that
+computes it over this @code{Lazy}, and
 @code{force} is as defined previously.@footnote{There are many possible
 implementations of streams other than the one described in this section.
 Delayed evaluation, which is the key to making streams practical, was inherent
@@ -512,7 +518,10 @@ multiple arguments, analogous to @code{map} in @ref{2.2.1},
 slice of streams.
 
 @example rust
-fn stream_map_n<A, B, F>(f: F, streams: &[Stream<A>]) -> Stream<B>
+fn stream_map_n<A, B, F>(
+    f: F,
+    streams: &[Stream<A>],
+) -> Stream<B>
 where
     A: Clone + 'static,
     B: 'static,
@@ -521,8 +530,10 @@ where
     if streams.iter().@r{⟨??⟩}(|s| s.is_empty()) @{
         return Stream::Empty;
     @}
-    let heads: Vec<A> = streams.iter().map(|s| s.head().clone()).collect();
-    let tails: Vec<Stream<A>> = streams.iter().map(|s| s.tail()).collect();
+    let heads: Vec<A> = streams.iter()
+        .map(|s| s.head().clone()).collect();
+    let tails: Vec<Stream<A>> = streams.iter()
+        .map(|s| s.tail()).collect();
     cons_stream(f(&heads), move || stream_map_n(f, @r{⟨??⟩}))
 @}
 @end example
@@ -537,7 +548,10 @@ the demonstration can inspect, so the evidence is observable in library code
 that does not print):
 
 @example rust
-fn show<A: Display>(x: A, log: &Rc<RefCell<Vec<String>>>) -> A @{
+fn show<A: Display>(
+    x: A,
+    log: &Rc<RefCell<Vec<String>>>,
+) -> A @{
     log.borrow_mut().push(format!("@{x@}"));
     x
 @}
@@ -587,7 +601,10 @@ let accum = @{
     @}
 @};
 
-let seq = stream_map(|v| accum(*v), &stream_enumerate_interval(1, 20));
+let seq = stream_map(
+    |v| accum(*v),
+    &stream_enumerate_interval(1, 20),
+);
 
 let y = stream_filter(|v| v % 2 == 0, &seq);
 
@@ -605,8 +622,8 @@ sum.get()
 
 What is the value of @code{sum} after each of the above expressions is
 evaluated?  What is the printed response to evaluating the @code{stream_ref}
-and @code{display_stream} expressions?  Would these responses differ if we had
-implemented @code{(delay ⟨@var{exp}⟩)} simply as @code{(lambda () ⟨@var{exp}⟩)}
+and @code{display_stream} expressions?  Would these responses differ if our
+@code{delay} had merely wrapped the closure
 without using the optimization provided by @code{memo_proc}?  Explain.
 @end quotation
 
@@ -669,10 +686,10 @@ let fibs = fibgen(0, 1);
 @end example
 
 @noindent
-@code{Fibs} is a pair whose @code{head} is 0 and whose @code{tail} is a promise
-to evaluate @code{(fibgen 1 1)}.  When we evaluate this delayed @code{(fibgen 1
-1)}, it will produce a pair whose @code{head} is 1 and whose @code{tail} is a
-promise to evaluate @code{(fibgen 1 2)}, and so on.
+@code{fibs} is a pair whose @code{head} is 0 and whose @code{tail} is a promise
+to evaluate @code{fibgen(1, 1)}.  When we evaluate this delayed
+@code{fibgen(1, 1)}, it will produce a pair whose @code{head} is 1 and
+whose @code{tail} is a promise to evaluate @code{fibgen(1, 2)}, and so on.
 
 For a look at a more exciting infinite stream, we can generalize the
 @code{no_sevens} example to construct the infinite stream of prime numbers,
@@ -758,7 +775,7 @@ infinite, because the sieve contains a sieve within it.
 @image{../../text/original/figures/chap3/Fig3.31a,,132mm,Figure 3.31: The prime sieve viewed as a signal-processing system.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.31a.std,,132mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.31a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.31:} The prime sieve viewed as a signal-processing system.}
@@ -802,7 +819,11 @@ Now we can define the integers as follows:
 
 @example rust
 let integers: Stream<i128> =
-    self_stream(|integers| cons_stream(1, move || add_streams(&integers.stream(), &ones)));
+    self_stream(|integers| @{
+        cons_stream(1, move || @{
+            add_streams(&integers.stream(), &ones)
+        @})
+    @});
 @end example
 
 @noindent
@@ -833,7 +854,7 @@ that the rest of the stream can be generated by adding @code{fibs} to itself
 shifted by one place:
 
 @example
-    1 1 2 3 5  8 13 21 @r{…} = @code{(stream-cdr fibs)}
+    1 1 2 3 5  8 13 21 @r{…} = @code{stream_tail(&fibs)}
     0 1 1 2 3  5  8 13 @r{…} = @code{fibs}
 0 1 1 2 3 5 8 13 21 34 @r{…} = @code{fibs}
 @end example
@@ -856,7 +877,11 @@ For example,
 
 @example rust
 let double: Stream<i128> =
-    self_stream(|double| cons_stream(1, move || scale_stream(&double.stream(), 2)));
+    self_stream(|double| @{
+        cons_stream(1, move || @{
+            scale_stream(&double.stream(), 2)
+        @})
+    @});
 @end example
 
 @noindent
@@ -871,7 +896,10 @@ let primes: Stream<i128> = self_stream(|primes| @{
     cons_stream(2, @{
         let named = primes.clone();
         move || @{
-            stream_filter(move |n| is_prime(*n, &named.stream()), &integers_starting_from(3))
+            stream_filter(
+                move |n| is_prime(*n, &named.stream()),
+                &integers_starting_from(3),
+            )
         @}
     @})
 @});
@@ -922,7 +950,11 @@ describe the elements of the stream defined by
 
 @example rust
 let s: Stream<i128> =
-    self_stream(|s| cons_stream(1, move || add_streams(&s.stream(), &s.stream())));
+    self_stream(|s| @{
+        cons_stream(1, move || @{
+            add_streams(&s.stream(), &s.stream())
+        @})
+    @});
 @end example
 
 @end quotation
@@ -943,7 +975,9 @@ where
 @}
 
 let factorials: Stream<i128> = self_stream(|factorials| @{
-    cons_stream(1, move || mul_streams(&integers(), &factorials.stream()))
+    cons_stream(1, move || @{
+        mul_streams(&integers(), &factorials.stream())
+    @})
 @});
 @end example
 
@@ -1026,7 +1060,10 @@ where
     @} else if x2 < x1 @{
         cons_stream(x2, move || merge(&front, &back.tail()))
     @} else @{
-        cons_stream(x1, move || merge(&front.tail(), &back.tail()))
+        cons_stream(
+            x1,
+            move || merge(&front.tail(), &back.tail()),
+        )
     @}
 @}
 @end example
@@ -1045,10 +1082,9 @@ Fill in the missing expressions in the places marked @code{@r{⟨??⟩}} above.
 @strong{@anchor{Exercise 3.57}Exercise 3.57:} How many additions are performed
 when we compute the @math{n^{\hbox{th}}} Fibonacci number using the definition of
 @code{fibs} based on the @code{add_streams} procedure?  Show that the number of
-additions would be exponentially greater if we had implemented @code{(delay ⟨@var{exp}⟩)} 
-simply as @code{(lambda () ⟨@var{exp}⟩)}, without using the
-optimization provided by the @code{memo_proc} procedure described in 
-@ref{3.5.1}.@footnote{This exercise shows how call-by-need is closely related
+additions would be exponentially greater if our @code{delay} had merely
+wrapped the closure and recomputed on every force, without using the
+optimization provided by @code{memo_proc} (@ref{3.5.1}).@footnote{This exercise shows how call-by-need is closely related
 to ordinary memoization as described in @ref{Exercise 3.27}.  In that exercise,
 we used assignment to explicitly construct a local table.  Our call-by-need
 stream optimization effectively constructs such a table automatically, storing
@@ -1061,16 +1097,18 @@ stream computed by the following procedure:
 
 @example rust
 fn expand(num: i128, den: i128, radix: i128) -> Stream<i128> @{
+    let product = num * radix;
     cons_stream(
-        num / den,
-        move || expand(radix * (num % den), den, radix),
+        product / den,
+        move || expand(product % den, den, radix),
     )
 @}
 @end example
 
-(@code{Quotient} is a primitive that returns the integer quotient of two
-integers.)  What are the successive elements produced by @code{(expand 1 7
-10)}?  What is produced by @code{(expand 3 8 10)}?
+(@code{/} on integers returns the integer quotient of two
+integers, and @code{%} the remainder.)  What are the successive elements
+produced by @code{expand(1, 7, 10)}?  What is produced by
+@code{expand(3, 8, 10)}?
 @end quotation
 
 @quotation
@@ -1138,7 +1176,10 @@ for @math{e^x} as
 
 @example rust
 let exp_series: Stream<f64> = self_stream(|exp_series| @{
-    cons_stream(1.0, move || integrate_series(&exp_series.stream()))
+    cons_stream(
+        1.0,
+        move || integrate_series(&exp_series.stream()),
+    )
 @});
 @end example
 
@@ -1164,7 +1205,10 @@ by @code{add_streams}.  Complete the definition of the following procedure for
 multiplying series:
 
 @example rust
-fn mul_series(s1: &Stream<f64>, s2: &Stream<f64>) -> Stream<f64> @{
+fn mul_series(
+    s1: &Stream<f64>,
+    s2: &Stream<f64>,
+) -> Stream<f64> @{
     cons_stream(@r{⟨??⟩}, add_streams(@r{⟨??⟩}, @r{⟨??⟩}))
 @}
 @end example
@@ -1207,7 +1251,7 @@ for a power series @math{S} with constant term 1.  You will need to use
 @quotation
 @strong{@anchor{Exercise 3.62}Exercise 3.62:} Use the results of @ref{Exercise 3.60} 
 and @ref{Exercise 3.61} to define a procedure @code{div_series} that
-divides two power series.  @code{Div_series} should work for any two series,
+divides two power series.  @code{div_series} should work for any two series,
 provided that the denominator series begins with a nonzero constant term.  (If
 the denominator has a zero constant term, then @code{div_series} should signal
 an error.)  Show how to use @code{div_series} together with the result of
@@ -1253,7 +1297,7 @@ to bind the local variable @code{guesses}, because the value of @code{guesses}
 depends on @code{guesses} itself.  @ref{Exercise 3.63} addresses why we want a
 local variable here.}
 
-@example rust
+@smallexample rust
 fn sqrt_stream(x: f64) -> Stream<f64> @{
     self_stream(move |guesses| @{
         cons_stream(1.0, move || @{
@@ -1264,7 +1308,7 @@ fn sqrt_stream(x: f64) -> Stream<f64> @{
 
 sqrt_stream(2.0).iter().take(5).collect::<Vec<f64>>()
 // => [1.0, 1.5, 1.4166666666666665, 1.4142156862745097, 1.4142135623746899]
-@end example
+@end smallexample
 
 @noindent
 We can generate more and more terms of the stream to get better and better
@@ -1293,7 +1337,9 @@ and scale the result by 4:
 
 @example rust
 fn pi_summands(n: f64) -> Stream<f64> @{
-    cons_stream(1.0 / n, move || stream_map(|v| -v, &pi_summands(n + 2.0)))
+    cons_stream(1.0 / n, move || @{
+        stream_map(|v| -v, &pi_summands(n + 2.0))
+    @})
 @}
 
 fn pi_stream() -> Stream<f64> @{
@@ -1439,7 +1485,10 @@ straightforward way, without the local variable @code{guesses}:
 fn sqrt_stream_louis(x: f64) -> Stream<f64> @{
     cons_stream(
         1.0,
-        move || stream_map(move |g| sqrt_improve(*g, x), &sqrt_stream_louis(x)),
+        move || stream_map(
+            move |g| sqrt_improve(*g, x),
+            &sqrt_stream_louis(x),
+        ),
     )
 @}
 @end example
@@ -1447,7 +1496,7 @@ fn sqrt_stream_louis(x: f64) -> Stream<f64> @{
 Alyssa P. Hacker replies that this version of the procedure is considerably
 less efficient because it performs redundant computation.  Explain Alyssa's
 answer.  Would the two versions still differ in efficiency if our
-implementation of @code{delay} used only @code{(lambda () ⟨@var{exp}⟩)} without
+implementation of @code{delay} had only wrapped the closure without
 using the optimization provided by @code{memo_proc} (@ref{3.5.1})?
 @end quotation
 
@@ -1498,9 +1547,9 @@ For example, suppose we want to generalize the @code{prime_sum_pairs} procedure
 of @ref{2.2.3} to produce the stream of pairs of @emph{all} integers
 @math{{(i, j)}} with @math{{i \le j}} such that @math{{i + j}} is prime.  If
 @code{int_pairs} is the sequence of all pairs of integers @math{{(i, j)}} with
-@math{{i \le j}}, then our required stream is simply@footnote{As in 
-@ref{2.2.3}, we represent a pair of integers as a list rather than a Lisp
-pair.}
+@math{{i \le j}}, then our required stream is simply@footnote{As in
+@ref{2.2.3}, we represent a pair of integers as a list rather than as one
+of the section's nested pairs.}
 
 @example rust
 stream_filter(
@@ -1555,7 +1604,7 @@ on or above the diagonal, i.e., the pairs
 (If we take both @math{S} and @math{T} to be the stream of integers, then this will
 be our desired stream @code{int_pairs}.)
 
-Call the general stream of pairs @code{(pairs S T)}, and consider it to be
+Call the general stream of pairs @code{pairs(S, T)}, and consider it to be
 composed of three parts: the pair @math{{(S_0, T_0)}}, the rest of the pairs in
 the first row, and the remaining pairs:@footnote{See @ref{Exercise 3.68} for
 some insight into why we chose this decomposition.}
@@ -1592,14 +1641,21 @@ stream_map(|x| (s.head().clone(), x.clone()), t)
 Thus we can form our stream of pairs as follows:
 
 @example rust
-fn pairs(s: &Stream<i128>, t: &Stream<i128>) -> Stream<(i128, i128)> @{
+fn pairs(
+    s: &Stream<i128>,
+    t: &Stream<i128>,
+) -> Stream<(i128, i128)> @{
     let head_pair = (s.head().clone(), t.head().clone());
     let named_head = s.head().clone();
-    let mapped = stream_map(|x| (named_head.clone(), x.clone()), &t.tail());
+    let mapped = stream_map(
+        |x| (named_head.clone(), x.clone()), &t.tail(),
+    );
     let front = s.clone();
     let back = t.clone();
     cons_stream(head_pair, move || @{
-        ⟨@var{combine-in-some-way}⟩(mapped, pairs(&front.tail(), &back.tail()))
+        ⟨@var{combine-in-some-way}⟩(
+            mapped, pairs(&front.tail(), &back.tail()),
+        )
     @})
 @}
 @end example
@@ -1610,7 +1666,9 @@ inner streams.  One idea is to use the stream analog of the @code{append}
 procedure from @ref{2.2.1}:
 
 @example rust
-fn stream_append<A: Clone + 'static>(s1: &Stream<A>, s2: &Stream<A>) -> Stream<A> @{
+fn stream_append<A: Clone + 'static>(
+    s1: &Stream<A>, s2: &Stream<A>,
+) -> Stream<A> @{
     if s1.is_empty() @{
         return s2.clone();
     @}
@@ -1647,7 +1705,9 @@ number @math{{f(i, j)}} of the output stream.  The trick of using
 employed it in the language KRC (@ref{Turner 1981}).}
 
 @example rust
-fn interleave<A: Clone + 'static>(s1: &Stream<A>, s2: &Stream<A>) -> Stream<A> @{
+fn interleave<A: Clone + 'static>(
+    s1: &Stream<A>, s2: &Stream<A>,
+) -> Stream<A> @{
     if s1.is_empty() @{
         return s2.clone();
     @}
@@ -1666,10 +1726,16 @@ stream, even if the first stream is infinite.
 We can thus generate the required stream of pairs as
 
 @example rust
-fn pairs(s: &Stream<i128>, t: &Stream<i128>) -> Stream<(i128, i128)> @{
+fn pairs(
+    s: &Stream<i128>,
+    t: &Stream<i128>,
+) -> Stream<(i128, i128)> @{
     let head_pair = (s.head().clone(), t.head().clone());
     let named_head = s.head().clone();
-    let mapped = stream_map(move |x| (named_head.clone(), x.clone()), &t.tail());
+    let mapped = stream_map(
+        move |x| (named_head.clone(), x.clone()),
+        &t.tail(),
+    );
     let front = s.clone();
     let back = t.clone();
     cons_stream(head_pair, move || @{
@@ -1679,8 +1745,8 @@ fn pairs(s: &Stream<i128>, t: &Stream<i128>) -> Stream<(i128, i128)> @{
 @end example
 
 @quotation
-@strong{@anchor{Exercise 3.66}Exercise 3.66:} Examine the stream @code{(pairs
-integers integers)}. Can you make any general comments about the order in which
+@strong{@anchor{Exercise 3.66}Exercise 3.66:} Examine the stream @code{pairs(
+integers, integers)}. Can you make any general comments about the order in which
 the pairs are placed into the stream? For example, approximately how many pairs precede
 the pair (1, 100)?  the pair (99, 100)? the pair (100, 100)? (If you can make
 precise mathematical statements here, all the better. But feel free to give
@@ -1689,7 +1755,7 @@ more qualitative answers if you find yourself getting bogged down.)
 
 @quotation
 @strong{@anchor{Exercise 3.67}Exercise 3.67:} Modify the @code{pairs} procedure
-so that @code{(pairs integers integers)} will produce the stream of @emph{all}
+so that @code{pairs(integers, integers)} will produce the stream of @emph{all}
 pairs of integers @math{{(i, j)}} (without the condition @math{{i \le j}}).  Hint:
 You will need to mix in an additional stream.
 @end quotation
@@ -1701,7 +1767,10 @@ Instead of separating the pair @math{{(S_0, T_0)}} from the rest of the pairs in
 the first row, he proposes to work with the whole first row, as follows:
 
 @example rust
-fn pairs(s: &Stream<i128>, t: &Stream<i128>) -> Stream<(i128, i128)> @{
+fn pairs(
+    s: &Stream<i128>,
+    t: &Stream<i128>,
+) -> Stream<(i128, i128)> @{
     interleave(
         &stream_map(|x| (s.head().clone(), x.clone()), t),
         &pairs(&s.tail(), &t.tail()),
@@ -1709,7 +1778,7 @@ fn pairs(s: &Stream<i128>, t: &Stream<i128>) -> Stream<(i128, i128)> @{
 @}
 @end example
 
-Does this work?  Consider what happens if we evaluate @code{(pairs integers
+Does this work?  Consider what happens if we evaluate @code{pairs(integers,
 integers)} using Louis's definition of @code{pairs}.
 @end quotation
 
@@ -1812,7 +1881,9 @@ and returns the stream of values @math{{S = (S_i)}}.  The following
 of the stream of integers (@ref{3.5.2}):
 
 @example rust
-fn integral(integrand: &Stream<f64>, initial_value: f64, dt: f64) -> Stream<f64> @{
+fn integral(
+    integrand: &Stream<f64>, initial_value: f64, dt: f64,
+) -> Stream<f64> @{
     self_stream(move |int| @{
         let source = integrand.clone();
         cons_stream(initial_value, move || @{
@@ -1853,7 +1924,7 @@ input  |           |      |\__    +-->|   \_  integral
 @image{../../text/original/figures/chap3/Fig3.32a,,143mm,Figure 3.32: The integral procedure viewed as a signal-processing system.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.32a.std,,143mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.32a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.32:} The @code{integral} procedure viewed as a signal-processing system.}
@@ -1903,7 +1974,7 @@ accompanying signal-flow diagram.
 @image{../../text/original/figures/chap3/Fig3.33a,,125mm,Figure 3.33: An RC circuit and the associated signal-flow diagram.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.33a.std,,125mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.33a.std,120mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.33:} An RC circuit and the associated signal-flow diagram.}
@@ -1930,10 +2001,10 @@ changes from positive to negative, and @math{0} otherwise.  (Assume that the sig
 @math{0} input is positive.)  For example, a typical input signal with its associated
 zero-crossing signal would be
 
-@example rust
+@smallexample rust
 // sense_data:      ... 1 2 1.5 1 0.5 -0.1 -2 -3 -2 -0.5 0.2 3 4 ...
 // zero_crossings:  ... 0 0   0   0 0    -1   0  0  0   0   1 0 0 ...
-@end example
+@end smallexample
 
 In Alyssa's system, the signal from the sensor is represented as a stream
 @code{sense_data} and the stream @code{zero_crossings} is the corresponding
@@ -1943,9 +2014,12 @@ signs of the values to produce an appropriate @math{0}, @math{1}, or @math{{-1}}
 constructs her zero-crossing stream as follows:
 
 @example rust
-fn make_zero_crossings(input_stream: &Stream<f64>, last_value: f64) -> Stream<f64> @{
+fn make_zero_crossings(
+    input_stream: &Stream<f64>, last_value: f64,
+) -> Stream<f64> @{
     let source = input_stream.clone();
-    let head = sign_change_detector(*source.head(), last_value);
+    let head =
+        sign_change_detector(*source.head(), last_value);
     cons_stream(head, move || @{
         make_zero_crossings(&source.tail(), *source.head())
     @})
@@ -1960,7 +2034,9 @@ version of @code{stream_map} from @ref{Exercise 3.50}:
 
 @example rust
 let zero_crossings = stream_map2(
-    |current, previous| sign_change_detector(*current, *previous),
+    |current, previous| @{
+        sign_change_detector(*current, *previous)
+    @},
     &sense_data,
     ⟨@var{expression}⟩,
 );
@@ -1981,7 +2057,9 @@ the problem to her assistant, Louis Reasoner, who attempts to implement the
 idea, altering Alyssa's program as follows:
 
 @example rust
-fn make_zero_crossings(input_stream: &Stream<f64>, last_value: f64) -> Stream<f64> @{
+fn make_zero_crossings(
+    input_stream: &Stream<f64>, last_value: f64,
+) -> Stream<f64> @{
     let avpt = (*input_stream.head() + last_value) / 2.0;
     let source = input_stream.clone();
     cons_stream(
@@ -2070,7 +2148,7 @@ such equations.
 @image{../../text/original/figures/chap3/Fig3.34,,110mm,Figure 3.34: An ``analog computer circuit'' that solves the equation dy / dt = f(y).,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.34.std,,110mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.34.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.34:} An ``analog computer circuit'' that solves the equation @math{{dy / dt = f(y)}}.}
@@ -2080,7 +2158,10 @@ Assuming we are given an initial value @math{y_0} for @math{y}, we could try to 
 this system using the procedure
 
 @example rust
-fn solve(f: impl Fn(f64) -> f64 + Copy + 'static, y0: f64, dt: f64) -> Stream<f64> @{
+fn solve(
+    f: impl Fn(f64) -> f64 + Copy + 'static,
+    y0: f64, dt: f64,
+) -> Stream<f64> @{
     let y = integral(dy, y0, dt); // dy is named on the next line
     let dy = stream_map(move |v| f(*v), &y);
     y
@@ -2128,13 +2209,17 @@ fn integral_delayed(
 @noindent
 Now we can implement our @code{solve} procedure by delaying the evaluation of
 @code{dy} in the definition of @code{y}:@footnote{This procedure is not
-guaranteed to work in all Scheme implementations, although for any
+guaranteed to work in every implementation of the original language, although
+for any
 implementation there is a simple variation that will work.  The problem has to
-do with subtle differences in the ways that Scheme implementations handle
+do with subtle differences in the ways those implementations handle
 internal definitions.  (See @ref{4.1.6}.)}
 
 @example rust
-fn solve(f: impl Fn(f64) -> f64 + Clone + 'static, y0: f64, dt: f64) -> Stream<f64> @{
+fn solve(
+    f: impl Fn(f64) -> f64 + Clone + 'static,
+    y0: f64, dt: f64,
+) -> Stream<f64> @{
     self_stream(move |y| @{
         let dy = @{
             let named = y.clone();
@@ -2165,13 +2250,18 @@ of integers in @ref{3.5.2}.  Alternatively, we can give a definition of
 @ref{3.5.2}):
 
 @example rust
-fn integral_direct(integrand: &Stream<f64>, initial_value: f64, dt: f64) -> Stream<f64> @{
+fn integral_direct(
+    integrand: &Stream<f64>, initial_value: f64, dt: f64,
+) -> Stream<f64> @{
     let source = integrand.clone();
     cons_stream(initial_value, move || @{
         if source.is_empty() @{
             Stream::Empty
         @} else @{
-            integral_direct(&source.tail(), dt * source.head() + initial_value, dt)
+            integral_direct(
+                &source.tail(),
+                dt * source.head() + initial_value, dt,
+            )
         @}
     @})
 @}
@@ -2277,7 +2367,7 @@ v_C -+- C                     _)  v_L
 @image{../../text/original/figures/chap3/Fig3.36,,102mm,Figure 3.36: A series RLC circuit.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.36.std,,102mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.36.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.36:} A series RLC circuit.}
@@ -2423,7 +2513,7 @@ integrand, and every procedure that uses @code{integral} must be aware of this.
 In effect, we have created two classes of procedures: ordinary procedures and
 procedures that take delayed arguments.  In general, creating separate classes
 of procedures forces us to create separate classes of higher-order procedures
-as well.@footnote{This is a small reflection, in Lisp, of the difficulties that
+as well.@footnote{This is a small reflection of the difficulties that
 conventional strongly typed languages such as Pascal have in coping with
 higher-order procedures.  In such languages, the programmer must specify the
 data types of the arguments and the result of each procedure: number, logical
@@ -2517,7 +2607,10 @@ where
 @}
 
 let cesaro_stream =
-    map_successive_pairs(|r1, r2| gcd(*r1, *r2) == 1, &random_numbers());
+    map_successive_pairs(
+        |r1, r2| gcd(*r1, *r2) == 1,
+        &random_numbers(),
+    );
 @end example
 
 @noindent
@@ -2529,7 +2622,9 @@ of @math{\pi} (from performing more experiments) are obtained by looking farther
 into the @code{pi_estimates} stream:
 
 @example rust
-fn monte_carlo_stream(experiments: &Stream<bool>, passed: u32, failed: u32) -> Stream<f64> @{
+fn monte_carlo_stream(
+    experiments: &Stream<bool>, passed: u32, failed: u32,
+) -> Stream<f64> @{
     let source = experiments.clone();
     let (pass, fail) = if *experiments.head() @{
         (passed + 1, failed)
@@ -2618,7 +2713,9 @@ input a balance and a stream of amounts to withdraw and produces the stream of
 successive balances in the account:
 
 @example rust
-fn stream_withdraw(balance: i128, amounts: &Stream<i128>) -> Stream<i128> @{
+fn stream_withdraw(
+    balance: i128, amounts: &Stream<i128>,
+) -> Stream<i128> @{
     let source = amounts.clone();
     cons_stream(balance, move || @{
         stream_withdraw(balance - *source.head(), &source.tail())
@@ -2705,10 +2802,10 @@ Paul's requests    |  merge  |---->| bank    |---->
 
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.38a,,143mm,Figure 3.38: A joint bank account@comma{} modeled by merging two streams of transaction requests.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.38a,147mm,,Figure 3.38: A joint bank account@comma{} modeled by merging two streams of transaction requests.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.38a.std,,143mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.38a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.38:} A joint bank account, modeled by merging two streams of transaction requests.}
@@ -2778,10 +2875,10 @@ the complexity of their designs with the same general techniques used by
 designers of all complex systems.  They combine primitive elements to form
 compound objects, they abstract compound objects to form higher-level building
 blocks, and they preserve modularity by adopting appropriate large-scale views
-of system structure.  In illustrating these techniques, we have used Lisp as a
+of system structure.  In illustrating these techniques, we have used Rust as a
 language for describing processes and for constructing computational data
 objects and processes to model complex phenomena in the real world.  However,
-as we confront increasingly complex problems, we will find that Lisp, or indeed
+as we confront increasingly complex problems, we will find that Rust, or indeed
 any fixed programming language, is not sufficient for our needs.  We must
 constantly turn to new languages to express our ideas more
 effectively.  Establishing new languages is a powerful strategy for controlling
@@ -2858,60 +2955,67 @@ itself becomes no more (and no less) than the discipline of constructing
 appropriate descriptive languages.
 
 We now embark on a tour of the technology by which languages are established in
-terms of other languages.  In this chapter we shall use Lisp as a base,
-implementing evaluators as Lisp procedures.  Lisp is particularly well suited
-to this task, because of its ability to represent and manipulate symbolic
-expressions.  We will take the first step in understanding how languages are
-implemented by building an evaluator for Lisp itself.  The language implemented
-by our evaluator will be a subset of the Scheme dialect of Lisp that we use in
-this book.  Although the evaluator described in this chapter is written for a
-particular dialect of Lisp, it contains the essential structure of an evaluator
-for any expression-oriented language designed for writing programs for a
-sequential machine.  (In fact, most language processors contain, deep within
-them, a little ``Lisp'' evaluator.)  The evaluator has been simplified for the
+terms of other languages.  In this chapter we shall use Rust as a base,
+implementing evaluators as Rust programs.  Rust is well suited to this task,
+because of its ability to build and manipulate typed syntax data.  We will take
+the first step in understanding how languages are implemented by building an
+evaluator for the object language itself.  The language implemented by our
+evaluator is the documented Rust subset of chapters 4 and 5: a narrower
+language than the one chapters 0 to 3 program in, with its own numeric,
+ownership, and capture rules, admitted in full before any evaluation begins.
+Although the evaluator described in this chapter is written for that particular
+subset, it contains the essential structure of an evaluator for any
+expression-oriented language designed for writing programs for a sequential
+machine.  (In fact, most language processors contain, deep within them, a
+little evaluator of their own.)  The evaluator has been simplified for the
 purposes of illustration and discussion, and some features have been left out
-that would be important to include in a production-quality Lisp system.
-Nevertheless, this simple evaluator is adequate to execute most of the programs
-in this book.@footnote{The most important features that our evaluator leaves
-out are mechanisms for handling errors and supporting debugging.  For a more
-extensive discussion of evaluators, see @ref{Friedman et al. 1992}, which
-gives an exposition of programming languages that proceeds via a sequence of
-evaluators written in Scheme.}
+that would be important to include in a production-quality language system.
+This evaluator executes the programs admitted by the chapter's grammar,
+including its own translated evaluator.  Source checking reports invalid
+types and unsupported constructs before execution.  Runtime failures have
+explicit error results, but the system has no interactive debugger.
+@footnote{For a more extensive discussion of evaluators, see
+@ref{Friedman et al. 1992}, which gives an exposition of programming
+languages through a sequence of evaluators written in Scheme.}
 
-An important advantage of making the evaluator accessible as a Lisp program is
+An important advantage of making the evaluator accessible as a Rust program is
 that we can implement alternative evaluation rules by describing these as
-modifications to the evaluator program.  One place where we can use this power
+modifications to the evaluator program, or as the named experiments this
+chapter keeps separate from the core language.  One place where we can use this power
 to good effect is to gain extra control over the ways in which computational
 models embody the notion of time, which was so central to the discussion in
 @ref{Chapter 3}.  There, we mitigated some of the complexities of state and
 assignment by using streams to decouple the representation of time in the world
 from time in the computer.  Our stream programs, however, were sometimes
 cumbersome, because they were constrained by the applicative-order evaluation
-of Scheme.  In @ref{4.2}, we'll change the underlying language to
-provide for a more elegant approach, by modifying the evaluator to provide for
-@newterm{normal-order evaluation}.
+of the language.  In @ref{4.2} we study the elegant alternative as two named
+experiments, @code{lazy-recompute/1} and @code{lazy-memo/1}, which provide
+@newterm{normal-order evaluation} over explicit thunk data while the core
+evaluator stays strict.
 
-Section @ref{4.3} implements a more ambitious linguistic change, whereby
+Section @ref{4.3} studies a more ambitious linguistic change, whereby
 expressions have many values, rather than just a single value.  In this
 language of @newterm{nondeterministic computing}, it is natural to express
 processes that generate all possible values for expressions and then search for
 those values that satisfy certain constraints.  In terms of models of
 computation and time, this is like having time branch into a set of ``possible
-futures'' and then searching for appropriate time lines.  With our
-nondeterministic evaluator, keeping track of multiple values and performing
-searches are handled automatically by the underlying mechanism of the language.
+futures'' and then searching for appropriate time lines.  With the
+@code{search-depth-first/1} experiment, keeping track of multiple values and
+performing searches are handled automatically by the underlying mechanism of
+the experiment.
 
 In @ref{4.4} we implement a @newterm{logic-programming} language in
 which knowledge is expressed in terms of relations, rather than in terms of
-computations with inputs and outputs.  Even though this makes the language
-drastically different from Lisp, or indeed from any conventional language, we
-will see that the logic-programming evaluator shares the essential structure of
-the Lisp evaluator.
+computations with inputs and outputs.  Its programs are typed data---terms and
+queries built by constructors---rather than Rust syntax.  Even though this
+makes the language drastically different from Rust, or indeed from any
+conventional language, we will see that the logic-programming evaluator shares
+the essential structure of the evaluator of @ref{4.1}.
 
 @menu
 * 4.1::              The Metacircular Evaluator
-* 4.2::              Variations on a Scheme -- Lazy Evaluation
-* 4.3::              Variations on a Scheme -- Nondeterministic Computing
+* 4.2::              Lazy Evaluation
+* 4.3::              Nondeterministic Computing
 * 4.4::              Logic Programming
 @end menu
 

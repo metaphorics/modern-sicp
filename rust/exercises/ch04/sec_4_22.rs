@@ -16,7 +16,7 @@ mod ex_4_22 {
 
     use super::Pending;
 
-    /// Answers the analyzed values of a plain let and of a lambda body
+    /// Answers the analyzed values of a plain let and of a closure body
     /// whose internal let runs twice under one analysis.
     pub fn ex_4_22() -> Result<Vec<String>, Pending> {
         Err(Pending { exercise: "4.22" })

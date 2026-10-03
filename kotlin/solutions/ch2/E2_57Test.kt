@@ -8,27 +8,39 @@ import io.kotest.matchers.shouldBe
 
 public class E2_57Test :
     FunSpec({
-        test("addend/augend of a two-term sum are the two terms directly") {
-            val sum = NaryExpr.Sum(listOf(NaryExpr.Var("x"), NaryExpr.Num(3)))
-            addend(sum) shouldBe NaryExpr.Var("x")
-            augend(sum) shouldBe NaryExpr.Num(3)
+        test("accessors separate a two-term sum and a longer tail") {
+            val twoTerms = NaryExpr.Sum(listOf(NaryExpr.Var("x"), NaryExpr.Num(3)))
+            addend(twoTerms) shouldBe NaryExpr.Var("x")
+            augend(twoTerms) shouldBe NaryExpr.Num(3)
+
+            val threeTerms = NaryExpr.Sum(listOf(NaryExpr.Var("x"), NaryExpr.Var("y"), NaryExpr.Num(3)))
+            augend(threeTerms) shouldBe NaryExpr.Sum(listOf(NaryExpr.Var("y"), NaryExpr.Num(3)))
         }
-        test("augend of a three-term sum is the sum of the rest") {
-            val sum = NaryExpr.Sum(listOf(NaryExpr.Var("x"), NaryExpr.Var("y"), NaryExpr.Num(3)))
-            augend(sum) shouldBe NaryExpr.Sum(listOf(NaryExpr.Var("y"), NaryExpr.Num(3)))
-        }
-        test("derivN of a three-factor product matches the book's worked example") {
-            val expr =
+        test("the three-factor product rule constructs the expected derivative tree") {
+            val expression =
                 NaryExpr.Product(
-                    listOf(NaryExpr.Var("x"), NaryExpr.Var("y"), NaryExpr.Sum(listOf(NaryExpr.Var("x"), NaryExpr.Num(3)))),
+                    listOf(
+                        NaryExpr.Var("x"),
+                        NaryExpr.Var("y"),
+                        NaryExpr.Sum(listOf(NaryExpr.Var("x"), NaryExpr.Num(3))),
+                    ),
                 )
-            printNaryExpr(derivN(expr, "x")) shouldBe "(+ (* x y) (* y (+ x 3)))"
+            val expected =
+                NaryExpr.Sum(
+                    listOf(
+                        NaryExpr.Product(listOf(NaryExpr.Var("x"), NaryExpr.Var("y"))),
+                        NaryExpr.Product(
+                            listOf(
+                                NaryExpr.Var("y"),
+                                NaryExpr.Sum(listOf(NaryExpr.Var("x"), NaryExpr.Num(3))),
+                            ),
+                        ),
+                    ),
+                )
+            derivN(expression, "x") shouldBe expected
+            ex_2_57() shouldBe expected
         }
-        test("derivN of a two-term product still matches the base two-argument rule") {
-            val expr = NaryExpr.Product(listOf(NaryExpr.Var("x"), NaryExpr.Var("y")))
-            printNaryExpr(derivN(expr, "x")) shouldBe "y"
-        }
-        test("ex_2_57 matches the hand-computed derivative") {
-            ex_2_57() shouldBe "(+ (* x y) (* y (+ x 3)))"
+        test("the two-term product rule retains the base case") {
+            derivN(NaryExpr.Product(listOf(NaryExpr.Var("x"), NaryExpr.Var("y"))), "x") shouldBe NaryExpr.Var("y")
         }
     })

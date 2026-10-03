@@ -39,10 +39,10 @@ let apply_generic op args =
          (String.concat ", " type_tags))
 ;;
 
-let install_scheme_number_package () =
-  put "equ?" [ "scheme-number"; "scheme-number" ] (function
+let install_real_package () =
+  put "equ?" [ "real"; "real" ] (function
     | [ Num a; Num b ] -> Bool (Float.equal a b)
-    | _ -> invalid_arg "equ?: scheme-number expects two numbers")
+    | _ -> invalid_arg "equ?: real expects two numbers")
 ;;
 
 let install_rational_package () =
@@ -64,10 +64,10 @@ let equ x y =
 ;;
 
 let ex_2_79 () =
-  install_scheme_number_package ();
+  install_real_package ();
   install_rational_package ();
   install_complex_package ();
-  let sn n = Tagged (attach_tag "scheme-number" (Num n)) in
+  let sn n = Tagged (attach_tag "real" (Num n)) in
   let rat n d = Tagged (attach_tag "rational" (Ratpair (n, d))) in
   let cpx x y = Tagged (attach_tag "complex" (Cpx (x, y))) in
   ( equ (sn 3.0) (sn 3.0)

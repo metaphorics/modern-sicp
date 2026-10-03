@@ -6,104 +6,93 @@ must test the machines we design to see if they perform as expected.  One way
 to test a design is to hand-simulate the operation of the controller, as in
 @ref{Exercise 5.5}.  But this is extremely tedious for all but the simplest
 machines.  In this section we construct a simulator for machines described in
-the register-machine language.  The simulator is an OCaml module with four
-interface operations.  The first uses a description of a register machine to
-construct a model of the machine (a data structure whose parts correspond to
-the parts of the machine to be simulated), and the other three allow us to
-simulate the machine by manipulating the model:
+the register-machine language.  The simulator is an OCaml module whose
+interface builds a model of the machine and runs it:
 
 @quotation
 
-@example
-(make-machine @var{register-names}
-              @var{operations}
-              @var{controller})
+@example ocaml
+make_machine ~registers ~operations ~controller
 @end example
 
 @noindent
-constructs and returns a model of the machine with the given registers,
-operations, and controller.
+assembles the controller and returns a model of the machine with the given
+registers and operations, checking every register, operation, and label
+before the machine exists.
 
-@example
-(set-register-contents! @var{machine-model}
-                        @var{register-name}
-                        @var{value})
+@example ocaml
+set_register m "a" (Int 206)
 @end example
 
 @noindent
-stores a value in a simulated register in the given machine.
+stores a value in a simulated register of the given machine.
 
-@example
-(get-register-contents @var{machine-model}
-                       @var{register-name})
+@example ocaml
+get_register m "a"
 @end example
 
 @noindent
-returns the contents of a simulated register in the given machine.
+reads the contents of a simulated register of the given machine.
 
-@example
-(start @var{machine-model})
+@example ocaml
+start m
 @end example
 
 @noindent
-simulates the execution of the given machine, starting from the beginning of
-the controller sequence and stopping when it reaches the end of the sequence.
+steps the machine from the current program counter to the end of the
+controller sequence.
 @end quotation
 
 @noindent
-As an example of how these procedures are used, we can define
-@code{gcd-machine} to be a model of the @abbr{GCD} machine of
-@ref{5.1.1} as follows:
+As an example of how these operations are used, we can build a model of the
+@abbr{GCD} machine of @ref{5.1.1} as follows:
 
 @example ocaml
 let gcd_machine =
-  Machine.make_machine
+  make_machine
     ~registers:[ "a"; "b"; "t" ]
-    ~operations:Machine.arith_operations
-    @{|(controller
- test-b
-   (test (op =) (reg b) (const 0))
-   (branch (label gcd-done))
-   (assign t (op rem) (reg a) (reg b))
-   (assign a (reg b))
-   (assign b (reg t))
-   (goto (label test-b))
- gcd-done)|@}
+    ~operations:arith_operations
+    gcd_controller
 ;;
-(* = Ok <machine> -- the assembler checked every register, label, and
-   operation before the machine exists *)
+(* the assembler checked every register, label, and operation before
+   the machine exists *)
 @end example
 
 @noindent
-The first argument to @code{make-machine} is a list of register names.  The
-next argument is the operations table, pairing each operation name with the
-host computation that implements the operation (that is, produces the same
-output value given the same input values).  The last argument
-specifies the controller as text in the book's notation, labels and machine
-instructions, as in @ref{5.1}.
-
 To compute @abbr{GCD}s with this machine, we set the input registers, start
 the machine, and examine the result when the simulation terminates:
 
 @example ocaml
-gcd_machine >>= fun m ->
-Machine.set_register m "a" (Machine.Int 206) >>= fun () ->
-Machine.set_register m "b" (Machine.Int 40) >>= fun () ->
-Machine.start m >>= fun () ->
-Machine.get_register m "a"
+let* () = set_register gcd_machine "a" (Int 206) in
+let* () = set_register gcd_machine "b" (Int 40) in
+let* () = start gcd_machine in
+get_register gcd_machine "a"
 ;;
-(* = Ok 2 -- each store answers [Ok ()], the book's done, and the
-   stopped machine answers 2 *)
+(* = Ok (Int 2): each store answers Ok (), and the stopped machine
+   answers 2 *)
 @end example
 
 @noindent
 This computation will run much more slowly than a @code{gcd} procedure written
 in OCaml, because we will simulate low-level machine instructions, such as
-@code{assign}, by much more complex operations.
+@code{Assign}, by much more complex operations.
+
+Machine fixtures run the same way through @code{read_fixture} and
+@code{run_fixture}: @code{print} writes its operand and a newline, and after
+the controller stops each declared register is written as @code{name: value}.
+The @abbr{GCD} fixture answers
+
+@example
+a: 2
+b: 0
+t: 0
+@end example
 
 @quotation
 @strong{@anchor{Exercise 5.7}Exercise 5.7:} Use the simulator to test the
-machines you designed in @ref{Exercise 5.4}.
+machines you designed in @ref{Exercise 5.4}: assemble each controller with
+@code{make_machine}, load the inputs with @code{set_register}, run it with
+@code{start}, and read the answer with @code{get_register}.
 @end quotation
 
 @quotation
@@ -114,7 +103,9 @@ an oracle: run the recursive Fibonacci machine of @ref{Figure 5.12}
 and the iterative factorial machine of Exercise 5.1 on a shared set
 of arguments, compute each answer directly on the host with the
 corresponding procedure, and check that every simulated answer equals
-its oracle's answer. State the oracle rule your demonstrations follow.
+its oracle's answer.  State the oracle rule your demonstrations follow:
+every simulated answer must equal the host computation on the same
+inputs.
 @end quotation
 
 @menu
@@ -127,932 +118,267 @@ its oracle's answer. State the oracle rule your demonstrations follow.
 @node	5.2.1, 5.2.2, 5.2, 5.2
 @subsection The Machine Model
 
-The machine model generated by @code{make-machine} is represented in this
-edition as an abstract mutable record.  Where the book's model is a procedure
-with local state that dispatches on messages, the techniques developed in
-@ref{Chapter 3}, the edition's operations are the functions this section
-defines over the record; the record's type stays abstract, so nothing outside
-the module touches the parts directly.  To build this model,
-@code{make-machine} begins by calling the procedure @code{make-new-machine} to
-construct the parts of the machine model that are common to all register
-machines.  This basic machine model constructed by @code{make-new-machine} is
-essentially a container for some registers and a stack, together with an
-execution mechanism that processes the controller instructions one by one.
-
-@code{Make-machine} then extends this basic model (by operating on the record)
-to include the registers, operations, and controller of the particular machine
-being defined.  First it allocates a register in the new machine for each of
-the supplied register names and installs the designated operations in the
-machine.  Then it uses an @newterm{assembler} (described below in
-@ref{5.2.2}) to transform the controller list into instructions for the new
-machine and installs these as the machine's instruction sequence.
-@code{Make-machine} returns as its value the modified machine model.
+The machine model built by @code{make} holds an array register file, a
+program-counter ref, a test flag, a save/restore stack with its monitors, and
+the assembled controller.  The machine is polymorphic in its word: the
+machines of 5.1 and 5.2 hold @code{value}s, @ref{5.3} holds tagged memory
+words, and the evaluator and compiler of @ref{5.4} and @ref{5.5} hold
+evaluator words.  One simulator runs them all.  Each word family says how to
+make a label word, read one back, render a word for traces, and what an
+unassigned register holds:
 
 @example ocaml
-let make_machine ~registers ~operations ~controller =
-  let machine = make_new_machine () in
-  seq (allocate_register machine) registers
-  >>= fun () ->
-  machine.ops := !(machine.ops) @ operations;
-  assemble controller machine >>= fun () -> Ok machine
-;;
+type 'w words =
+  @{ label : string -> 'w
+  ; to_label : 'w -> string option
+  ; show : 'w -> string
+  ; unassigned : 'w
+  @}
 @end example
+
+@noindent
+The words of the 5.1 and 5.2 machines are integers, floats, Booleans, strings,
+labels held as data, and the unassigned word:
+
+@example ocaml
+type value =
+  | Int of int
+  | Float of float
+  | Bool of bool
+  | Str of string
+  | Addr of string
+  | Unassigned
+@end example
+
+@quotation
+@strong{@anchor{Figure 5.13}Figure 5.13:} @math{\downarrow} The machine model: the
+register file beside the assembled program.
+
+@example ocaml
+type 'w machine =
+  @{ words : 'w words
+  ; names : string array
+  ; contents : 'w array
+  ; source : 'w program
+  ; executable : 'w executable array
+  ; label_table : (string, int) Hashtbl.t
+  ; pc_ref : int ref
+  ; flag : bool option ref
+  ; stack : 'w list ref
+  ; depth : int ref
+  ; pushes : int ref
+  ; max_depth : int ref
+  ; count : int ref
+  @}
+@end example
+
+@end quotation
+
+@noindent
+The test flag is an ordinary ref cell, initially unset: a branch reads it and
+fails with the typed error when no test has yet set it.  The program counter
+is the machine's own index into the instruction array, which labels assemble
+to; the record keeps the register file and the array side by side.
 
 @subsubheading Registers
 
-The book represents a register as a procedure with local state, as in
-@ref{Chapter 3}; the edition's register is a record with a mutable field,
-which the same closures would wrap.  The procedure @code{make-register}
-creates a register that holds a value that can be accessed or changed:
-
-@example ocaml
-type register = @{ name : string; mutable contents : value @}
-
-let make_register name = @{ name; contents = Symbol "*unassigned*" @}
-;;
-@end example
-
-@noindent
-A register starts unassigned; the book's @code{*unassigned*} sentinel is the
-symbol value here.  The name rides along for the register's own reports
-(@ref{Exercise 5.18} traces by it).  The following procedures are used to
-access registers:
-
-@example ocaml
-(* get-contents and set-contents! are the field itself:
-   [reg.contents] reads, [reg.contents <- v] writes *)
-@end example
+A register is a slot of the register file, named at declaration.  Reading or
+assigning an undeclared register is the typed @code{Unknown_register} failure,
+raised by @code{assemble} before execution and by @code{set_register} and
+@code{get_register} at once.@footnote{The book's machine keeps its registers
+in a table that grows as @code{allocate-register} runs, with @code{flag} and
+@code{pc} among the entries.  This edition fixes the register file at
+declaration and keeps the program counter and the flag outside it, so the
+scan of @ref{Exercise 5.13} names only the controller's own registers.}
 
 @subsubheading The stack
 
-We can also represent a stack as a procedure with local state.  The procedure
-@code{make-stack} creates a stack whose local state consists of a list of the
-items on the stack.  A stack accepts requests to @code{push} an item onto the
-stack, to @code{pop} the top item off the stack and return it, and to
-@code{initialize} the stack to empty.
-
-@example ocaml
-(* the stack of this subsection: entries with the three operations;
-   5.2.4 hangs the monitoring counters off the same closures *)
-let make_stack () =
-  let entries = ref [] in
-  let push v = entries := v :: !entries in
-  let pop name =
-    match !entries with
-    | [] -> Error (Stack_underflow name)
-    | top :: rest ->
-      entries := rest;
-      Ok top
-  in
-  let initialize () = entries := [] in
-  (push, pop, initialize)
-;;
-@end example
-
-@noindent
-A pop names the register whose @code{restore} asked, so an empty stack is the
-typed underflow failure of 5.1 rather than a raised error.  The following
-procedures are used to access stacks:
-
-@example ocaml
-(* the book's [pop] and [push] wrappers are the closures themselves:
-   [m.stack.pop name] and [m.stack.push v] *)
-@end example
+The stack saves words on @code{Save} and restores them on @code{Restore}, last
+in first out.  Restoring an empty stack is a typed failure.  @ref{5.3} will
+implement this same stack as ordinary list structure; here it is part of the
+machine model, with monitors that count the pushes and the deepest depth
+reached (@ref{5.2.4}).
 
 @subsubheading The basic machine
 
-The @code{make-new-machine} procedure, shown in @ref{Figure 5.13,,@w{Figure 5.13}},
-constructs
-an object whose local state consists of a stack, an initially empty instruction
-sequence, a list of operations that initially contains an operation to
-initialize the stack, and a @newterm{register table} that initially contains
-two registers, named @code{flag} and @code{pc} (for ``program counter'').  The
-internal procedure @code{allocate-register} adds new entries to the register
-table, and the internal procedure @code{lookup-register} looks up registers in
-the table.  In this edition the @code{flag} register is an ordinary entry of
-the table -- the branch reads it and fails with a typed error when no test has
-yet set it -- while the @code{pc} is the machine's own index into the
-instruction array, which labels assemble to; the record keeps the register
-table and the array's side by side.
-
-@noindent
-@strong{@anchor{Figure 5.13}Figure 5.13:} @math{\downarrow} The @code{make-new-machine}
-procedure, which implements the basic machine model.
-
-@example ocaml
-let make_new_machine () =
-  let m =
-    @{ regs = Hashtbl.create 16
-    ; ops = ref []
-    ; insts = [||]
-    ; labels = Hashtbl.create 16
-    ; stack = make_stack ()
-    ; pc = ref 0
-    ; output = ref [] @}
-  in
-  Hashtbl.replace m.regs "flag" (make_register "flag");
-  let transcript line = m.output := !(m.output) @ [ line ] in
-  m.ops :=
-    [ ( "initialize-stack"
-      , Action_op (fun _ ->
-          m.stack.initialize ();
-          Ok ()) ) ];
-  m
-;;
-
-let allocate_register m name =
-  if Hashtbl.mem m.regs name
-  then Error (Bad_instruction ("the register " ^ name ^ " is declared twice"))
-  else (
-    Hashtbl.replace m.regs name (make_register name);
-    Ok ())
-;;
-
-let register_of m name =
-  match Hashtbl.find_opt m.regs name with
-  | Some r -> Ok r
-  | None -> Error (Unknown_register name)
-;;
-@end example
-
-@noindent
-The @code{flag} register is used to control branching in the simulated machine.
-@code{Test} instructions set the contents of @code{flag} to the result of the
-test (true or false).  @code{Branch} instructions decide whether or not to
-branch by examining the contents of @code{flag}.
-
-The @code{pc} register determines the sequencing of instructions as the machine
-runs.  This sequencing is implemented by the driver loop @code{execute}.  In
-the simulation model, each machine instruction is a data structure that
-includes a procedure of no arguments, called the @newterm{instruction execution procedure},
-such that calling this procedure simulates executing the
-instruction.  As the simulation runs, @code{pc} points to the place in the
-instruction sequence beginning with the next instruction to be executed.
-@code{Execute} gets that instruction, executes it by calling the instruction
-execution procedure, and repeats this cycle until there are no more
-instructions to execute (i.e., until @code{pc} points to the end of the
-instruction sequence, which the edition's index reaches when it counts up to
-the array length).
-
-@example ocaml
-let start m =
-  m.pc := 0;
-  let rec execute () =
-    if !(m.pc) >= Array.length m.insts
-    then Ok ()
-    else m.insts.(!(m.pc)).exec () >>= execute
-  in
-  execute ()
-;;
-@end example
-
-@noindent
-As part of its operation, each instruction execution procedure modifies
-@code{pc} to indicate the next instruction to be executed.  @code{Branch} and
-@code{goto} instructions change @code{pc} to point to the new destination.  All
-other instructions simply advance @code{pc}, making it point to the next
-instruction in the sequence.  Observe that each call to @code{execute} calls
-@code{execute} again, but this does not produce an infinite loop because
-running the instruction execution procedure changes the contents of @code{pc}.
-
-@code{Make-new-machine} returns the record itself; where the book's
-@code{dispatch} implements message-passing access to the internal state, the
-edition's operations on the record are the functions of this section.
-Notice that starting the machine
-is accomplished by setting @code{pc} to the beginning of the instruction
-sequence and calling @code{execute}.
-
-For convenience, we provide the alternate procedural interface to a machine's
-@code{start} operation, as well as procedures to set and examine register
-contents, as specified at the beginning of @ref{5.2}:
-
-@example ocaml
-let set_register m name v =
-  register_of m name >>= fun r ->
-  r.contents <- v;
-  Ok ()
-;;
-
-let get_register m name = register_of m name >>= fun r -> Ok r.contents
-;;
-@end example
-
-@noindent
-These procedures (and many procedures in @ref{5.2.2} and @ref{5.2.3})
-use the following to look up the register with a given name in a given machine:
-
-@example ocaml
-(* the book's [get-register] is [register_of] above: it hands back
-   the register record itself, the lookup the execution procedures
-   capture at assembly time *)
-@end example
+@code{make} assembles the controller and checks it against the declared
+registers and operations: every named register is declared, every operation
+is installed with the kind its instruction requires (@code{Value_op} for
+@code{Assign_op}, @code{Test_op} for @code{Test}, @code{Action_op} for
+@code{Perform}), and every label referenced is defined.  The 5.2 machine adds
+the stack monitors and @code{print} to the table; those write into the
+machine's transcript, which @code{transcript} reads back in order.
 
 @node	5.2.2, 5.2.3, 5.2.1, 5.2
 @subsection The Assembler
 
-The assembler transforms the sequence of controller expressions for a machine
-into a corresponding list of machine instructions, each with its execution
-procedure.  Overall, the assembler is much like the evaluators we studied in
-@ref{Chapter 4}---there is an input language (in this case, the
-register-machine language) and we must perform an appropriate action for each
-type of expression in the language.
-
-The technique of producing an execution procedure for each instruction is just
-what we used in @ref{4.1.7} to speed up the evaluator by separating
-analysis from runtime execution.  As we saw in @ref{Chapter 4}, much useful
-analysis of Scheme expressions could be performed without knowing the actual
-values of variables.  Here, analogously, much useful analysis of
-register-machine-language expressions can be performed without knowing the
-actual contents of machine registers.  For example, we can replace references
-to registers by pointers to the register objects, and we can replace references
-to labels by pointers to the place in the instruction sequence that the label
-designates -- in this edition, indices into the instruction array.
-
-Before it can generate the instruction execution procedures, the assembler must
-know what all the labels refer to, so it begins by scanning the controller text
-to separate the labels from the instructions.  As it scans the text, it
-constructs both a list of instructions and a table that associates each label
-with a pointer into that list.  Then the assembler augments the instruction
-list by inserting the execution procedure for each instruction.
-
-The @code{assemble} procedure is the main entry to the assembler.  It takes the
-controller text and the machine model as arguments and returns the instruction
-sequence to be stored in the model.  @code{Assemble} calls the shared reader's
-scan to build the initial instruction list and label table
-from the supplied controller text, then uses @code{update-insts} to generate
-the instruction execution procedures and insert them into the instruction list.
+The assembler turns the controller list into an executable program.  It
+extracts the labels first, pairing each label with the index of the
+instruction it names (a label at the end names the stop index, one past the
+last instruction), and rejects a label defined twice, which is the resolution
+of @ref{Exercise 5.8}:
 
 @example ocaml
-let assemble controller m = parse_program controller >>= install_program m
+val assemble : 'w instruction list -> ('w program, error) result
 
-let install_program (m : machine) (program : program) =
-  check_registers m program
-  >>= fun () ->
-  let entries =
-    List.map (fun (label, index) -> make_label_entry label index) program.labels
-  in
-  List.iter (fun (label, index) -> Hashtbl.replace m.labels label index) entries;
-  update_insts program.code m >>= fun insts ->
-  m.insts <- insts;
-  Ok ()
-;;
+type 'w program =
+  @{ code : 'w instruction array
+  ; labels : (string * int) list
+  @}
 @end example
 
 @noindent
-The label scan is the shared reader's @code{parse_program}, the same reader the
-machines of 5.1 load their controllers through.  It takes the controller text
-and produces, first, the instruction data structures, each containing an
-instruction from the text; and, second, the table @code{labels}, which
-associates each label from the text with the position in the instruction
-sequence that the label designates.
-
-@example ocaml
-(* the scan the reader performs: labels accumulate as they pass,
-   and the result is the parsed program
-   @{ code : instruction array; labels : (string * int) list @} -- a
-   label at the end of the sequence names the stop index, one past
-   the last instruction *)
-let extract_labels controller = parse_program controller
-;;
-@end example
-
-@noindent
-The scan works by sequentially walking the elements of the text and
-accumulating the instructions and the labels.  If an
-element is a symbol (and thus a label) an appropriate entry is added to the
-@code{labels} table.  Otherwise the element is parsed and accumulated onto the
-instructions.@footnote{The book's scan passes a @code{receive} procedure to
-itself, a way to get the scan to effectively return two values---@code{labels}
-and the instructions---without explicitly making a compound data structure to
-hold them.  An OCaml function returns the explicit pair directly, so this
-edition's scan is the pair-returning alternative the text shows; the
-continuation-passing shape itself is the backtracking control structure of the
-@code{amb} evaluator in @ref{4.3.3}.}
-
-@example ocaml
-(* the pair-returning scan of the text, which is what the reader's
-   [parse_program] computes:
-
-   let rec scan pending items =
-     match items with
-     | [] -> ([], [])
-     | item :: rest ->
-       (match Ast.view item with
-        | Ast.Variable lab -> (* an entry (lab, here) joins labels *)
-          ...
-        | _ -> (* a parsed instruction joins the code array *)
-          ...)
-
-   and [assemble] calls it as [parse_program controller] before
-   handing the pair to [install_program] *)
-@end example
-
-@noindent
-The book's @code{receive} argument -- the next procedure to be invoked -- is a
-``continuation.''  You can consider the book's use of it as demonstrating an
-elegant way to
-return multiple values, or simply an excuse to show off a programming trick;
-the pair the edition returns shows which parts were essential.
-
-@code{Update-insts} modifies the instruction list, which initially contains
-only the text of the instructions, to include the corresponding execution
-procedures:
-
-@example ocaml
-let update_insts texts m =
-  let insts = Array.map make_inst texts in
-  let rec fill i =
-    if i = Array.length insts
-    then Ok insts
-    else
-      make_execution_procedure insts.(i).text m
-      >>= fun exec ->
-      insts.(i).exec <- exec;
-      fill (i + 1)
-  in
-  fill 0
-;;
-@end example
-
-@noindent
-The machine instruction data structure simply pairs the instruction text with
-the corresponding execution procedure.  The execution procedure is not yet
-available when the scan constructs the instruction, and is
-inserted later by @code{update-insts}.
-
-@example ocaml
-type inst =
-  @{ text : instruction
-  ; mutable exec : unit -> (unit, error) result @}
-
-let make_inst text = @{ text; exec = fun () -> Ok () @}
-;;
-@end example
-
-@noindent
-The instruction text is not used by our simulator, but it is handy to keep
-around for debugging (see @ref{Exercise 5.16} -- where it is printed --
-and @ref{Exercise 5.17}, which hangs the labels beside it).  The
-book's @code{instruction-execution-proc} reads the field, and
-@code{set-instruction-execution-proc!} writes it; the edition's field is
-simply mutable.
-
-Elements of the label table are pairs:
-
-@example ocaml
-let make_label_entry label index = (label, index)
-;;
-@end example
-
-@noindent
-Entries will be looked up in the table with
-
-@example ocaml
-let lookup_label m name =
-  match Hashtbl.find_opt m.labels name with
-  | Some i -> Ok i
-  | None -> Error (Unknown_label name)
-;;
-@end example
-
-@noindent
-the book's ``undefined label'' assembly error being the typed
-@code{Unknown_label} failure.
+Much useful analysis of the controller can be performed without knowing the
+actual contents of machine registers.  The assembler replaces references to
+labels by indices into the instruction array, and @code{make} checks every
+register and operation up front, so execution never meets an unknown name
+from a well-formed controller.
 
 @quotation
-@strong{@anchor{Exercise 5.8}Exercise 5.8:} The following register-machine code
-is ambiguous, because the label @code{here} is defined more than once:
+@strong{@anchor{Exercise 5.8}Exercise 5.8:} The following controller is
+ambiguous, because the label @code{here} is defined more than once:
 
-@example
-start
-  (goto (label here))
-here
-  (assign a (const 3))
-  (goto (label there))
-here
-  (assign a (const 4))
-  (goto (label there))
-there
+@example ocaml
+[ Label "start"
+; Goto "here"
+; Label "here"
+; Assign ("a", Const (Int 3))
+; Goto "there"
+; Label "here"
+; Assign ("a", Const (Int 4))
+; Goto "there"
+; Label "there"
+]
 @end example
 
 With the simulator as written, what will the contents of register @code{a} be
 when control reaches @code{there}?  Modify the assembler's label scan
-procedure
-so that the assembler will signal an error if the same label name is used to
-indicate two different locations.
+procedure so that the assembler will signal an error if the same label name
+is used to indicate two different locations.  (In this edition the scan
+already does: @code{assemble} reports the typed @code{Bad_instruction}
+failure that the label @code{here} is defined twice, so nothing is assembled
+and the machine is never started.)
 @end quotation
 
 @node	5.2.3, 5.2.4, 5.2.2, 5.2
 @subsection Generating Execution Procedures for Instructions
 
-The assembler calls @code{make-execution-procedure} to generate the execution
-procedure for an instruction.  Like the @code{analyze} procedure in the
-evaluator of @ref{4.1.7}, this dispatches on the type of instruction to
-generate the appropriate execution procedure.
-
-@example ocaml
-let make_execution_procedure inst m =
-  match inst with
-  | Assign _ | Assign_op _ -> make_assign inst m
-  | Test _ -> make_test inst m
-  | Branch _ -> make_branch inst m
-  | Goto_label _ | Goto_reg _ -> make_goto inst m
-  | Save _ -> make_save inst m
-  | Restore _ -> make_restore inst m
-  | Perform _ -> make_perform inst m
-;;
-@end example
-
-@noindent
-For each type of instruction in the register-machine language, there is a
-generator that builds an appropriate execution procedure.  The details of these
-procedures determine both the syntax and meaning of the individual instructions
-in the register-machine language.  We use data abstraction to isolate the
-detailed syntax of register-machine expressions from the general execution
-mechanism, as we did for evaluators in @ref{4.1.2}, by using syntax
-procedures to extract and classify the parts of an instruction.  In this
-edition the instruction types are the constructors of the typed ADT of 5.1.5,
-so the dispatch's match is exhaustive by construction: the book's
-``unknown instruction type'' assembly error is a form the type system makes
-unrepresentable.
+@code{step} executes one instruction and answers whether the controller has
+run off its end; @code{start} steps to the end.  Like the @code{analyze}
+procedure in the evaluator of @ref{4.1.7}, execution dispatches on the type
+of instruction.  The program counter, the test flag, and the stack carry the
+machine state between steps.
 
 @subsubheading @code{Assign} instructions
 
-The @code{make-assign} procedure handles @code{assign} instructions:
-
-@example ocaml
-let make_assign inst m =
-  let finish target value_proc =
-    register_of m target
-    >>= fun reg ->
-    Ok
-      (fun () ->
-        value_proc () >>= fun v ->
-        reg.contents <- v;
-        advance_pc m)
-  in
-  match inst with
-  | Assign (target, source) ->
-    make_primitive_exp source m >>= fun vp -> finish target vp
-  | Assign_op (target, name, inputs) ->
-    make_operation_exp name inputs m >>= fun vp -> finish target (fun () -> vp () >>= apply_value_op name)
-  | _ -> Error (Bad_instruction "not an assign")
-;;
-@end example
-
-@noindent
-@code{Make-assign} extracts the target register name and the value expression
-from the @code{assign} instruction; in the typed ADT the two
-@code{assign} forms -- from a single source, and from an operation applied to
-its inputs -- carry these as their components, so the selectors of the text
-are the components' own names:
-
-@example ocaml
-(* [Assign (target, source)] names the target register and its
-   single source; [Assign_op (target, name, inputs)] names the target
-   and the operation with its inputs *)
-@end example
-
-@noindent
-The register name is looked up with @code{register_of} to produce the target
-register object.  The value expression is passed to @code{make-operation-exp}
-if the value is the result of an operation, and to @code{make-primitive-exp}
-otherwise.  These procedures (shown below) parse the value expression and
-produce an execution procedure for the value.  This is a procedure of no
-arguments, called @code{value-proc}, which will be evaluated during the
-simulation to produce the actual value to be assigned to the register.  Notice
-that the work of looking up the register name and parsing the value expression
-is performed just once, at assembly time, not every time the instruction is
-simulated.  This saving of work is the reason we use execution procedures, and
-corresponds directly to the saving in work we obtained by separating program
-analysis from execution in the evaluator of @ref{4.1.7}.
-
-The result returned by @code{make-assign} is the execution procedure for the
-@code{assign} instruction.  When this procedure is called (by the machine
-model's @code{execute} procedure), it sets the contents of the target register
-to the result obtained by executing @code{value-proc}.  Then it advances the
-@code{pc} to the next instruction by running the procedure
-
-@example ocaml
-let advance_pc m =
-  incr m.pc;
-  Ok ()
-;;
-@end example
-
-@noindent
-@code{Advance-pc} is the normal termination for all instructions except
-@code{branch} and @code{goto}.
+@code{Assign (register, source)} loads the register with a constant word, the
+contents of another register, or a label word.  @code{Assign_op} computes a
+@code{Value_op} on its inputs first.  An operation input is a constant or a
+register's contents; a label in operand position is refused at assembly (see
+@ref{Exercise 5.9}), while a plain @code{Assign} of a label is how
+@code{continue} receives return addresses.
 
 @subsubheading @code{Test}, @code{branch}, and @code{goto} instructions
 
-@code{Make-test} handles @code{test} instructions in a similar way.  It
-extracts the expression that specifies the condition to be tested and generates
-an execution procedure for it.  At simulation time, the procedure for the
-condition is called, the result is assigned to the @code{flag} register, and
-the @code{pc} is advanced.  The typed ADT admits no non-operation test -- the
-form is an operation name with its inputs -- so the book's ``bad test''
-assembly error is unrepresentable; what the type cannot rule out is a test
-whose operation answers something other than a boolean, and that fails at
-simulation time:
-
-@example ocaml
-let make_test inst m =
-  match inst with
-  | Test (name, inputs) ->
-    make_operation_exp name inputs m
-    >>= fun cond ->
-    register_of m "flag"
-    >>= fun flag ->
-    Ok
-      (fun () ->
-        cond () >>= apply_value_op name
-        >>= fun v ->
-        (match v with
-         | Bool b ->
-           flag.contents <- Bool b;
-           advance_pc m
-         | other ->
-           Error
-             (Bad_instruction
-                ("the test " ^ name ^ " answered " ^ value_to_string other ^ ", not a boolean"))))
-  | _ -> Error (Bad_instruction "not a test")
-;;
-@end example
-
-@noindent
-The execution procedure for a @code{branch} instruction checks the contents of
-the @code{flag} register and either sets the contents of the @code{pc} to the
-branch destination (if the branch is taken) or else just advances the @code{pc}
-(if the branch is not taken).  Notice that the indicated destination in a
-@code{branch} instruction must be a label, and the @code{make-branch} procedure
-enforces this (the ADT's @code{Branch} constructor carries only a label name).
-Notice also that the label is looked up at assembly time, not
-each time the @code{branch} instruction is simulated -- the index is resolved
-once, and the execution procedure closes over it.
-
-@example ocaml
-let make_branch inst m =
-  match inst with
-  | Branch label_name ->
-    lookup_label m label_name
-    >>= fun target ->
-    register_of m "flag"
-    >>= fun flag ->
-    Ok
-      (fun () ->
-        (match flag.contents with
-         | Bool b ->
-           if b
-           then (
-             m.pc := target;
-             Ok ())
-           else advance_pc m
-         | _ -> Error Branch_without_test))
-  | _ -> Error (Bad_instruction "not a branch")
-;;
-@end example
-
-@noindent
-A @code{goto} instruction is similar to a branch, except that the destination
-may be specified either as a label or as a register, and there is no condition
-to check---the @code{pc} is always set to the new destination.
-
-@example ocaml
-let make_goto inst m =
-  match inst with
-  | Goto_label label_name ->
-    lookup_label m label_name
-    >>= fun target ->
-    Ok
-      (fun () ->
-        m.pc := target;
-        Ok ())
-  | Goto_reg reg_name ->
-    register_of m reg_name
-    >>= fun reg ->
-    Ok
-      (fun () ->
-        (match reg.contents with
-         | Label l ->
-           lookup_label m l >>= fun target ->
-           m.pc := target;
-           Ok ()
-         | other ->
-           Error
-             (Bad_instruction ("goto reads " ^ value_to_string other ^ " from " ^ reg_name ^ ", not a label"))))
-  | _ -> Error (Bad_instruction "not a goto")
-;;
-@end example
+@code{Test (operation, inputs)} runs a @code{Test_op} and sets the flag.
+@code{Branch label} continues at the label when the flag is set and falls
+through otherwise; a branch with no test before it is the typed
+@code{Branch_without_test} failure.  @code{Goto label} jumps to the
+assembled index; @code{Goto_reg register} reads a label word from the
+register and jumps there, which is how a subroutine returns.
 
 @subsubheading Other instructions
 
-The stack instructions @code{save} and @code{restore} simply use the stack with
-the designated register and advance the @code{pc}:
-
-@example ocaml
-let make_save inst m =
-  match inst with
-  | Save reg_name ->
-    register_of m reg_name
-    >>= fun reg ->
-    Ok
-      (fun () ->
-        m.stack.push reg.contents;
-        advance_pc m)
-  | _ -> Error (Bad_instruction "not a save")
-;;
-
-let make_restore inst m =
-  match inst with
-  | Restore reg_name ->
-    register_of m reg_name
-    >>= fun reg ->
-    Ok
-      (fun () ->
-        m.stack.pop reg.name >>= fun v ->
-        reg.contents <- v;
-        advance_pc m)
-  | _ -> Error (Bad_instruction "not a restore")
-;;
-@end example
-
-@noindent
-The register's own name rides into the pop, so the underflow report names the
-register the @code{restore} asked for.
-
-The final instruction type, handled by @code{make-perform}, generates an
-execution procedure for the action to be performed.  At simulation time, the
-action procedure is executed and the @code{pc} advanced.
-
-@example ocaml
-let make_perform inst m =
-  match inst with
-  | Perform (name, inputs) ->
-    make_operation_exp name inputs m
-    >>= fun action ->
-    Ok (fun () -> action () >>= apply_action_op name >>= fun () -> advance_pc m)
-  | _ -> Error (Bad_instruction "not a perform")
-;;
-@end example
+@code{Save register} pushes the register's word and counts one push;
+@code{Restore register} pops the top word into the register.  @code{Perform
+(operation, inputs)} runs an @code{Action_op} for its effect.  @code{Label}
+executes nothing.  @code{pc} reads the next instruction's index, with the
+length of the code array meaning the machine has stopped; @code{executed}
+counts the instructions stepped since the machine was made or restarted;
+@code{goto_label} enters a controller at a label, and @code{restart} resets
+the program counter, the flag, and the stack.
 
 @subsubheading Execution procedures for subexpressions
 
-The value of a @code{reg}, @code{label}, or @code{const} expression may be
-needed for assignment to a register (@code{make-assign}) or for input to an
-operation (@code{make-operation-exp}, below).  The following procedure
-generates execution procedures to produce values for these expressions during
-the simulation:
-
-@example ocaml
-let make_primitive_exp exp m =
-  match exp with
-  | Const c -> Ok (fun () -> Ok c)
-  | Reg r ->
-    register_of m r >>= fun reg -> Ok (fun () -> Ok reg.contents)
-  | Label_source l ->
-    lookup_label m l >>= fun _ -> Ok (fun () -> Ok (Label l))
-;;
-@end example
-
-@noindent
-The syntax of @code{reg}, @code{label}, and @code{const} expressions is
-determined by the typed source ADT the shared reader produces -- its
-constructors are the syntax procedures of the text, and the parse of 5.1.5 is
-their grammar:
-
-@example ocaml
-type source = Sec_5_1.source =
-  | Reg of string
-  | Const of value
-  | Label_source of string
-;;
-@end example
-
-@noindent
-@code{Assign}, @code{perform}, and @code{test} instructions may include the
-application of a machine operation (specified by an @code{op} expression) to
-some operands (specified by @code{reg} and @code{const} expressions).  The
-following procedure produces an execution procedure for an ``operation
-expression''---the operation name and operand expressions from the
-instruction:
-
-@example ocaml
-let make_operation_exp name inputs m =
-  lookup_prim name !(m.ops)
-  >>= fun o ->
-  let rec build = function
-    | [] -> Ok []
-    | e :: rest ->
-      make_primitive_exp e m >>= fun p -> build rest >>= fun ps -> Ok (p :: ps)
-  in
-  build inputs
-  >>= fun argprocs ->
-  let rec collect = function
-    | [] -> Ok []
-    | p :: rest ->
-      p () >>= fun v -> collect rest >>= fun vs -> Ok (v :: vs)
-  in
-  Ok (fun () -> collect argprocs >>= fun args -> Ok (o, args))
-;;
-@end example
-
-@noindent
-The operation expression's syntax -- the book's @code{operation-exp},
-@code{operation-exp-op}, and @code{operation-exp-operands} procedures -- is
-carried by the constructors themselves: the @code{Assign_op}, @code{Test}, and
-@code{Perform} instructions hold the operation name and its inputs, and the
-reader's parse refuses a @code{(label ...)} among the operands, a refusal
-@ref{Exercise 5.9} examines.
-
-@example ocaml
-(* the operation expression is the [(op name operand ...)] form: the
-   reader splits it into the name and the inputs that [Assign_op],
-   [Test], and [Perform] carry *)
-@end example
-
-@noindent
-Observe that the treatment of operation expressions is very much like the
-treatment of procedure applications by the @code{analyze-application} procedure
-in the evaluator of @ref{4.1.7} in that we generate an execution
-procedure for each operand.  At simulation time, we call the operand procedures
-and apply the host procedure that simulates the operation to the resulting
-values.  The simulation procedure is found by looking up the operation name in
-the operation table for the machine -- at assembly time, so an unknown
-operation fails the assembly:
-
-@example ocaml
-let lookup_prim name ops =
-  match List.assoc_opt name ops with
-  | Some o -> Ok o
-  | None -> Error (Unknown_operation name)
-;;
-@end example
+An operand @code{Const word} is the word itself; @code{Reg name} is the
+register's contents; @code{Label_ref label} is the label's word.  Operands
+are read when the instruction executes, so an @code{Assign_op} always sees
+current register contents.  The assembler checks the shapes; execution
+reports the failures: unknown registers, unknown operations, unknown labels,
+empty-stack restores, and branches without tests.
 
 @quotation
-@strong{@anchor{Exercise 5.9}Exercise 5.9:} The treatment of machine operations
-above permits them to operate on labels as well as on constants and the
-contents of registers.  Modify the expression-processing procedures to enforce
-the condition that operations can be used only with registers and constants.
+@strong{@anchor{Exercise 5.9}Exercise 5.9:} The typed @code{source} admits a
+label in any operand position, but an operation input must be a register or a
+constant: a label is a legal source only for a plain @code{Assign}, which is
+how @code{continue} receives return addresses.  Write @code{check_operands},
+which scans every @code{Assign_op}, @code{Test}, and @code{Perform} and
+refuses a @code{Label_ref} input at assembly, before execution, and arrange
+for @code{make_machine} to run that check before assembling.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 5.10}Exercise 5.10:} Design a new syntax for
-register-machine instructions and modify the simulator to use your new syntax.
-Can you implement your new syntax without changing any part of the simulator
-except the syntax procedures in this section?
+writing controllers, with statements for assignment, test, branch, goto,
+save, restore, and perform over register, number, label, and operation-call
+terms.  Translate each statement into exactly one simulator instruction,
+refusing what the machine cannot run, and show that the new syntax can be
+installed without changing any part of the simulator below the translation.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 5.11}Exercise 5.11:} When we introduced @code{save}
-and @code{restore} in @ref{5.1.4}, we didn't specify what would happen
-if you tried to restore a register that was not the last one saved, as in the
-sequence
-
-@example
-(save y)
-(save x)
-(restore y)
-@end example
-
-There are several reasonable possibilities for the meaning of @code{restore}:
-
-@enumerate a
-
-@item
-@code{(restore y)} puts into @code{y} the last value saved on the stack,
-regardless of what register that value came from.  This is the way our
-simulator behaves.  Show how to take advantage of this behavior to eliminate
-one instruction from the Fibonacci machine of @ref{5.1.4} (@ref{Figure 5.12}).
-
-@item
-@code{(restore y)} puts into @code{y} the last value saved on the stack, but
-only if that value was saved from @code{y}; otherwise, it signals an error.
-Modify the simulator to behave this way.  You will have to change @code{save}
-to put the register name on the stack along with the value.
-
-@item
-@code{(restore y)} puts into @code{y} the last value saved from @code{y}
-regardless of what other registers were saved after @code{y} and not restored.
-Modify the simulator to behave this way.  You will have to associate a separate
-stack with each register.  You should make the @code{initialize-stack}
-operation initialize all the register stacks.
-
-@end enumerate
+@strong{@anchor{Exercise 5.11}Exercise 5.11:} When we introduced @code{Save}
+and @code{Restore} we used the simulator's untagged stack, in which
+@code{Save "y"; Save "x"; Restore "y"} leaves @code{y} holding the word saved
+from @code{x}.  Design two more disciplines that leave the simulator
+unchanged: a tagged discipline that files the register's name with the word,
+and a per-register discipline that gives each register its own stack.  What
+does the same sequence leave in @code{y} under each?  Check the Fibonacci
+machine under all three.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 5.12}Exercise 5.12:} The simulator can be used to help
-determine the data paths required for implementing a machine with a given
-controller.  Extend the assembler to store the following information in the
-machine model:
-
-@itemize
-
-@item
-a list of all instructions, with duplicates removed, sorted by instruction type
-(@code{assign}, @code{goto}, and so on);
-
-@item
-a list (without duplicates) of the registers used to hold entry points (these
-are the registers referenced by @code{goto} instructions);
-
-@item
-a list (without duplicates) of the registers that are @code{save}d
-or @code{restore}d;
-
-@item
-for each register, a list (without duplicates) of the sources from which it is
-assigned (for example, the sources for register @code{val} in the factorial
-machine of @ref{Figure 5.11} are @code{(const 1)} and @code{((op *) (reg n)
-(reg val))}).
-
-@end itemize
-
-Extend the message-passing interface to the machine to provide access to this
-new information.  To test your analyzer, define the Fibonacci machine from
-@ref{Figure 5.12} and examine the lists you constructed.
+analyze a controller.  Over the assembled typed instructions of the Fibonacci
+machine of @ref{Figure 5.12}, list the unique instructions by kind, the
+entry-point register (the goto-to-register target), the stacked registers,
+and the per-register sources.  Do the same for the factorial machine of
+@ref{Figure 5.11}.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 5.13}Exercise 5.13:} Modify the simulator so that it
-uses the controller sequence to determine what registers the machine has rather
-than requiring a list of registers as an argument to @code{make-machine}.
-Instead of pre-allocating the registers in @code{make-machine}, you can
-allocate them one at a time when they are first seen during assembly of the
-instructions.
+accepts machine descriptions in which there is no @code{registers} list:
+derive the registers from the controller with the simulator's own register
+scan (@code{instruction_registers}), keeping first-use order and dropping
+duplicates.  Every register the controller names is then declared by
+construction.  Check the GCD and Fibonacci machines with no register list at
+all.
 @end quotation
 
 @node	5.2.4, 5.3, 5.1, 5.2
 @subsection Monitoring Machine Performance
 
 Simulation is useful not only for verifying the correctness of a proposed
-machine design but also for measuring the machine's performance.  For example,
-we can install in our simulation program a ``meter'' that measures the number
-of stack operations used in a computation.  To do this, we modify our simulated
-stack to keep track of the number of times registers are saved on the stack and
-the maximum depth reached by the stack, and add a message to the stack's
-interface that prints the statistics, as shown below.  We also add an operation
-to the basic machine model to print the stack statistics, by installing both
-stack operations alongside @code{initialize-stack} in @code{make-new-machine}'s
-operations:
+machine design but also for measuring the machine's performance.  Every 5.2
+machine carries the stack monitors: @code{initialize_stack} empties the stack
+and zeroes its monitors, and @code{print_stack_statistics} writes the monitor
+line into the machine's transcript.  Saving two words and restoring one, then
+printing the statistics and the register, gives the transcript
 
-@example ocaml
-m.ops :=
-  [ ( "initialize-stack"
-    , Action_op (fun _ ->
-        m.stack.initialize ();
-        Ok ()) )
-  ; ( "print-stack-statistics"
-    , Action_op (fun _ ->
-        transcript (m.stack.statistics ());
-        Ok ()) ) ];
+@example
+total-pushes = 2 maximum-depth = 2
+7
 @end example
 
 @noindent
-Here is the new version of @code{make-stack}:
-
-@example ocaml
-let make_stack () =
-  let entries = ref [] in
-  let number_pushes = ref 0 in
-  let current_depth = ref 0 in
-  let maximum_depth = ref 0 in
-  let push v =
-    entries := v :: !entries;
-    incr number_pushes;
-    incr current_depth;
-    if !current_depth > !maximum_depth then maximum_depth := !current_depth
-  in
-  let pop name =
-    match !entries with
-    | [] -> Error (Stack_underflow name)
-    | top :: rest ->
-      decr current_depth;
-      entries := rest;
-      Ok top
-  in
-  let initialize () =
-    entries := [];
-    number_pushes := 0;
-    current_depth := 0;
-    maximum_depth := 0
-  in
-  let statistics () =
-    Printf.sprintf "total-pushes = %d maximum-depth = %d" !number_pushes !maximum_depth
-  in
-  @{ push; pop; initialize; statistics @}
-;;
-@end example
-
-@noindent
-The statistics action appends its line to the machine's transcript rather than
-printing at the host, so a run's measurements are collected in order and can be
-pinned; @code{print_stack_statistics} reads the same counters directly.
-
-@ref{Exercise 5.15} through @ref{Exercise 5.19} describe other useful
-monitoring and debugging features that can be added to the register-machine
-simulator.
+@code{stack_statistics} reads the same counters directly as total pushes and
+maximum depth, @code{stack_depth} reads the words currently saved, and
+@code{executed} counts the instructions stepped.  @ref{Exercise 5.15} through
+@ref{Exercise 5.19} describe other useful monitoring and debugging features
+that a @code{Monitor} over the frozen simulator provides: instruction counts
+(fib 3 takes 51 instructions, fib 6 takes 281), constructor-notation traces
+with labels, register-write traces, and breakpoints with proceed and cancel.
 
 @quotation
 @strong{@anchor{Exercise 5.14}Exercise 5.14:} Measure the number of pushes and
@@ -1062,47 +388,49 @@ determine formulas in terms of @math{n} for the total number of push operations
 and the maximum stack depth used in computing @math{{n!}} for any @math{{n > 1}}. Note
 that each of these is a linear function of @math{n} and is thus determined by two
 constants.  In order to get the statistics printed, you will have to augment
-the factorial machine with instructions to initialize the stack and print the
-statistics.  You may want to also modify the machine so that it repeatedly
-reads a value for @math{n}, computes the factorial, and prints the result (as we
-did for the @abbr{GCD} machine in @ref{Figure 5.4}), so that you will not
-have to repeatedly invoke @code{get-register-contents},
-@code{set-register-contents!}, and @code{start}.
+the factorial machine with @code{Perform ("initialize-stack", [])} before the
+recursion and @code{Perform ("print-stack-statistics", [])} at
+@code{fact-done}.  Both counters are @code{2n - 2} for @code{n > 1}.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 5.15}Exercise 5.15:} Add @newterm{instruction counting}
-to the register machine simulation.  That is, have the machine model
-keep track of the number of instructions executed.  Extend the machine model's
-interface to accept a new message that prints the value of the instruction
-count and resets the count to zero.
+to the register machine simulation.  That is, drive the simulator one
+@code{step} at a time and count one per executed instruction, with a message
+that prints the value of the instruction count and resets the count to zero.
+Fib 3 executes 51 instructions and fib 6 executes 281, the same 281 the
+hand transcription of @ref{5.1} counted step by step; after the reset the
+count reads 0.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 5.16}Exercise 5.16:} Augment the simulator to provide
 for @newterm{instruction tracing}.  That is, before each instruction is
-executed, the simulator should print the text of the instruction.  Make the
-machine model accept @code{trace-on} and @code{trace-off} messages to turn
-tracing on and off.
+executed, the monitor renders the assembled instruction in constructor
+notation.  Tracing gcd(12, 8) prints fourteen lines, two full loop passes
+plus the final test and taken branch; the same machine on (20, 14) with
+tracing off prints nothing but answers 2.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 5.17}Exercise 5.17:} Extend the instruction tracing of
-@ref{Exercise 5.16} so that before printing an instruction, the simulator
-prints any labels that immediately precede that instruction in the controller
-sequence.  Be careful to do this in a way that does not interfere with
-instruction counting (@ref{Exercise 5.15}).  You will have to make the
-simulator retain the necessary label information.
+@ref{Exercise 5.16} so that before printing an instruction, the monitor prints
+any labels that immediately precede that instruction in the controller
+sequence, the assembled program keeping each label with its index.  Each pass
+through the loop opens with @code{fib-loop:}, the returns open
+@code{afterfib-n-1:} and @code{afterfib-n-2:}, the base case announces
+@code{immediate-answer:}, and the count stays undisturbed (fib 3 traced still
+counts 51).
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 5.18}Exercise 5.18:} Modify the @code{make-register}
-procedure of @ref{5.2.1} so that registers can be traced.  Registers
-should accept messages that turn tracing on and off.  When a register is
-traced, assigning a value to the register should print the name of the
-register, the old contents of the register, and the new contents being
-assigned.  Extend the interface to the machine model to permit you to turn
-tracing on and off for designated machine registers.
+@strong{@anchor{Exercise 5.18}Exercise 5.18:} Modify the simulator so that
+registers can be traced: each write to a traced register, by the host's
+@code{set_register} or by @code{Assign}, @code{Assign_op}, or @code{Restore},
+appends @code{name: old -> new} to the transcript.  Tracing @code{n} and
+@code{val} through the factorial machine on @code{n = 3} opens with the
+host's input load (@code{n: unassigned -> 3}) and ends with @code{fact 3 =
+6}.
 @end quotation
 
 @quotation
@@ -1114,7 +442,7 @@ stop and allow her to examine the state of the machine.  You are to implement a
 procedure
 
 @example ocaml
-set_breakpoint machine "label" n
+set_breakpoint machine "test-b" 4
 @end example
 
 @noindent
@@ -1127,11 +455,10 @@ set_breakpoint gcd_machine "test-b" 4
 
 @noindent
 installs a breakpoint in @code{gcd-machine} just before the assignment to
-register @code{a}.  When the simulator reaches the breakpoint it should print
-the label and the offset of the breakpoint and stop executing instructions.
-Alyssa can then use @code{get-register} and
-@code{set_register} to manipulate the state of the simulated machine.
-She should then be able to continue execution by saying
+register @code{a}.  When the simulator reaches the breakpoint it stops and
+lets her use @code{get_register} and @code{set_register} to manipulate the
+state of the simulated machine.  She should then be able to continue execution
+by saying
 
 @example ocaml
 proceed_machine gcd_machine
@@ -1150,4 +477,9 @@ or to remove all breakpoints by means of
 @example ocaml
 cancel_all_breakpoints gcd_machine
 @end example
+
+@noindent
+On gcd(12, 8) the run stops at @code{test-b 4} with @code{a = 12},
+@code{b = 8}, proceeds to stop there again with @code{a = 8}, @code{b = 4},
+and proceeds to complete with @code{a = 4}.
 @end quotation

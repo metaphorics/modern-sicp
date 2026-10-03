@@ -6,17 +6,9 @@ package sicp.ch2.exercises
 import arrow.core.raise.Raise
 
 /**
- * Exercise 2.78: the book's ordinary numbers carry a `scheme-number` tag
- * because Lisp data is untyped pairs; exercise 2.78 rewrites `type-tag`,
- * `contents`, and `attach-tag` so ordinary numbers ride bare. This
- * edition's tower went further from the start -- a [Num] presents its
- * level as its own type, so there was never a wrapper to strip. What the
- * exercise still teaches here is the bare case: [typeTagOfAny] reads the
- * level off the host's own `Long` and `Double` too, and the bare integer
- * package computes on `Long` values directly, returning bare results.
- *
- * The revised `type-tag`: a tower value reads its own level, and the
- * host's primitive numbers join the tower unwrapped.
+ * Recognize both the tower's numeric variants and Kotlin's unwrapped
+ * `Long` and `Double` values. Native inputs keep their own host types rather
+ * than passing through an artificial wrapper datum.
  */
 public fun typeTagOfAny(v: Any): String? =
     when (v) {

@@ -68,7 +68,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(f"{pdf}: {state} pdf", file=sys.stderr)
             print(f"converted=0 skipped={len(current)} stale={len(pending)}")
             return int(bool(pending))
-        workers = max(1, args.jobs or os.process_cpu_count() or 1)
+        cpu_count = getattr(os, "process_cpu_count", os.cpu_count)
+        workers = max(1, args.jobs or cpu_count() or 1)
 
         def convert(pair: tuple[Path, Path]) -> None:
             run_convert(binary, pair[0], pair[1])

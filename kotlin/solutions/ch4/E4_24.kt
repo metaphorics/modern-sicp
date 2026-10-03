@@ -3,92 +3,74 @@
 
 package sicp.ch4.solutions
 
-import arrow.core.raise.either
-import sicp.ch4.Analyzer
-import sicp.ch4.Evaluator
-import sicp.ch4.OutputSink
-import sicp.ch4.formatError
-import sicp.ch4.parseExpr
-import sicp.ch4.readDatum
-import sicp.ch4.setupEnvironment
-import sicp.runtime.Value
-import kotlin.system.measureNanoTime
+import sicp.ch4.Analyzed
+import sicp.ch4.Direct
 
-// Exercise 4.24: the direct evaluator against the analyzer on tree
-// recursion. Both engines run the same `(fib 12)` program in a fresh
-// global environment; each reading is the median of [SAMPLES] timed
-// batches of [TIMED_CALLS] calls, taken after [WARMUP_CALLS] unmeasured
-// calls. The TEST asserts only structural facts -- both engines compute
-// the same value and both medians are positive -- because a timing
-// assertion would flake on any other host. The measured ratio goes in the
-// `// =>` comment and the rationale, reported honestly for one run on one
-// machine.
-//
-// Measured on the recording run (Xeon Gold 6138, Kotlin/JVM): medians of
-// 7 batches of 100 calls of `(fib 12)` -- direct 43.3 ms, analyzer
-// 53.9 ms, ratio direct/analyzer = 0.80, i.e. the ANALYZER ran about
-// 1.24x slower here, and repeat runs kept that direction (direct
-// 40.9-45.1 ms, analyzer 47.4-53.9 ms, ratio 0.80-0.94 over five runs).
-// The library's direct evaluator is
-// already a compiled dispatch loop with tail unwinding, so analysis saves
-// it little, while the analyzer pays an identity-table lookup and closure
-// chains on every application; the book's modest analyzer win assumed a
-// naive tree-walking interpreter.
+// Exercise 4.24: what analysis saves, measured in counters instead of
+// wall-clock time. Re-analyzing before every call climbs both counters
+// together; analyzing once and running three times climbs the run
+// counter alone. The same analyze-once program runs under both
+// engines, and both agree on every answer and counter: the lesson is
+// the saved analyses, and the engines concur on them.
 
-/** One engine's benchmark reading: the agreed answer and the median batch
- * time in nanoseconds. */
-public data class Timing(
-    public val value: Value,
-    public val medianNanos: Double,
-)
+/** Three calls with a fresh analysis each, then three calls on one. */
+internal val SAVINGS_SOURCE: String =
+    """
+fun analyzeCounted(name: String, init: GExpr, body: GExpr, env: GFrame): GExpr {
+    val noted = gEval(GSet("analyses", GAdd(GVar("analyses"), GNum(1L))), env)
+    return GApp(GLam(name, body), init)
+}
 
-private const val DEFINITION = "(define (fib n) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2)))))"
-private const val CALL = "(fib 12)"
-private const val WARMUP_CALLS = 100
-private const val TIMED_CALLS = 100
-private const val SAMPLES = 7
+fun runCounted(form: GExpr, env: GFrame): GValue? {
+    val noted = gEval(GSet("runs", GAdd(GVar("runs"), GNum(1L))), env)
+    return gEval(form, env)
+}
 
-/** The direct evaluator of 4.1.1: every evaluation re-dispatches on the
- * expression type. => a Timing with fib 12 and its median batch time */
-public fun directEvaluatorTiming(): Timing {
-    val env = setupEnvironment(OutputSink())
-    return either {
-        val define = parseExpr(readDatum(DEFINITION))
-        val call = parseExpr(readDatum(CALL))
-        val evaluator = Evaluator(env)
-        evaluator.eval(define, env)
-        Timing(evaluator.eval(call, env), medianNanos { evaluator.eval(call, env) })
-    }.fold(
-        { e -> throw IllegalStateException("benchmark run failed: ${formatError(e)}") },
-        { it },
+fun freshCounters(): GFrame =
+    GFrame(mutableMapOf<String, GValue>("analyses" to GNumV(0L), "runs" to GNumV(0L)), null)
+    """.trimIndent()
+
+/** The analyze-once program both engines run. */
+internal val SAVINGS_PROGRAM: String =
+    KERNEL_SOURCE + "\n" + SAVINGS_SOURCE + "\n" +
+        """
+fun main() {
+    val env = freshCounters()
+    val form = analyzeCounted("a", GNum(2L), GAdd(GVar("a"), GNum(5L)), env)
+    println(renderValue(runCounted(form, env)))
+    println(renderValue(runCounted(form, env)))
+    println(renderValue(runCounted(form, env)))
+    println(renderValue(gEval(GVar("analyses"), env)))
+    println(renderValue(gEval(GVar("runs"), env)))
+}
+        """.trimIndent()
+
+/** Re-analysis climbs with the runs; one analysis serves all three.
+ * => "7\n7\n7\n3\n3\n7\n7\n7\n1\n3\n" */
+public fun analysisSavingsTranscript(): String =
+    outcomeText(
+        Direct.run(
+            KERNEL_SOURCE + "\n" + SAVINGS_SOURCE + "\n" +
+                """
+fun main() {
+    val first = freshCounters()
+    println(renderValue(runCounted(analyzeCounted("a", GNum(2L), GAdd(GVar("a"), GNum(5L)), first), first)))
+    println(renderValue(runCounted(analyzeCounted("a", GNum(2L), GAdd(GVar("a"), GNum(5L)), first), first)))
+    println(renderValue(runCounted(analyzeCounted("a", GNum(2L), GAdd(GVar("a"), GNum(5L)), first), first)))
+    println(renderValue(gEval(GVar("analyses"), first)))
+    println(renderValue(gEval(GVar("runs"), first)))
+    val second = freshCounters()
+    val form = analyzeCounted("a", GNum(2L), GAdd(GVar("a"), GNum(5L)), second)
+    println(renderValue(runCounted(form, second)))
+    println(renderValue(runCounted(form, second)))
+    println(renderValue(runCounted(form, second)))
+    println(renderValue(gEval(GVar("analyses"), second)))
+    println(renderValue(gEval(GVar("runs"), second)))
+}
+                """.trimIndent(),
+        ),
     )
-}
 
-/** The analyzer of 4.1.7: the syntactic work runs once, at analysis time;
- * execution calls the stored execution procedures. => a Timing with fib 12
- * and its median batch time */
-public fun analyzerTiming(): Timing {
-    val env = setupEnvironment(OutputSink())
-    return either {
-        val define = parseExpr(readDatum(DEFINITION))
-        val call = parseExpr(readDatum(CALL))
-        val analyzer = Analyzer(env)
-        analyzer.eval(define, env)
-        Timing(analyzer.eval(call, env), medianNanos { analyzer.eval(call, env) })
-    }.fold(
-        { e -> throw IllegalStateException("benchmark run failed: ${formatError(e)}") },
-        { it },
-    )
-}
-
-/** [WARMUP_CALLS] unmeasured calls, then the median of [SAMPLES] batches
- * of [TIMED_CALLS] measured calls. */
-private inline fun medianNanos(batch: () -> Unit): Double {
-    repeat(WARMUP_CALLS) { batch() }
-    val samples = LongArray(SAMPLES)
-    for (i in 0 until SAMPLES) {
-        samples[i] = measureNanoTime { repeat(TIMED_CALLS) { batch() } }
-    }
-    samples.sort()
-    return samples[SAMPLES / 2].toDouble()
-}
+/** The analyzed engine agrees on every answer and counter.
+ * => "7\n7\n7\n1\n3\n" */
+public fun analyzedEngineTranscript(): String = outcomeText(Analyzed.run(SAVINGS_PROGRAM))

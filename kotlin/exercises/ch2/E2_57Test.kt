@@ -9,11 +9,21 @@ import io.kotest.matchers.shouldBe
 
 public class E2_57Test :
     FunSpec({
-        test(
-            "Exercise 2.57: the derivative of (* x y (+ x 3)) with respect to x matches the hand-computed answer",
-        ).config(
+        test("Exercise 2.57 returns the derivative tree for a three-factor product").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            ex_2_57() shouldBe "(+ (* x y) (* y (+ x 3)))"
+            val expected =
+                NaryExpr.Sum(
+                    listOf(
+                        NaryExpr.Product(listOf(NaryExpr.Var("x"), NaryExpr.Var("y"))),
+                        NaryExpr.Product(
+                            listOf(
+                                NaryExpr.Var("y"),
+                                NaryExpr.Sum(listOf(NaryExpr.Var("x"), NaryExpr.Num(3))),
+                            ),
+                        ),
+                    ),
+                )
+            ex_2_57() shouldBe expected
         }
     })

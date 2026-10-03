@@ -1,44 +1,50 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-import { it } from "@effect/vitest";
-import { Effect, Ref } from "effect";
-import { describe, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { ex_4_23, runWithAlyssaSequence, runWithTextSequence } from "./ex_4_23.js";
-
-const runs = 5;
+import { Session } from "../../packages/ch4/src/01-metacircular.js";
+import { num } from "../../packages/ch4/src/syntax/ast.js";
+import {
+  analyzeSequenceAlyssa,
+  analyzeSequenceText,
+  makeCounters,
+  runSequence,
+  type SequenceCounters,
+} from "./ex_4_23.js";
 
 describe("exercise 4.23: analyze-sequence comparison", () => {
-  it.effect("one-expression body: text folds to the leaf, Alyssa walks once per run", () =>
-    Effect.gen(function* () {
-      const text = yield* runWithTextSequence("(begin 1)", runs);
-      expect(text.value).toStrictEqual({ _tag: "Number", n: 1 });
-      expect(yield* Ref.get(text.counters.leafRuns)).toBe(runs);
-      expect(yield* Ref.get(text.counters.walks)).toBe(0);
+  it("a one-expression body executed five times: 5 leaves and no walk", () => {
+    const text = runSequence(
+      (counters: SequenceCounters) => analyzeSequenceText([num(1)], counters),
+      5,
+    );
+    expect(text).toEqual({ leafRuns: 5, walks: 0 });
+    const alyssa = runSequence(
+      (counters: SequenceCounters) => analyzeSequenceAlyssa([num(1)], counters),
+      5,
+    );
+    expect(alyssa).toEqual({ leafRuns: 5, walks: 5 });
+  });
 
-      const alyssa = yield* runWithAlyssaSequence("(begin 1)", runs);
-      expect(alyssa.value).toStrictEqual({ _tag: "Number", n: 1 });
-      expect(yield* Ref.get(alyssa.counters.leafRuns)).toBe(runs);
-      expect(yield* Ref.get(alyssa.counters.walks)).toBe(runs);
-    }),
-  );
+  it("a two-expression body executed five times: 10 leaves and one walk per run", () => {
+    const text = runSequence(
+      (counters: SequenceCounters) => analyzeSequenceText([num(1), num(2)], counters),
+      5,
+    );
+    expect(text).toEqual({ leafRuns: 10, walks: 0 });
+    const alyssa = runSequence(
+      (counters: SequenceCounters) => analyzeSequenceAlyssa([num(1), num(2)], counters),
+      5,
+    );
+    expect(alyssa).toEqual({ leafRuns: 10, walks: 5 });
+  });
 
-  it.effect("two-expression body: identical leaf runs, Alyssa still walks per run", () =>
-    Effect.gen(function* () {
-      const text = yield* runWithTextSequence("(begin 1 2)", runs);
-      expect(text.value).toStrictEqual({ _tag: "Number", n: 2 });
-      expect(yield* Ref.get(text.counters.leafRuns)).toBe(2 * runs);
-      expect(yield* Ref.get(text.counters.walks)).toBe(0);
-
-      const alyssa = yield* runWithAlyssaSequence("(begin 1 2)", runs);
-      expect(alyssa.value).toStrictEqual({ _tag: "Number", n: 2 });
-      expect(yield* Ref.get(alyssa.counters.leafRuns)).toBe(2 * runs);
-      expect(yield* Ref.get(alyssa.counters.walks)).toBe(runs);
-    }),
-  );
-
-  it("answers the statement's comparison", () => {
-    expect(ex_4_23()).toContain("no sequence work at all");
+  it("an empty sequence fails in both versions", () => {
+    const env = new Session("core").globalEnv();
+    const text = analyzeSequenceText([], makeCounters())(env);
+    expect(text.tag).toBe("error");
+    const alyssa = analyzeSequenceAlyssa([], makeCounters())(env);
+    expect(alyssa.tag).toBe("error");
   });
 });

@@ -1,157 +1,65 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The reference solution of exercise 5.26: the monitored stack
-//! explores the evaluator's tail-recursive property with the
-//! iterative factorial of 1.2.1.
+//! The reference solution of exercise 5.26: the iterative factorial
+//! holds constant stack space.
 //!
-//! The monitored driver is the 5.4.4 variant: `print-result` performs
-//! `print-stack-statistics` before announcing the value, and the
-//! driver initializes the stack once per interaction, so every
-//! interaction's counters are its own. The exercises that measure the
-//! stack (5.26 to 5.29) share this module's controller and harness.
+//! The loop machine of section 5.1 never touches the stack: every
+//! iteration reuses the same registers, so pushes and maximum depth
+//! stay zero from n = 1 to 6 while the answers run through the
+//! factorials. The same loop written as a guest program answers
+//! identically on the explicit-control evaluator and the compiler,
+//! which is the interpreted/compiled agreement the later comparisons
+//! build on.
 
-use ch05::sec_5_2::Fault;
-use ch05::sec_5_4::{compose_controller, make_evaluator};
+use ch05::sec_5_1::factorial_iterative;
+use ch05::sec_5_2::{Machine, assemble};
 
 mod ex_5_26 {
-    //! Exercise 5.26: record the maximum stack depth and the number
-    //! of pushes required to compute the iterative factorial of n for
-    //! a range of values of n, and determine formulas from the data.
+    //! Exercise 5.26: iteration reuses its registers, so stack use is
+    //! independent of n.
 
     use super::*;
 
-    /// The monitored driver of 5.4.4: the statistics printed before
-    /// the value.
-    const MONITORED_DRIVER: &str = "read-eval-print-loop
-  (perform (op initialize-stack))
-  (perform (op prompt-for-input)
-           (const \";;; EC-Eval input:\"))
-  (assign exp (op read))
-  (assign env (op get-global-environment))
-  (assign continue (label print-result))
-  (goto (label eval-dispatch))
-print-result
-  (perform (op print-stack-statistics))
-  (perform (op announce-output)
-           (const \";;; EC-Eval value:\"))
-  (perform (op user-print) (reg val))
-  (goto (label read-eval-print-loop))";
+    const LOOP_FACTORIAL: &str = "fn factorial(n: i64) -> i64 {\n    let mut product = 1;\n    let mut counter = 1;\n    while counter <= n {\n        product = product * counter;\n        counter += 1;\n    }\n    product\n}\n\nfn main() {\n    println!(\"{}\", factorial(1));\n    println!(\"{}\", factorial(2));\n    println!(\"{}\", factorial(3));\n    println!(\"{}\", factorial(4));\n    println!(\"{}\", factorial(5));\n    println!(\"{}\", factorial(6));\n}\n";
 
-    /// The base controller with the monitored driver.
-    fn controller() -> String {
-        compose_controller(&[("driver", MONITORED_DRIVER)])
+    fn machine_at(n: i64) -> (i64, u64, usize) {
+        let mut machine = Machine::new(assemble(&factorial_iterative()).expect("assembles"));
+        machine.set_register("n", n).expect("register n");
+        machine.run().expect("runs");
+        let stats = machine.stack_statistics();
+        (
+            machine.get_register("product").expect("product"),
+            stats.pushes,
+            stats.max_depth,
+        )
     }
 
-    /// The iterative factorial of 1.2.1, the tail-recursive program
-    /// the exercise measures.
-    const ITERATIVE_SOURCE: &str = "(define (factorial n) (define (iter product counter) (if (> counter n) product (iter (* counter product) (+ counter 1)))) (iter 1 1))";
-
-    /// The counters one interaction printed.
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    struct Stats {
-        pushes: u64,
-        depth: u64,
-    }
-
-    /// Reads the counters out of a `(total-pushes = P maximum-depth = D)`
-    /// line the machine printed.
-    fn parse_stats(line: &str) -> Option<Stats> {
-        let rest = line.strip_prefix("(total-pushes = ")?;
-        let (pushes, rest) = rest.split_once(' ')?;
-        let depth = rest.strip_prefix("maximum-depth = ")?.trim_end_matches(')');
-        Some(Stats {
-            pushes: pushes.parse().ok()?,
-            depth: depth.parse().ok()?,
-        })
-    }
-
-    /// The stats lines of a run, one per interaction, in order.
-    fn stats_of(transcript: &[String]) -> Vec<Stats> {
-        transcript
-            .iter()
-            .filter(|line| line.starts_with("(total-pushes"))
-            .filter_map(|line| parse_stats(line))
-            .collect()
-    }
-
-    /// Runs the program's calls of `(factorial n)` for each `n` on a
-    /// fresh machine and answers the counters of each call plus the
-    /// printed value, the last line before the trailing prompt.
-    fn measure(source: &str, ns: &[i128]) -> Result<Vec<(i128, Stats, String)>, Fault> {
-        ns.iter()
-            .map(|n| {
-                let mut evaluator =
-                    make_evaluator(&controller(), &[], &format!("{source}\n(factorial {n})"))?;
-                evaluator.run()?;
-                let transcript = evaluator.transcript();
-                let stats = stats_of(&transcript)
-                    .into_iter()
-                    .last()
-                    .ok_or_else(|| Fault::Op {
-                        op: String::new(),
-                        message: "the call printed no stack statistics".to_owned(),
-                        step: 0,
-                    })?;
-                let at = transcript.len().saturating_sub(2);
-                Ok((*n, stats, transcript[at].clone()))
-            })
-            .collect()
-    }
-
-    /// The `a` and `b` of `p(n) = a*n + b` through the first and last
-    /// point, or nothing for fewer than two points.
-    fn fit_linear(ns: &[i128], ps: &[u64]) -> Option<(i64, i64)> {
-        let (n0, n1) = (*ns.first()?, *ns.last()?);
-        let p0 = i64::try_from(*ps.first()?).ok()?;
-        let p1 = i64::try_from(*ps.last()?).ok()?;
-        let slope = (p1 - p0) / i64::try_from(n1 - n0).ok()?;
-        Some((slope, p0 - slope * i64::try_from(n0).ok()?))
-    }
-
-    /// Measures n = 1 to 6 and checks the two answers against the
-    /// data: the maximum depth is `10` for every n, independent of n
-    /// (part a), and the pushes fit `35n + 29` with the fitted
-    /// constants verified on every measured point (part b).
+    /// Six runs of the loop machine: the answers are the factorials
+    /// and no run pushes anything at any depth.
     #[test]
-    fn ex_5_26() -> Result<(), Fault> {
-        let ns: Vec<i128> = (1..=6).collect();
-        let measured = measure(ITERATIVE_SOURCE, &ns)?;
-        let depths: Vec<u64> = measured.iter().map(|(_, stats, _)| stats.depth).collect();
-        let pushes: Vec<u64> = measured.iter().map(|(_, stats, _)| stats.pushes).collect();
-
-        // Part a: the depth is the same constant at every n.
-        assert!(depths.iter().all(|depth| *depth == depths[0]));
-        assert_eq!(depths[0], 10);
-
-        // Part b: the pushes fit the line through the endpoints, and
-        // the line holds on every measured point.
-        let (a, b) = fit_linear(&ns, &pushes).expect("at least two measurements");
-        assert_eq!((a, b), (35, 29));
-        for (n, pushes) in ns.iter().zip(&pushes) {
-            let model = i64::try_from(*n).expect("small n") * a + b;
-            assert_eq!(u64::try_from(model).expect("positive"), *pushes, "n = {n}");
+    fn ex_5_26_iterative_stack_is_constant() {
+        let mut expected = 1i64;
+        for n in 1i64..=6 {
+            expected *= n;
+            let (answer, pushes, depth) = machine_at(n);
+            assert_eq!(answer, expected, "factorial({n})");
+            assert_eq!(pushes, 0, "factorial({n}) pushes");
+            assert_eq!(depth, 0, "factorial({n}) depth");
         }
+    }
 
-        // The measured table, each row measured from its own run.
-        let table: Vec<(i128, u64, u64)> = measured
-            .iter()
-            .map(|(n, stats, _)| (*n, stats.pushes, stats.depth))
-            .collect();
-        assert_eq!(
-            table,
-            vec![
-                (1, 64, 10),
-                (2, 99, 10),
-                (3, 134, 10),
-                (4, 169, 10),
-                (5, 204, 10),
-                (6, 239, 10),
-            ]
-        );
-
-        // The evaluator still answers the right products.
-        assert_eq!(measured[5].2, "720");
-        Ok(())
+    /// The guest loop answers the same factorials on both engines.
+    #[test]
+    fn ex_5_26_guest_loop_matches() {
+        let program = match sicp_runtime::host::admit(LOOP_FACTORIAL) {
+            Ok(program) => program,
+            Err(diag) => panic!("admitted: {}", diag.message),
+        };
+        let interpreted = ch05::sec_5_4::Eceval::run(&program);
+        let compiled = ch05::sec_5_5::compiled_run(&program);
+        assert!(interpreted.trap.is_none(), "{interpreted:?}");
+        assert_eq!(interpreted.stdout, "1\n2\n6\n24\n120\n720\n");
+        assert_eq!(interpreted.stdout, compiled.stdout, "engines agree");
     }
 }

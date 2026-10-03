@@ -1,148 +1,106 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 5.4 *)
+   Adapted from the Scheme programs in SICP section 5.4 *)
 
-(** The explicit-control evaluator of section 5.4: the book's register
-    machine over machine words, its controller text in the book's
-    notation, and the typed syntax, environment, and primitive
-    operations of 4.1 it runs on. *)
+module Ast = Sicp_common.Ast
+module Check = Sicp_common.Check
+module Env = Sicp_common.Env
+module Eval_error = Sicp_common.Eval_error
+module Value = Sicp_common.Value
 
-(** One machine word: what a register or a stack entry holds.  [V]
-    wraps an object-language value; [Exp] and [Seq] hold the typed
-    expressions of the shared AST; [Args] is [argl]'s accumulated
-    operand words; [Env] an environment; [Lab] a return address.  The
-    last two are exercise words the base controller never builds:
-    [Clause] is 5.24's cond clause, [Thunk] is 5.25's delayed operand. *)
+(** The section 5.4 explicit-control evaluator: the checked host-subset
+    syntax executed by a register machine of [Sec_5_1] whose controller
+    is a checked instruction list (grammar section 13, row 5.4).
+
+    The machine has the book's registers -- [exp], [env], [val],
+    [continue], [proc], [argl], [unev] -- and the simulator's
+    save/restore stack; every evaluation decision is an instruction of
+    the controller, and the machine operations only inspect syntax,
+    build values, and bind environments.  Evaluation order, tail calls
+    (a closure body runs without a save), and stack behavior are
+    therefore controller facts that the 5.26-5.30 exercises observe and
+    extend.  The operations reuse the chapter 4 operator semantics and
+    pattern matcher, so the machine computes what the evaluators of
+    [Sicp_ch4.Sec_4_1] compute. *)
+
+(** One machine word. *)
 type word =
-  | V of Sicp_common.Value.t
-  | Exp of Sicp_common.Ast.expr
-  | Seq of Sicp_common.Ast.expr list
-  | Args of word list
-  | Env of Sicp_common.Value.env
+  | V of Value.t (** A guest value. *)
+  | Exp of Ast.expr
+  | Exps of Ast.expr list (** The [unev] register's pending operands. *)
+  | Args of Value.t list
+  (** The [argl] register's evaluated operands, in evaluation order. *)
+  | Env of Env.t
   | Lab of string
-  | Clause of Sicp_common.Ast.expr option * Sicp_common.Ast.expr list
-  | Thunk of Sicp_common.Ast.expr * Sicp_common.Value.env
+  | Cases of (Ast.pattern * Ast.expr) list
+  | Pat of Ast.pattern (** A compiled [match] case's pattern constant. *)
+  | Pending of Env.t * (Ast.binding * Env.cell option) list
+  (** A recursive group: the environment binding its cells, and the
+      right-hand sides still to run, each with the cell its value
+      fills. *)
+  | Unassigned
 
-(** [word_to_string w] renders a word for a transcript or a test:
-    values as the printer prints them, the book's labels bare, the
-    internal shapes by name. *)
+(** [word_to_string w] renders [w] for traces and tests. *)
 val word_to_string : word -> string
 
-(** Every failure of the substrate travels through [error]; the type is
-    the 5.1 substrate's, re-exported. *)
-type error = Sec_5_1.error =
-  | Parse of string
-  | Unknown_register of string
-  | Unknown_operation of string
-  | Unknown_label of string
-  | Bad_instruction of string
-  | Arity of string
-  | Op_failed of string
-  | Stack_underflow of string
-  | Branch_without_test
+(** [words] is how the evaluator machine handles its words. *)
+val words : word Sec_5_1.words
 
-val error_to_string : error -> string
+(** [operation_table ~apply] is the base operation table.  [apply] runs
+    a guest procedure for a primitive that calls one (the [List]
+    members). *)
+val operation_table : apply:Value.apply_fun -> (string * word Sec_5_1.op) list
 
-(** The message whose [Op_failed] ends the driver loop when the input
-    queue runs dry: the edition's stop for the book's unbounded
-    read-eval-print loop. *)
-val input_exhausted : string
-
-(** One operation of the evaluator machine: a [Value_op] computes a
-    word for an [assign] or a [test]; an [Action_op] is an action under
-    [perform]. *)
-type op =
-  | Value_op of (word list -> (word, error) result)
-  | Action_op of (word list -> (unit, error) result)
-
-(** One built evaluator machine. *)
-type machine
-
-(** The evaluator's registers: the book's seven -- [exp], [env], [val],
-    [continue], [proc], [argl], [unev] -- plus [flag], which every
-    [test] sets. *)
+(** The evaluator's registers. *)
 val evaluator_registers : string list
 
-(** [base_controller] is the book's evaluator assembled: the driver
-    loop, [eval-dispatch] and the [ev-] entries of 5.4.1 to 5.4.3, and
-    the error entries of 5.4.4. *)
-val base_controller : string
+(** The controller fragments in the book's order, each with its block
+    name: [driver], [eval-dispatch], [ev-simple], [ev-if], [ev-match],
+    [ev-let], [ev-sequence], [ev-logic], [ev-unary], [ev-binary],
+    [ev-collect], [ev-application], [apply-dispatch].  An exercise
+    composes a variant by keeping, replacing, or adding fragments. *)
+val controller_fragments : (string * word Sec_5_1.instruction list) list
 
-(** The controller fragments of the base evaluator, in printed order,
-    each with the book's name for its block.  An exercise composes a
-    variant by keeping the fragments it needs, replacing some, and
-    appending its own. *)
-val controller_fragments : (string * string) list
+(** [base_controller] is every fragment of [controller_fragments]
+    concatenated. *)
+val base_controller : word Sec_5_1.instruction list
 
-(** [eval_error e] renders a shared evaluator failure into the
-    substrate's error channel. *)
-val eval_error : Sicp_common.Eval_error.t -> error
+(** [base_operation_names] is every operation the base controller
+    names; [make_evaluator] installs them. *)
+val base_operation_names : string list
 
-(** [expr_word r] is the word of the expression result [r]: the shared
-    smart constructors' failures are rendered into the substrate's
-    error channel, the expression wrapped as an [Exp] word. *)
-val expr_word
-  :  (Sicp_common.Ast.expr, Sicp_common.Eval_error.t) result
-  -> (word, error) result
+(** One evaluator: its machine and the global environment it runs
+    top-level items in. *)
+type evaluator
 
-(** [variable_name e] is the name of the variable expression [e]. *)
-val variable_name : Sicp_common.Ast.expr -> (string, error) result
-
-(** [apply_object_primitive name args] applies the object-language
-    primitive [name] to [args]; the error-signaling exercise wraps its
-    failures in condition codes. *)
-val apply_object_primitive
-  :  string
-  -> Sicp_common.Value.t list
-  -> (Sicp_common.Value.t, error) result
-
-(** [word_values ws] is the values of every [V] word in [ws]. *)
-val word_values : word list -> (Sicp_common.Value.t list, error) result
-
-(** [result_all rs] collects the results [rs]. *)
-val result_all : ('a, error) result list -> ('a list, error) result
-
-(** [parameters_of w] is the names of the parameter list [w], the
-    [Seq] of variable expressions a lambda's parameter list is. *)
-val parameters_of : word -> (string list, error) result
-
-(** [base_operations] is the operations table of 4.1 typed over words:
-    the syntax predicates and selectors, the argument-list procedures,
-    the environment procedures, [make-procedure],
-    [apply-primitive-procedure], and [true?]. *)
-val base_operations : (string * op) list
-
-(** [make_evaluator ~controller ~operations ~source ()] builds the
-    evaluator machine: [controller] defaults to [base_controller]; the
-    extra [operations] install last so they override the base on a
-    name collision; [source] is the object program, read into the
-    driver's input queue; the global environment binds [true],
-    [false], and the object-language primitives.  An unknown operation
-    in the controller or an unreadable source is a typed failure
-    before the machine can start. *)
+(** [make_evaluator ?operations ~controller ~emit ()] assembles
+    [controller] over the base operation table extended by
+    [operations], whose entries take precedence, with [registers]
+    declared after [evaluator_registers].  Guest printing writes through
+    [emit].  The controller must define [eval-dispatch], [apply-dispatch],
+    and [done]; the driver enters at [eval-dispatch] with [continue]
+    holding [done]. *)
 val make_evaluator
-  :  ?controller:string
-  -> ?operations:(string * op) list
-  -> source:string
+  :  ?operations:(string * word Sec_5_1.op) list
+  -> ?registers:string list
+  -> controller:word Sec_5_1.instruction list
+  -> emit:(string -> unit)
   -> unit
-  -> (machine, error) result
+  -> (evaluator, Eval_error.t) result
 
-(** [set_register m r w] loads a register before [start]; [get_register]
-    reads one after the machine stops. *)
-val set_register : machine -> string -> word -> (unit, error) result
+(** [machine ev] is the evaluator's machine. *)
+val machine : evaluator -> word Sec_5_1.machine
 
-val get_register : machine -> string -> (word, error) result
+(** [eval ev env e] runs the controller on [e] in [env]. *)
+val eval : evaluator -> Env.t -> Ast.expr -> (Value.t, Eval_error.t) result
 
-(** [start m] runs the controller from the first instruction until a
-    failure.  The driver loop's normal end is the typed [Op_failed]
-    whose message is [input_exhausted]; [signal-error] stops the
-    machine with the object-level message instead. *)
-val start : machine -> (unit, error) result
+(** [run_program ev program] runs every top-level item of [program] in
+    source order, answering the last value bound. *)
+val run_program : evaluator -> Check.program -> (Value.t, Eval_error.t) result
 
-(** [transcript m] is what the driver printed, in order: the prompts,
-    the printed values, and any stack statistics. *)
-val transcript : machine -> string list
+(** [run ~emit program] executes [program] on the base evaluator. *)
+val run : emit:(string -> unit) -> Check.program -> (Value.t, Eval_error.t) result
 
-(** [print_stack_statistics m] renders the monitored stack's counters,
-    [(total-pushes = N maximum-depth = M)], the numbers 5.26 to 5.29
-    measure. *)
-val print_stack_statistics : machine -> string
+(** [stack_statistics_after program] runs [program] on the base
+    evaluator and answers the total pushes and maximum depth of its last
+    top-level evaluation (the 5.4.4 monitored-stack lesson). *)
+val stack_statistics_after : Check.program -> (int * int, Eval_error.t) result

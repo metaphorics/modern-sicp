@@ -8,14 +8,14 @@ import {
   add,
   type GenError,
   makePolynomial,
-  makeSchemeNumber,
+  makeTsNumber,
   mul,
   sub,
 } from "../../packages/ch2/src/05-generic-operations.js";
 
 /**
  * Exercise 2.93: rational functions. The rational-number package is
- * rebuilt over the generic operations, with `make-rat` reduced to a
+ * rebuilt over the generic operations, with `makeRat` reduced to a
  * plain pair --- no gcd, no lowest terms. The parts are tower datums,
  * so a rational function of polynomials is built exactly like the
  * rational numbers of 2.1.1; the unreduced sums are the point the
@@ -25,7 +25,7 @@ import {
 /** A rational function: two tower datums, unreduced. */
 export type RatFn = Tagged<"rational", { readonly numer: ArithDatum; readonly denom: ArithDatum }>;
 
-/** The book's make-rat after this exercise: pair the parts, reduce
+/** The book's makeRat after this exercise: pair the parts, reduce
  * nothing. */
 export const makeRatFn = (numer: ArithDatum, denom: ArithDatum): RatFn =>
   attachTag("rational", { numer, denom });
@@ -47,25 +47,25 @@ const ratFn2 = (
 ): Result<ArithDatum, GenError> =>
   nn._tag === "Error" ? nn : dd._tag === "Error" ? dd : ok(makeRatFn(nn.value, dd.value));
 
-/** Adds: (n1 d2 + n2 d1) over (d1 d2), generic in the parts. */
+/** Adds: numerator `n1*d2 + n2*d1` over denominator `d1*d2`, generic in the parts. */
 export const addRatFn = (x: RatFn, y: RatFn): Result<ArithDatum, GenError> =>
   ratFn2(
     bind2(mul(numerOf(x), denomOf(y)), mul(numerOf(y), denomOf(x)), add),
     mul(denomOf(x), denomOf(y)),
   );
 
-/** Subtracts: (n1 d2 - n2 d1) over (d1 d2). */
+/** Subtracts: numerator `n1*d2 - n2*d1` over denominator `d1*d2`. */
 export const subRatFn = (x: RatFn, y: RatFn): Result<ArithDatum, GenError> =>
   ratFn2(
     bind2(mul(numerOf(x), denomOf(y)), mul(numerOf(y), denomOf(x)), sub),
     mul(denomOf(x), denomOf(y)),
   );
 
-/** Multiplies: (n1 n2) over (d1 d2). */
+/** Multiplies: numerator `n1*n2` over denominator `d1*d2`. */
 export const mulRatFn = (x: RatFn, y: RatFn): Result<ArithDatum, GenError> =>
   ratFn2(mul(numerOf(x), numerOf(y)), mul(denomOf(x), denomOf(y)));
 
-/** Divides: (n1 d2) over (d1 n2). */
+/** Divides: numerator `n1*d2` over denominator `d1*n2`. */
 export const divRatFn = (x: RatFn, y: RatFn): Result<ArithDatum, GenError> =>
   ratFn2(mul(numerOf(x), denomOf(y)), mul(denomOf(x), numerOf(y)));
 
@@ -73,5 +73,5 @@ export const divRatFn = (x: RatFn, y: RatFn): Result<ArithDatum, GenError> =>
 export const poly93 = (terms: ReadonlyArray<readonly [bigint, bigint]>): ArithDatum =>
   makePolynomial(
     "x",
-    terms.map(([o, c]) => [o, makeSchemeNumber(c)] as const),
+    terms.map(([o, c]) => [o, makeTsNumber(c)] as const),
   );

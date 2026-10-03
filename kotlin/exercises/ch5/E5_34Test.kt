@@ -12,6 +12,6 @@ public class E5_34Test :
         test("Exercise 5.34: the tail call's direct transfer and the constant depths are pinned").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            iterativeFactorialCompilation() shouldBe emptyList()
+            iterativeFactorialCompilation().last() shouldBe "compiled maximum depth independent of n: true"
         }
     })

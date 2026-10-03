@@ -69,7 +69,8 @@ The second computes the sum of the cubes of the integers in the given range:
 fun sumCubes(
     a: Long,
     b: Long,
-): Long = if (a > b) 0L else cube(a) + sumCubes(a + 1L, b)
+): Long = if (a > b) 0L else cube(a) + sumCubes(a + 1L,
+    b)
 @end example
 
 @noindent
@@ -97,7 +98,8 @@ fancy numerical tricks in @ref{3.5.3}.}
 fun piSum(
     a: Long,
     b: Long,
-): Double = if (a > b) 0.0 else 1.0 / (a * (a + 2L)) + piSum(a + 4L, b)
+): Double = if (a > b) 0.0 else 1.0 / (a * (a + 2L)) + piSum(a + 4L,
+    b)
 @end example
 
 @noindent
@@ -111,7 +113,8 @@ procedures by filling in slots in the same template:
 fun ⟨name⟩(
     a: Long,
     b: Long,
-): Long = if (a > b) 0L else ⟨term⟩(a) + ⟨name⟩(⟨next⟩(a), b)
+): Long = if (a > b) 0L else ⟨term⟩(a) + ⟨name⟩(⟨next⟩(a),
+    b)
 @end example
 
 @noindent
@@ -151,7 +154,10 @@ fun sum(
     a: Long,
     next: (Long) -> Long,
     b: Long,
-): Long = if (a > b) 0L else term(a) + sum(term, next(a), next, b)
+): Long = if (a > b) 0L else term(a) + sum(term,
+    next(a),
+    next,
+    b)
 @end example
 
 @noindent
@@ -215,7 +221,8 @@ fun piSum(
     fun piTerm(x: Long): Double = 1.0 / (x * (x + 2L))
 
     fun piNext(x: Long): Long = x + 4L
-    return if (a > b) 0.0 else piTerm(a) + piSum(piNext(a), b)
+    return if (a > b) 0.0 else piTerm(a) + piSum(piNext(a),
+        b)
 @}
 @end example
 
@@ -258,7 +265,10 @@ fun sum(
     a: Double,
     next: (Double) -> Double,
     b: Double,
-): Double = if (a > b) 0.0 else term(a) + sum(term, next(a), next, b)
+): Double = if (a > b) 0.0 else term(a) + sum(term,
+    next(a),
+    next,
+    b)
 
 fun cube(x: Double): Double = x * x * x
 
@@ -321,7 +331,12 @@ is performed iteratively.  Show how to do this by filling in the missing
 expressions in the following definition:
 
 @example kotlin
-fun sumIterative(term: (Long) -> Long, a: Long, next: (Long) -> Long, b: Long): Long @{
+fun sumIterative(
+    term: (Long) -> Long,
+    a: Long,
+    next: (Long) -> Long,
+    b: Long,
+): Long @{
     tailrec fun iter(a: Long, result: Long): Long =
         if (⟨??⟩) ⟨??⟩ else iter(⟨??⟩, ⟨??⟩)
     return iter(⟨??⟩, ⟨??⟩)
@@ -457,7 +472,13 @@ auxiliary functions as
 fun piSumWithLambdas(
     a: Double,
     b: Double,
-): Double = sum(@{ x -> 1.0 / (x * (x + 2.0)) @}, a, @{ x -> x + 4.0 @}, b)
+): Double =
+    sum(
+        @{ x -> 1.0 / (x * (x + 2.0)) @},
+        a,
+        @{ x -> x + 4.0 @},
+        b,
+    )
 @end example
 
 @noindent
@@ -470,7 +491,10 @@ fun integralWithLambda(
     a: Double,
     b: Double,
     dx: Double,
-): Double = sum(f, a + dx / 2.0, @{ x -> x + dx @}, b) * dx
+): Double = sum(f,
+    a + dx / 2.0,
+    @{ x -> x + dx @},
+    b) * dx
 @end example
 
 @noindent
@@ -511,7 +535,11 @@ Like any expression that has a function as its value, a lambda expression can
 be used as the operator in a call such as
 
 @example kotlin
-(@{ x: Long, y: Long, z: Long -> x + y + z * z @})(1L, 2L, 3L)
+(@{ x: Long,
+    y: Long,
+    z: Long -> x + y + z * z @})(1L,
+    2L,
+    3L)
 // => 12
 @end example
 
@@ -527,7 +555,7 @@ for mathematical investigations of the semantics of programming languages.
 Kotlin's own name for the same construct, the lambda expression, keeps that
 history visible even though the keyword @code{lambda} itself is gone.}
 
-@subsubheading Using @code{let} to create local variables
+@subsubheading Using local bindings to create local variables
 
 Another use of a lambda expression is in creating local variables.  We often
 need local variables in our functions other than those that have been bound
@@ -595,7 +623,8 @@ fun f(
 
 @noindent
 No new mechanism is required to provide local variables; a @code{val} binding
-is already exactly the mechanism the book's @code{let} introduces, so no
+is already exactly the local-binding mechanism the original book introduces
+with its own binding form, so no
 underlying lambda application needs to be shown separately, the way section
 1.1.2 already established.
 
@@ -641,7 +670,7 @@ run @{
 @noindent
 is 12, because @code{y} was computed from the @emph{outer} @code{x} (giving
 4) before the inner @code{x} was ever declared, and the inner @code{x} is 3;
-@code{3 * 4} is 12.  A single @code{let} block in the book's language binds
+@code{3 * 4} is 12.  A single local-binding form in the original book binds
 all of its names from initializers evaluated together, before any of the new
 names are visible; reproducing that shape in Kotlin, where each @code{val}
 binds as soon as it is declared, means naming the outer-scoped value first
@@ -798,7 +827,8 @@ fun halfIntervalMethod(
     return when @{
         aValue < 0.0 && bValue > 0.0 -> search(f, a, b)
         bValue < 0.0 && aValue > 0.0 -> search(f, b, a)
-        else -> r.raise(HalfIntervalError.SameSign(a, b))
+        else -> r.raise(HalfIntervalError.SameSign(a,
+            b))
     @}
 @}
 @end example
@@ -817,7 +847,9 @@ Here is another example, using the half-interval method to search for
 a root of the equation @math{{x^3 - 2x - 3 = 0}} between 1 and 2:
 
 @example kotlin
-halfIntervalMethod(@{ x -> x * x * x - 2.0 * x - 3.0 @}, 1.0, 2.0)
+halfIntervalMethod(@{ x -> x * x * x - 2.0 * x - 3.0 @},
+    1.0,
+    2.0)
 // => 1.89306640625
 @end example
 
@@ -851,10 +883,13 @@ fun fixedPoint(
     f: (Double) -> Double,
     firstGuess: Double,
 ): Double @{
-    fun closeEnough(guess: Double, next: Double): Boolean = abs(guess - next) < TOLERANCE
+    fun closeEnough(guess: Double,
+        next: Double): Boolean =
+        abs(guess - next) < TOLERANCE
     tailrec fun tryGuess(guess: Double): Double @{
         val next = f(guess)
-        return if (closeEnough(guess, next)) next else tryGuess(next)
+        return if (closeEnough(guess,
+            next)) next else tryGuess(next)
     @}
     return tryGuess(firstGuess)
 @}
@@ -895,7 +930,8 @@ mathematician's way of writing @code{lambda}.  @math{{x \mapsto y}} means
 compute square roots as
 
 @example kotlin
-fun sqrtNaive(x: Double): Double = fixedPoint(@{ y -> x / y @}, 1.0)
+fun sqrtNaive(x: Double): Double = fixedPoint(@{ y -> x / y @},
+    1.0)
 @end example
 
 @noindent
@@ -1073,7 +1109,8 @@ of @math{x} and @math{{f(x)}}.  We can express the idea of average damping by me
 of the following function:
 
 @example kotlin
-fun averageDamp(f: (Double) -> Double): (Double) -> Double = @{ x -> average(x, f(x)) @}
+fun averageDamp(f: (Double) -> Double): (Double) -> Double =
+    @{ x -> average(x, f(x)) @}
 @end example
 
 @noindent
@@ -1099,7 +1136,8 @@ Using @code{averageDamp}, we can reformulate the square-root function as
 follows:
 
 @example kotlin
-fun sqrtByAverageDamp(x: Double): Double = fixedPoint(averageDamp @{ y -> x / y @}, 1.0)
+fun sqrtByAverageDamp(x: Double): Double =
+    fixedPoint(averageDamp @{ y -> x / y @}, 1.0)
 @end example
 
 @noindent
@@ -1179,7 +1217,8 @@ Thus, we can express the idea of derivative (taking @math{{dx}} to be, say,
 @example kotlin
 private const val DX = 0.00001
 
-fun deriv(g: (Double) -> Double): (Double) -> Double = @{ x -> (g(x + DX) - g(x)) / DX @}
+fun deriv(g: (Double) -> Double): (Double) -> Double =
+    @{ x -> (g(x + DX) - g(x)) / DX @}
 @end example
 
 @noindent
@@ -1200,7 +1239,8 @@ With the aid of @code{deriv}, we can express Newton's method as a fixed-point
 process:
 
 @example kotlin
-fun newtonTransform(g: (Double) -> Double): (Double) -> Double = @{ x -> x - g(x) / deriv(g)(x) @}
+fun newtonTransform(g: (Double) -> Double): (Double) -> Double =
+    @{ x -> x - g(x) / deriv(g)(x) @}
 
 fun newtonsMethod(
     g: (Double) -> Double,
@@ -1219,7 +1259,8 @@ finding square roots, Newton's method converges rapidly to the correct solution
 from any starting point.}
 
 @example kotlin
-fun sqrtByNewtonsMethod(x: Double): Double = newtonsMethod(@{ y -> square(y) - x @}, 1.0)
+fun sqrtByNewtonsMethod(x: Double): Double =
+    newtonsMethod(@{ y -> square(y) - x @}, 1.0)
 @end example
 
 @subsubheading Abstractions and first-class procedures
@@ -1249,7 +1290,12 @@ this section (where we look for a fixed point of the average-damped version of
 @math{{y \mapsto x / y}}) as an instance of this general method:
 
 @example kotlin
-fun sqrtByAverageDampOfTransform(x: Double): Double = fixedPointOfTransform(@{ y -> x / y @}, ::averageDamp, 1.0)
+fun sqrtByAverageDampOfTransform(x: Double): Double =
+    fixedPointOfTransform(
+        @{ y -> x / y @},
+        ::averageDamp,
+        1.0,
+    )
 @end example
 
 @noindent
@@ -1259,7 +1305,11 @@ transform of @math{{y \mapsto y^2 - x}}) as
 
 @example kotlin
 fun sqrtByNewtonOfTransform(x: Double): Double =
-    fixedPointOfTransform(@{ y -> square(y) - x @}, ::newtonTransform, 1.0)
+    fixedPointOfTransform(
+        @{ y -> square(y) - x @},
+        ::newtonTransform,
+        1.0,
+    )
 @end example
 
 @noindent
@@ -1517,7 +1567,9 @@ presents no difficulty if the arguments are to be numbers, because we
 can readily define the procedure
 
 @example kotlin
-public fun linearCombination(a: Double, b: Double, x: Double, y: Double): Double = a * x + b * y
+public fun linearCombination(
+    a: Double, b: Double, x: Double, y: Double,
+): Double = a * x + b * y
 
 linearCombination(1.0, 2.0, 3.0, 4.0)
 // => 11.0
@@ -1531,7 +1583,9 @@ complex numbers, polynomials, or whatever.  We could express this as a
 procedure of the form
 
 @example kotlin
-public fun linearCombination(a: Double, b: Double, x: Double, y: Double): Double =
+public fun linearCombination(
+    a: Double, b: Double, x: Double, y: Double,
+): Double =
     add(mul(a, x), mul(b, y))
 
 val add = @{ p: Double, q: Double -> p + q @}

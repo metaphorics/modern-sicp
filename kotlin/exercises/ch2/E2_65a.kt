@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.65a (added by this edition, extends 2.65): cross-check
  * `unionSetTree`/`intersectionSetTree` against a second, independently
@@ -18,6 +16,6 @@ import sicp.runtime.PendingSolution
  * The scaffold returns the worked-example check for `{1, 3, 5, 7, 9}` and
  * `{3, 5, 7, 9, 11}`.
  */
-public fun treeOf(elements: Set<Long>): SetTree = throw PendingSolution()
+public fun treeOf(elements: Set<Long>): SetTree = throw PendingExercise()
 
-public fun ex_2_65a(): Boolean = throw PendingSolution()
+public fun ex_2_65a(): Boolean = throw PendingExercise()

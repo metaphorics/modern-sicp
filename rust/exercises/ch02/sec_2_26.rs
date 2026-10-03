@@ -7,10 +7,12 @@
 mod ex_2_26 {
     use sicp_runtime::Pending;
 
-    /// Exercise 2.26: append, cons, and list on two lists
+    /// Exercise 2.26: sequence concatenation, pair construction, and
+    /// nested sequence construction over two sequences.
     ///
-    /// Returns the printed results of `append(x, y)`, `cons(x, y)`, and
-    /// `list(x, y)` for `x = (1 2 3)` and `y = (4 5 6)`, in that order.
+    /// Returns the printed results of concatenating `x` and `y`, pairing
+    /// `x` with `y`, and building a sequence whose elements are `x` and
+    /// `y`, for `x = (1 2 3)` and `y = (4 5 6)`.
     pub fn ex_2_26() -> Result<(String, String, String), Pending> {
         Err(Pending::new("2.26"))
     }

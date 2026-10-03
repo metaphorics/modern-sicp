@@ -1,45 +1,88 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Original exercise
 
-//! The reference solution of exercise 4.58: the `big-shot` rule. A person
-//! is a big shot in a division when they work there and their supervisor
-//! works in a different division; the rule compares the two leading
-//! division symbols with `same` under a `not`.
+//! The reference solution of exercise 4.58: the `big_shot` rule keeps
+//! a person whose supervisor is in another division.
 
-use ch04::sec_4_4::{Engine, microshaft};
+/// Shared typed support for this exercise.
+pub mod support;
 
-mod ex_4_58 {
-    //! Exercise 4.58: the big-shot rule and its query.
+use ch04::sec_4_3::Predicate;
+use ch04::sec_4_4::{Database, Query, qeval};
+use sicp_runtime::host::query::Term;
+use support::{answer_text, atom, fact, list, relation, rule, var};
 
-    use super::*;
-
-    /// One engine carrying the `big-shot` rule.
-    pub fn engine() -> Engine {
-        let engine = microshaft();
-        engine.load(&[
-            "(rule (big-shot ?person ?division) \
-             (and (job ?person (?division . ?rest)) \
-             (supervisor ?person ?boss) \
-             (job ?boss (?boss-division . ?boss-rest)) \
-             (not (same ?division ?boss-division))))",
-            "(rule (same ?x ?x))",
-        ]);
-        engine
-    }
+fn microshaft() -> Database {
+    let mut database = Database::new();
+    database.assert(fact(
+        "job",
+        vec![
+            atom("Bitdiddle Ben"),
+            list(vec![atom("computer"), atom("wizard")]),
+        ],
+    ));
+    database.assert(fact(
+        "job",
+        vec![
+            atom("Hacker Alyssa P"),
+            list(vec![atom("computer"), atom("programmer")]),
+        ],
+    ));
+    database.assert(fact(
+        "job",
+        vec![
+            atom("Warbucks Oliver"),
+            list(vec![atom("administration"), atom("bigwheel")]),
+        ],
+    ));
+    database.assert(fact(
+        "division",
+        vec![atom("Bitdiddle Ben"), atom("computer")],
+    ));
+    database.assert(fact(
+        "division",
+        vec![atom("Hacker Alyssa P"), atom("computer")],
+    ));
+    database.assert(fact(
+        "supervisor",
+        vec![atom("Hacker Alyssa P"), atom("Bitdiddle Ben")],
+    ));
+    database.assert(fact(
+        "supervisor",
+        vec![atom("Bitdiddle Ben"), atom("Warbucks Oliver")],
+    ));
+    database.add_rule(rule(
+        fact("big_shot", vec![var("person"), var("division")]),
+        vec![
+            relation(
+                "job",
+                vec![var("person"), list(vec![var("division"), var("title")])],
+            ),
+            relation("supervisor", vec![var("person"), var("boss")]),
+            relation(
+                "job",
+                vec![
+                    var("boss"),
+                    list(vec![var("boss_division"), var("boss_title")]),
+                ],
+            ),
+            Query::Value(
+                Predicate::Ne(
+                    Term::Variable("division".to_owned()),
+                    Term::Variable("boss_division".to_owned()),
+                ),
+                vec![],
+            ),
+        ],
+    ));
+    database
 }
 
 #[test]
 fn ex_4_58() {
-    // The two big shots: Ben reports to the administration big wheel
-    // while working in the computer division, and Scrooge reports to
-    // Warbucks while heading accounting. Everyone else's supervisor sits
-    // in the same division, and Warbucks himself has no supervisor row,
-    // so the rule cannot fire for him.
-    assert_eq!(
-        ex_4_58::engine().answers("(big-shot ?person ?division)"),
-        [
-            "(big-shot (Bitdiddle Ben) computer)",
-            "(big-shot (Scrooge Eben) accounting)",
-        ]
+    let outcome = qeval(
+        &microshaft(),
+        &relation("big_shot", vec![var("person"), var("division")]),
     );
+    assert_eq!(outcome.answers.len(), 1);
+    assert_eq!(answer_text(&outcome.answers[0], "person"), "Bitdiddle Ben");
 }

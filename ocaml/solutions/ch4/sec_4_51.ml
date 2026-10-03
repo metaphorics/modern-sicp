@@ -1,59 +1,64 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(** Exercise 4.51: [permanent-set!]. The variant of [set!] assigns
-    without installing the undo trail, so a later backtracking step
-    leaves the assignment in place. In the statement's counting
-    example the first answer reports 2 trials -- the rejected first
-    choice of [y] still raised the counter -- and [try_again] reports
-    3; the same program under plain [set!] undoes the rejected trial
-    and reports 1 and then 2. The demonstration pins all four answers
-    and the surviving counter value. *)
+(* Exercise 4.51: [permanent_set]. The clause, added to the search
+   evaluator by open recursion, evaluates the new value and writes it
+   into the named top-level reference through the experiment's permanent
+   store: the write survives backtracking, so the trials that fail still
+   leave their count behind. The search runs to exhaustion, so the
+   demonstration shows every answer. With [permanent_set] the counter
+   records every trial made so far: [(a b 2)] (the rejected [x = a, y =
+   a] trial counted), then [(a c 3)], [(b a 4)], and so on. With the
+   plain [:=] each failed trial's assignment is rolled back with its
+   branch, and every answer reports [1], the book's answer to the
+   exercise's question. *)
 
+let ( let* ) = Result.bind
+
+module Ast = Sicp_common.Ast
 module Eval = Sicp_ch4.Sec_4_3
-module Eval_error = Sicp_common.Eval_error
-module Value = Sicp_common.Value
 
-let show = function
-  | Ok v -> Value.to_string v
-  | Error e -> "Error: " ^ Eval_error.to_string e
+let rec eval : Eval.eval_t =
+  fun search env e ->
+  match Ast.view e with
+  | Ast.Apply (head, [ target; value ]) ->
+    (match Ast.view head, Ast.view target with
+     | Ast.Var "permanent_set", Ast.Var name ->
+       let* value = eval search env value in
+       Eval.permanent_assign search name value
+     | _ -> Eval.open_eval ~self:eval search env e)
+  | _ -> Eval.open_eval ~self:eval search env e
 ;;
 
-let permanent_demo =
+let forms = [ "permanent_set", "let permanent_set r v = r := v" ]
+
+let program assignment =
   {|
-(define (require p) (if (not p) (amb)))
-(define (an-element-of items)
-  (require (not (null? items)))
-  (amb (car items) (an-element-of (cdr items))))
-(define count 0)
-(let ((x (an-element-of '(a b c)))
-      (y (an-element-of '(a b c))))
-  (permanent-set! count (+ count 1))
-  (require (not (eq? x y)))
-  (list x y count))|}
+let rec an_element_of items =
+  match items with
+  | [] -> require false; ""
+  | x :: rest -> amb x (an_element_of rest)
+
+let count = ref 0
+
+let () =
+  let x = an_element_of [ "a"; "b"; "c" ] in
+  let y = an_element_of [ "a"; "b"; "c" ] in
+  |}
+  ^ assignment
+  ^ {|;
+  require (x <> y);
+  print_endline ("(" ^ x ^ " " ^ y ^ " " ^ string_of_int !count ^ ")")
+|}
 ;;
 
-let set_demo =
-  {|
-(define (require p) (if (not p) (amb)))
-(define (an-element-of items)
-  (require (not (null? items)))
-  (amb (car items) (an-element-of (cdr items))))
-(define count2 0)
-(let ((x (an-element-of '(a b c)))
-      (y (an-element-of '(a b c))))
-  (set! count2 (+ count2 1))
-  (require (not (eq? x y)))
-  (list x y count2))|}
+let transcript assignment =
+  Eval.run_with ~eval ~forms (program assignment)
+  |> String.split_on_char '\n'
+  |> List.filter (fun line -> line <> "")
 ;;
 
 let ex_4_51 () =
-  let env = Eval.the_global_environment () in
-  let first = Eval.run_program env permanent_demo in
-  let second = Eval.try_again () in
-  let surviving_count = Eval.run env "count" in
-  let set_env = Eval.the_global_environment () in
-  let set_first = Eval.run_program set_env set_demo in
-  let set_second = Eval.try_again () in
-  List.map show [ first; second; surviving_count; set_first; set_second ]
+  ("permanent_set" :: transcript "permanent_set count (!count + 1)")
+  @ (":=" :: transcript "count := !count + 1")
 ;;

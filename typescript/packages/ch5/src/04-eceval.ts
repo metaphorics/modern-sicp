@@ -2,828 +2,2410 @@
 // Adapted-from-SICP: section 5.4
 
 import {
-  assemble,
-  assign,
-  c as baseConst,
-  branch,
-  type ControllerLine,
-  jump,
-  jumpReg,
-  lbl,
-  type Machine,
-  makeNewMachine,
-  mark,
+  CALLBACK_METHODS,
+  type LinkedModules,
+  type RunResult,
+  Session,
+} from "@sicp-ts/ch4/01-metacircular";
+/**
+ * The explicit-control evaluator (host-subsets grammar section 5): the
+ * checked host-subset syntax executes on the teaching machine. The typed
+ * controller is instruction data — form dispatch, argument accumulation in
+ * `argl`, and the `continue` register — and every operation is primitive:
+ * environment access, procedure construction, arithmetic, and structure
+ * access. No operation evaluates a guest form; evaluation recursion is the
+ * controller's recursion, so procedure bodies run on the machine.
+ *
+ * Non-local control (return, throw, break, continue) travels through the
+ * `transfer` register: a construct's continuation restores its frame,
+ * forwards an unresolved transfer to its own `continue`, and the loop,
+ * switch, try, and application frames intercept the kinds they own.
+ */
+import { format } from "@sicp-ts/ch4/read";
+import { builtinMember } from "@sicp-ts/ch4/runtime/builtins";
+import { child, type Env, findCell, makeCell } from "@sicp-ts/ch4/runtime/env";
+import { fail, type GuestError, ok } from "@sicp-ts/ch4/runtime/errors";
+import {
+  ArrayValue,
+  Closure,
+  ErrorValue,
+  MapValue,
+  makeMap,
+  makePrimitive,
+  makeSet,
+  PrimitiveProcedure,
+  RecordValue,
+  SetValue,
+  ThunkValue,
+  type Value,
+} from "@sicp-ts/ch4/runtime/value";
+import type { Arg, Block, CaseClause, Decl, Expr, Param, Stmt } from "@sicp-ts/ch4/syntax/ast";
+import { admitSource } from "@sicp-ts/ch4/syntax/check";
+
+import {
+  type MachineStatement as GenericMachineStatement,
+  type Input,
+  assign as machineAssign,
+  branch as machineBranch,
+  constant as machineConstant,
+  gotoLabel as machineGotoLabel,
+  gotoRegister as machineGotoRegister,
+  op as machineOp,
+  perform as machinePerform,
+  register as machineRegister,
+  restore as machineRestore,
+  save as machineSave,
+  test as machineTest,
   type Operation,
+  type OperationCall,
+  type Source,
+} from "./01-register-machines.ts";
+import { Machine, makeMachine } from "./02-simulator.ts";
+
+export { readProgram, readProgram as parse } from "@sicp-ts/ch4/read";
+
+/** A checked evaluator failure carried through machine registers. */
+export class MachineErrorValue {
+  readonly error: GuestError;
+
+  constructor(error: GuestError) {
+    this.error = error;
+  }
+}
+
+/** A controller-created iterator cursor for `for-of`. */
+interface IterationState {
+  readonly items: ReadonlyArray<Value>;
+  readonly index: number;
+}
+
+/** A machine word: shared syntax, runtime values, environments, or transfer data. */
+export type Word =
+  | Expr
+  | Decl
+  | Stmt
+  | Block
+  | Env
+  | Value
+  | MachineErrorValue
+  | Transfer
+  | Arg
+  | CaseClause
+  | Param
+  | ReadonlyArray<Word>
+  | IterationState
+  | { readonly tag: "symbol"; readonly name: string }
+  | undefined;
+
+/** Pending non-local control travelling through the transfer register. */
+export type Transfer =
+  | { readonly kind: "return" }
+  | { readonly kind: "throw"; readonly value: Value }
+  | { readonly kind: "error"; readonly error: GuestError }
+  | { readonly kind: "break" }
+  | { readonly kind: "continue-loop" };
+
+type EvaluatorMachineStatement = GenericMachineStatement<Word>;
+
+const assign = (name: string, source: Source<Word>): EvaluatorMachineStatement =>
+  machineAssign<Word>(name, source);
+const branch = (labelName: string): EvaluatorMachineStatement => machineBranch<Word>(labelName);
+const constant = (value: Word): Input<Word> => machineConstant<Word>(value);
+const gotoLabel = (labelName: string): EvaluatorMachineStatement =>
+  machineGotoLabel<Word>(labelName);
+const gotoRegister = (registerName: string): EvaluatorMachineStatement =>
+  machineGotoRegister<Word>(registerName);
+const op = (name: string, ...args: ReadonlyArray<Source<Word>>): OperationCall<Word> =>
+  machineOp<Word>(name, ...args);
+const perform = (name: string, ...args: ReadonlyArray<Source<Word>>): EvaluatorMachineStatement =>
+  machinePerform<Word>(name, ...args);
+const register = (name: string): Input<Word> => machineRegister<Word>(name);
+const restore = (name: string): EvaluatorMachineStatement => machineRestore<Word>(name);
+const save = (name: string): EvaluatorMachineStatement => machineSave<Word>(name);
+const test = (name: string, ...args: ReadonlyArray<Source<Word>>): EvaluatorMachineStatement =>
+  machineTest<Word>(name, ...args);
+
+type Form = Expr | Decl | Stmt;
+
+const isForm = (word: Word): word is Form =>
+  typeof word === "object" &&
+  word !== null &&
+  "tag" in word &&
+  "span" in word &&
+  typeof word.tag === "string";
+
+const isEnv = (word: Word): word is Env =>
+  typeof word === "object" && word !== null && "bindings" in word && "parent" in word;
+
+const formOf = (word: Word): Form | undefined => (isForm(word) && !isEnv(word) ? word : undefined);
+const envOf = (word: Word): Env | undefined => (isEnv(word) ? word : undefined);
+
+const isValue = (word: Word): word is Value =>
+  word === null ||
+  typeof word !== "object" ||
+  word instanceof Closure ||
+  word instanceof PrimitiveProcedure ||
+  word instanceof ArrayValue ||
+  word instanceof RecordValue ||
+  word instanceof MapValue ||
+  word instanceof SetValue ||
+  word instanceof ThunkValue ||
+  word instanceof ErrorValue;
+
+const listOf = (word: Word): readonly Word[] => (Array.isArray(word) ? word : []);
+
+const splitParamNames = (params: readonly unknown[]): { params: string[]; rest: string | null } => {
+  const names: string[] = [];
+  let rest: string | null = null;
+  for (const param of params) {
+    const entry = param as { kind?: unknown; name?: unknown };
+    const name = typeof entry.name === "string" ? entry.name : "";
+    if (entry.kind === "rest") {
+      rest = name;
+    } else {
+      names.push(name);
+    }
+  }
+  return { params: names, rest };
+};
+
+const predeclare = (forms: readonly Word[], env: Env | null): void => {
+  if (env === null) {
+    return;
+  }
+  for (const item of forms) {
+    const node = formOf(item);
+    if (node === undefined) {
+      continue;
+    }
+    if (node.tag === "var-decl") {
+      env.bindings.set(node.name, makeCell(undefined, false, node.kind === "let"));
+    }
+    if (node.tag === "function-decl") {
+      const { params, rest } = splitParamNames(node.params);
+      const closure = new Closure(params, rest, node.body, env);
+      env.bindings.set(node.name, makeCell(closure, true, false));
+    }
+  }
+};
+
+const errorOf = (word: Word): MachineErrorValue | undefined =>
+  word instanceof MachineErrorValue ? word : undefined;
+const isContinuation = (word: Word, name: string): boolean =>
+  typeof word === "object" &&
+  word !== null &&
+  "tag" in word &&
+  word.tag === "symbol" &&
+  "name" in word &&
+  word.name === name;
+
+interface EvaluatorState {
+  readonly session: Session;
+  forms: ReadonlyArray<Decl | Stmt>;
+  next: number;
+  values: Value[];
+}
+
+/** One explicit-control evaluator over admitted source. */
+export interface Evaluator {
+  readonly machine: Machine<Word>;
+  run(): RunResult;
+}
+
+// ---------------------------------------------------------------------
+// Primitive operations: no operation evaluates a guest form.
+// ---------------------------------------------------------------------
+
+const operationsFor = (state: EvaluatorState): Readonly<Record<string, Operation<Word>>> => ({
+  nextForm: () => {
+    const item = state.forms[state.next];
+    state.next += 1;
+    return item;
+  },
+  isDone: (args) => args[0] === undefined,
+  isApplyBodyContinuation: (args) => isContinuation(args[0], "apply-body-done"),
+  isTailReturnContinuation: (args) => isContinuation(args[0], "tail-return"),
+  isTailCall: (args) => args[0] === true,
+  literalValue: (args) => {
+    const node = formOf(args[0]);
+    if (
+      node === undefined ||
+      !["number", "string", "boolean", "null", "undefined"].includes(node.tag)
+    ) {
+      return undefined;
+    }
+    if (node.tag === "number" || node.tag === "string" || node.tag === "boolean") {
+      return node.value;
+    }
+    return node.tag === "null" ? null : undefined;
+  },
+  variableName: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "name" in node && typeof node.name === "string" ? node.name : "";
+  },
+  lookupVariableValue: (args) => {
+    const name = typeof args[0] === "string" ? args[0] : "";
+    const env = envOf(args[1]) ?? null;
+    const cell = findCell(env, name);
+    if (cell === undefined) {
+      return new MachineErrorValue({ tag: "unbound-name", name });
+    }
+    if (!cell.initialized) {
+      return new MachineErrorValue({ tag: "tdz-access", name });
+    }
+    return cell.value;
+  },
+  setVariableValue: (args) => {
+    const name = typeof args[0] === "string" ? args[0] : "";
+    const cell = findCell(envOf(args[2]) ?? null, name);
+    if (cell === undefined) {
+      return new MachineErrorValue({ tag: "unbound-name", name });
+    }
+    if (!cell.initialized) {
+      return new MachineErrorValue({ tag: "tdz-access", name });
+    }
+    if (!cell.mutable) {
+      return new MachineErrorValue({
+        tag: "bad-operand",
+        operator: "=",
+        detail: "assignment to a const binding",
+      });
+    }
+    cell.value = args[1] as Value;
+    return args[1];
+  },
+  declareVariable: (args) => {
+    const kind = args[0] === "const" ? "const" : "let";
+    const name = typeof args[1] === "string" ? args[1] : "";
+    const env = envOf(args[3]) ?? null;
+    if (env === null) {
+      return new MachineErrorValue({ tag: "unbound-name", name });
+    }
+    const existing = env.bindings.get(name);
+    if (existing !== undefined) {
+      existing.value = args[2] as Value;
+      existing.initialized = true;
+    } else {
+      env.bindings.set(name, makeCell(args[2] as Value, true, kind === "let"));
+    }
+    return args[2];
+  },
+  defineFunction: (args) => {
+    const node = formOf(args[0]);
+    const env = envOf(args[1]) ?? null;
+    if (node === undefined || node.tag !== "function-decl" || env === null) {
+      return new MachineErrorValue({ tag: "unknown-syntax", construct: "function-decl" });
+    }
+    const { params, rest } = splitParamNames(node.params);
+    const closure = new Closure(params, rest, node.body, env);
+    env.bindings.set(node.name, makeCell(closure, true, false));
+    return undefined;
+  },
+  makeProcedure: (args) => {
+    const body = args[1];
+    const env = envOf(args[2]);
+    if (body === undefined || env === undefined) {
+      return new MachineErrorValue({ tag: "unknown-syntax", construct: "arrow" });
+    }
+    const { params, rest } = splitParamNames(listOf(args[0]));
+    return new Closure(params, rest, body as Block, env);
+  },
+  lambdaParams: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "params" in node ? (node.params as Word) : undefined;
+  },
+  lambdaBody: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "body" in node ? (node.body as Word) : undefined;
+  },
+  procedureParams: (args) => {
+    const proc = args[0];
+    return proc instanceof Closure ? (proc.params as Word) : undefined;
+  },
+  procedureRest: (args) => {
+    const proc = args[0];
+    return proc instanceof Closure ? (proc.rest ?? "") : "";
+  },
+  procedureBody: (args) => {
+    const proc = args[0];
+    return proc instanceof Closure ? proc.body.body : undefined;
+  },
+  procedureEnv: (args) => {
+    const proc = args[0];
+    return proc instanceof Closure ? proc.env : undefined;
+  },
+  isPrimitiveProcedure: (args) => args[0] instanceof PrimitiveProcedure,
+  isClosure: (args) => args[0] instanceof Closure,
+  unknownProcedureValue: (args) => {
+    const proc = args[0];
+    return new MachineErrorValue({
+      tag: "not-callable",
+      detail:
+        typeof proc === "object" && proc !== null && "tag" in proc ? String(proc.tag) : typeof proc,
+    });
+  },
+  applyPrimitiveProcedure: (args) => {
+    const proc = args[0];
+    const values = Array.isArray(args[1]) ? (args[1] as Value[]) : [];
+    if (!(proc instanceof PrimitiveProcedure)) {
+      return new MachineErrorValue({ tag: "not-callable", detail: "unknown" });
+    }
+    const outcome = proc.fn(values as Value[]);
+    return outcome.tag === "error" ? new MachineErrorValue(outcome.error) : outcome.value;
+  },
+  extendEnvironment: (args) => {
+    const rawParams = args[0];
+    const rawValues = args[1];
+    const params = typeof rawParams === "string" ? [rawParams] : listOf(rawParams);
+    const values = Array.isArray(rawValues) ? rawValues : [rawValues];
+    const parent = envOf(args[2]) ?? null;
+    const rest = typeof args[3] === "string" ? args[3] : "";
+    const frame = child(parent);
+    for (const [index, param] of params.entries()) {
+      const name = typeof param === "string" ? param : "";
+      frame.bindings.set(name, makeCell(values[index] as Value, true));
+    }
+    if (rest !== "") {
+      frame.bindings.set(
+        rest,
+        makeCell(new ArrayValue(values.slice(params.length) as Value[]), true),
+      );
+    }
+    return frame;
+  },
+  predeclareProgram: (args) => {
+    predeclare(listOf(args[0]), envOf(args[1]) ?? null);
+    return undefined;
+  },
+  predeclareForms: (args) => {
+    predeclare(listOf(args[0]), envOf(args[1]) ?? null);
+    return undefined;
+  },
+  emptyArgList: () => [],
+  argExprs: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "args" in node ? (node.args as Word) : undefined;
+  },
+  arrayElements: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "elements" in node ? (node.elements as Word) : undefined;
+  },
+  objectKeys: (args) => {
+    const node = formOf(args[0]);
+    if (node === undefined || !("fields" in node)) {
+      return undefined;
+    }
+    return (node.fields as ReadonlyArray<{ key: string }>).map((field) => field.key);
+  },
+  objectValues: (args) => {
+    const node = formOf(args[0]);
+    if (node === undefined || !("fields" in node)) {
+      return undefined;
+    }
+    return (node.fields as ReadonlyArray<{ value: Expr }>).map((field) => ({
+      kind: "item",
+      expr: field.value,
+    }));
+  },
+  templateChunks: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "chunks" in node ? (node.chunks as Word) : undefined;
+  },
+  templateExprs: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "exprs" in node ? (node.exprs as Word) : undefined;
+  },
+  firstOperand: (args) => {
+    const operands = listOf(args[0]);
+    const first = operands[0];
+    if (first === undefined) {
+      return undefined;
+    }
+    const wrapped =
+      typeof first === "object" && first !== null && "kind" in first && "expr" in first;
+    return wrapped ? ((first as Arg).expr as Word) : (first as Word);
+  },
+  restOperands: (args) => listOf(args[0]).slice(1),
+  noOperands: (args) => listOf(args[0]).length === 0,
+  adjoinArg: (args) => {
+    const collected = [...listOf(args[0])];
+    const operands = listOf(args[1]);
+    const first = operands[0];
+    const spread =
+      typeof first === "object" && first !== null && "kind" in first && first.kind === "spread";
+    const value = args[2];
+    if (spread && value instanceof ArrayValue) {
+      collected.push(...value.items);
+    } else {
+      collected.push(value);
+    }
+    return collected;
+  },
+  calleeOf: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "callee" in node ? (node.callee as Word) : undefined;
+  },
+  memberObject: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "object" in node ? (node.object as Word) : undefined;
+  },
+  memberName: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "name" in node && typeof node.name === "string" ? node.name : "";
+  },
+  memberGet: (args) => {
+    const object = args[0];
+    const name = typeof args[1] === "string" ? args[1] : "";
+    if (object instanceof ArrayValue && name === "length") {
+      return object.items.length;
+    }
+    if (object instanceof MapValue && name === "size") {
+      return object.entries.size;
+    }
+    if (object instanceof SetValue && name === "size") {
+      return object.items.size;
+    }
+    if (object instanceof ErrorValue && name === "message") {
+      return object.message;
+    }
+    if (object instanceof RecordValue && object.fields.has(name)) {
+      return object.fields.get(name);
+    }
+    if (typeof object === "string" && name === "length") {
+      return object.length;
+    }
+    if (object instanceof ArrayValue && CALLBACK_METHODS[name] === true) {
+      return makePrimitive(`array.${name}`, (callArgs) =>
+        state.session.callArrayCallback(object, name, callArgs),
+      );
+    }
+    if (
+      object instanceof ArrayValue ||
+      object instanceof MapValue ||
+      object instanceof SetValue ||
+      typeof object === "string"
+    ) {
+      const member = builtinMember(object, name);
+      if (member !== undefined) {
+        return member;
+      }
+    }
+    return new MachineErrorValue({ tag: "unknown-field", field: name });
+  },
+  memberSet: (args) => {
+    const object = args[0];
+    const name = typeof args[1] === "string" ? args[1] : "";
+    const value = args[2];
+    if (!(object instanceof RecordValue)) {
+      return new MachineErrorValue({ tag: "unknown-field", field: name });
+    }
+    if (object.readonlyFields.has(name) && object.fields.has(name)) {
+      return new MachineErrorValue({ tag: "readonly-field", field: name });
+    }
+    object.fields.set(name, value as Value);
+    return value;
+  },
+  indexObject: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "object" in node ? (node.object as Word) : undefined;
+  },
+  indexIndex: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "index" in node ? (node.index as Word) : undefined;
+  },
+  indexGet: (args) => {
+    const object = args[0];
+    const index = args[1];
+    if (object instanceof ArrayValue && typeof index === "number") {
+      return Number.isInteger(index) && index >= 0 && index < object.items.length
+        ? object.items[index]
+        : undefined;
+    }
+    if (typeof object === "string" && typeof index === "number") {
+      const characters = [...object];
+      return Number.isInteger(index) && index >= 0 && index < characters.length
+        ? characters[index]
+        : undefined;
+    }
+    if (object instanceof RecordValue && typeof index === "string") {
+      return object.fields.has(index) ? object.fields.get(index) : undefined;
+    }
+    return new MachineErrorValue({ tag: "bad-operand", operator: "index", detail: String(index) });
+  },
+  indexSet: (args) => {
+    const object = args[0];
+    const index = args[1];
+    const value = args[2];
+    if (object instanceof ArrayValue && typeof index === "number") {
+      if (!Number.isInteger(index) || index < 0) {
+        return new MachineErrorValue({
+          tag: "bad-operand",
+          operator: "index",
+          detail: String(index),
+        });
+      }
+      while (object.items.length < index) {
+        object.items.push(undefined);
+      }
+      object.items[index] = value as Value;
+      return value;
+    }
+    return new MachineErrorValue({ tag: "bad-operand", operator: "index", detail: String(index) });
+  },
+  unaryOperator: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "op" in node ? String(node.op) : "";
+  },
+  binaryOperator: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "op" in node ? String(node.op) : "";
+  },
+  logicalSkipRight: (args) => {
+    const operator = typeof args[0] === "string" ? args[0] : "";
+    const value = args[1];
+    const truthy = !(
+      value === false ||
+      value === 0 ||
+      value === "" ||
+      value === null ||
+      value === undefined ||
+      (typeof value === "number" && Number.isNaN(value))
+    );
+    return operator === "&&" ? !truthy : truthy;
+  },
+  unaryOperand: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "operand" in node ? (node.operand as Word) : undefined;
+  },
+  unaryValue: (args) => {
+    const operator = typeof args[0] === "string" ? args[0] : "";
+    const value = args[1];
+    if (operator === "!") {
+      return (
+        value === false ||
+        value === 0 ||
+        value === "" ||
+        value === null ||
+        value === undefined ||
+        (typeof value === "number" && Number.isNaN(value))
+      );
+    }
+    if (operator === "-") {
+      return typeof value === "number"
+        ? -value
+        : new MachineErrorValue({ tag: "bad-operand", operator, detail: typeof value });
+    }
+    if (operator === "+") {
+      return typeof value === "number"
+        ? value
+        : new MachineErrorValue({ tag: "bad-operand", operator, detail: typeof value });
+    }
+    if (operator === "typeof") {
+      return value instanceof Closure || value instanceof PrimitiveProcedure
+        ? "function"
+        : typeof value;
+    }
+    return typeof value;
+  },
+  binaryLeft: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "left" in node ? (node.left as Word) : undefined;
+  },
+  binaryRight: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "right" in node ? (node.right as Word) : undefined;
+  },
+  binaryValue: (args) => {
+    const operator = typeof args[0] === "string" ? args[0] : "";
+    const left = args[1];
+    const right = args[2];
+    if (operator === "+") {
+      if (typeof left === "string" || typeof right === "string") {
+        return typeof left === "string" || typeof right === "string"
+          ? String(renderValue(left as Value) === "null" ? "null" : left) +
+              String(renderValue(right as Value) === "null" ? "null" : right)
+          : undefined;
+      }
+      return typeof left === "number" && typeof right === "number"
+        ? left + right
+        : new MachineErrorValue({ tag: "bad-operand", operator, detail: "mixed-plus" });
+    }
+    const numbers: Record<string, (l: number, r: number) => number> = {
+      "-": (l, r) => l - r,
+      "*": (l, r) => l * r,
+      "/": (l, r) => l / r,
+      "%": (l, r) => l % r,
+    };
+    const numberOperation = numbers[operator];
+    if (operator in numbers && numberOperation !== undefined) {
+      return typeof left === "number" && typeof right === "number"
+        ? numberOperation(left, right)
+        : new MachineErrorValue({ tag: "bad-operand", operator, detail: "non-number" });
+    }
+    const comparisons: Record<string, (l: number, r: number) => boolean> = {
+      "<": (l, r) => l < r,
+      "<=": (l, r) => l <= r,
+      ">": (l, r) => l > r,
+      ">=": (l, r) => l >= r,
+    };
+    const comparison = comparisons[operator];
+    if (operator in comparisons && comparison !== undefined) {
+      return typeof left === "number" && typeof right === "number"
+        ? comparison(left, right)
+        : new MachineErrorValue({ tag: "bad-operand", operator, detail: "non-number" });
+    }
+    if (operator === "===") {
+      return left === right;
+    }
+    return left !== right;
+  },
+  truthy: (args) => {
+    const value = args[0];
+    return !(
+      value === false ||
+      value === 0 ||
+      value === "" ||
+      value === null ||
+      value === undefined ||
+      (typeof value === "number" && Number.isNaN(value))
+    );
+  },
+  conditionalTest: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "test" in node ? (node.test as Word) : undefined;
+  },
+  conditionalConsequent: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "consequent" in node ? (node.consequent as Word) : undefined;
+  },
+  conditionalAlternative: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "alternative" in node && node.alternative !== null
+      ? (node.alternative as Word)
+      : undefined;
+  },
+  assignTarget: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "target" in node ? (node.target as Word) : undefined;
+  },
+  assignValue: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "value" in node ? (node.value as Word) : undefined;
+  },
+  assignTargetName: (args) => {
+    const node = formOf(args[0]);
+    const target = node !== undefined && "target" in node ? formOf(node.target as Word) : undefined;
+    return target !== undefined && "name" in target ? String(target.name) : "";
+  },
+  exprStmtExpr: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "expr" in node ? (node.expr as Word) : undefined;
+  },
+  varKindName: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "kind" in node ? String(node.kind) : "let";
+  },
+  varInit: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "init" in node && node.init !== null
+      ? (node.init as Word)
+      : undefined;
+  },
+  blockForms: (args) => {
+    const node = formOf(args[0]);
+    if (node === undefined) {
+      return undefined;
+    }
+    if (node.tag === "block") {
+      return node.body;
+    }
+    return node.tag === "arrow" ? node.body.body : [node];
+  },
+  ifConsequent: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "consequent" in node ? (node.consequent as Word) : undefined;
+  },
+  ifAlternative: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "alternative" in node && node.alternative !== null
+      ? (node.alternative as Word)
+      : undefined;
+  },
+  whileBody: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "body" in node ? (node.body as Word) : undefined;
+  },
+  forOfName: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "name" in node ? String(node.name) : "";
+  },
+  forOfIterable: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "iterable" in node ? (node.iterable as Word) : undefined;
+  },
+  forOfBody: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "body" in node ? (node.body as Word) : undefined;
+  },
+  makeIteration: (args) => {
+    const collection = args[0];
+    const items: Value[] =
+      collection instanceof ArrayValue
+        ? [...collection.items]
+        : typeof collection === "string"
+          ? [...collection].map((character) => character)
+          : collection instanceof Set === false &&
+              typeof collection === "object" &&
+              collection !== null &&
+              "items" in collection
+            ? [...collection.items]
+            : [];
+    return { items, index: 0 };
+  },
+  iterationDone: (args) => {
+    const state = args[0] as IterationState | undefined;
+    return state === undefined || state.index >= state.items.length;
+  },
+  iterationItem: (args) => {
+    const state = args[0] as IterationState | undefined;
+    return state === undefined ? undefined : state.items[state.index];
+  },
+  iterationNext: (args) => {
+    const state = args[0] as IterationState | undefined;
+    return state === undefined ? undefined : { items: state.items, index: state.index + 1 };
+  },
+  switchDiscriminant: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "discriminant" in node ? (node.discriminant as Word) : undefined;
+  },
+  switchCases: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "cases" in node ? (node.cases as Word) : undefined;
+  },
+  switchDefaultBody: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && node.tag === "switch"
+      ? (node.defaultBody ?? undefined)
+      : undefined;
+  },
+  caseTest: (args) => {
+    const cases = listOf(args[0]);
+    const first = cases[0];
+    return typeof first === "object" && first !== null && "test" in first
+      ? ((first as { test: Expr }).test as Word)
+      : undefined;
+  },
+  caseBody: (args) => {
+    const cases = listOf(args[0]);
+    const first = cases[0];
+    return typeof first === "object" && first !== null && "body" in first
+      ? ((first as { body: ReadonlyArray<Decl | Stmt> }).body as Word)
+      : undefined;
+  },
+  caseBodiesFrom: (args) => {
+    const node = formOf(args[0]);
+    const start = typeof args[1] === "number" ? args[1] : 0;
+    if (node === undefined || node.tag !== "switch") {
+      return [] as Word;
+    }
+    const forms: Array<Decl | Stmt> = [];
+    for (const clause of node.cases.slice(start)) {
+      forms.push(...clause.body);
+    }
+    forms.push(...(node.defaultBody ?? []));
+    return forms as Word;
+  },
+  caseCount: (args) => listOf(args[0]).length,
+  restCases: (args) => listOf(args[0]).slice(1),
+  noCases: (args) => listOf(args[0]).length === 0,
+  tryBlock: (args) => {
+    const node = formOf(args[0]);
+    if (node === undefined || !("block" in node)) {
+      return undefined;
+    }
+    const block = node.block as Block;
+    return { tag: "block", body: block.body, span: block.span } as Word;
+  },
+  tryHandlerBody: (args) => {
+    const node = formOf(args[0]);
+    if (node === undefined || !("handler" in node) || node.handler === null) {
+      return undefined;
+    }
+    const block = (node.handler as { body: Block }).body;
+    return { tag: "block", body: block.body, span: block.span } as Word;
+  },
+  tryHandlerParam: (args) => {
+    const node = formOf(args[0]);
+    if (node === undefined || !("handler" in node) || node.handler === null) {
+      return "";
+    }
+    return (node.handler as { param: string | null }).param ?? "";
+  },
+  tryFinalizerBody: (args) => {
+    const node = formOf(args[0]);
+    if (node === undefined || !("finalizer" in node) || node.finalizer === null) {
+      return undefined;
+    }
+    const block = node.finalizer as Block;
+    return { tag: "block", body: block.body, span: block.span } as Word;
+  },
+  hasFinalizer: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "finalizer" in node && node.finalizer !== null;
+  },
+  hasHandler: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "handler" in node && node.handler !== null;
+  },
+  returnArgument: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "argument" in node && node.argument !== null
+      ? (node.argument as Word)
+      : undefined;
+  },
+  throwArgument: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "argument" in node ? (node.argument as Word) : undefined;
+  },
+  arrayValue: (args) => new ArrayValue([...listOf(args[0])] as Value[]),
+  objectValue: (args) => {
+    const keys = listOf(args[0]);
+    const values = listOf(args[1]);
+    const fields = new Map<string, Value>();
+    for (const [index, key] of keys.entries()) {
+      fields.set(String(key), values[index] as Value);
+    }
+    return new RecordValue(fields, new Set());
+  },
+  templateValue: (args) => {
+    const chunks = listOf(args[0]);
+    const values = listOf(args[1]);
+    let text = "";
+    for (const [index, chunk] of chunks.entries()) {
+      text += String(chunk);
+      const value = values[index];
+      if (value !== undefined && isValue(value)) {
+        text += String(renderValue(value));
+      }
+    }
+    return text;
+  },
+  newErrorValue: (args) => {
+    const values = listOf(args[0]);
+    return new ErrorValue(values.length > 0 ? renderValue(values[0] as Value) : "");
+  },
+  newMapValue: (args) => {
+    const values = listOf(args[0]);
+    const source = values[0];
+    if (source === undefined) {
+      return makeMap();
+    }
+    if (!(source instanceof ArrayValue)) {
+      return new MachineErrorValue({
+        tag: "bad-operand",
+        operator: "new Map",
+        detail: "entries are not an array",
+      });
+    }
+    const entries: Array<readonly [Value, Value]> = [];
+    for (const pair of source.items) {
+      if (!(pair instanceof ArrayValue) || pair.items.length !== 2) {
+        return new MachineErrorValue({
+          tag: "bad-operand",
+          operator: "new Map",
+          detail: "entry is not a pair",
+        });
+      }
+      entries.push([pair.items[0], pair.items[1]]);
+    }
+    return makeMap(entries);
+  },
+  newSetValue: (args) => {
+    const values = listOf(args[0]);
+    const source = values[0];
+    if (source === undefined) {
+      return makeSet();
+    }
+    return source instanceof ArrayValue
+      ? makeSet(source.items)
+      : new MachineErrorValue({
+          tag: "bad-operand",
+          operator: "new Set",
+          detail: "items are not an array",
+        });
+  },
+  recordOutput: (args) => {
+    const values = listOf(args[0]);
+    for (const value of values) {
+      state.session.transcript.push(renderValue(value as Value));
+    }
+    return undefined;
+  },
+  recordResult: (args) => {
+    state.values.push(args[0] as Value);
+    return args[0];
+  },
+  throwTransfer: (args) => {
+    const error = errorOf(args[0]);
+    return error === undefined
+      ? ({ kind: "throw", value: args[0] as Value } as Transfer)
+      : ({ kind: "error", error: error.error } as Transfer);
+  },
+  returnTransfer: () => ({ kind: "return" }) as Transfer,
+  breakTransfer: () => ({ kind: "break" }) as Transfer,
+  loopContinueTransfer: () => ({ kind: "continue-loop" }) as Transfer,
+  nullTransfer: () => undefined,
+  isTransfer: (args) =>
+    args[0] !== undefined && typeof args[0] === "object" && args[0] !== null && "kind" in args[0],
+  isReturnTransfer: (args) =>
+    typeof args[0] === "object" &&
+    args[0] !== null &&
+    "kind" in args[0] &&
+    args[0].kind === "return",
+  isThrowTransfer: (args) =>
+    typeof args[0] === "object" &&
+    args[0] !== null &&
+    "kind" in args[0] &&
+    args[0].kind === "throw",
+  isBreakTransfer: (args) =>
+    typeof args[0] === "object" &&
+    args[0] !== null &&
+    "kind" in args[0] &&
+    args[0].kind === "break",
+  isLoopContinueTransfer: (args) =>
+    typeof args[0] === "object" &&
+    args[0] !== null &&
+    "kind" in args[0] &&
+    args[0].kind === "continue-loop",
+  transferValue: (args) => {
+    const transfer = args[0];
+    return typeof transfer === "object" && transfer !== null && "value" in transfer
+      ? (transfer.value as Word)
+      : undefined;
+  },
+  isErrorValue: (args) => args[0] instanceof MachineErrorValue,
+  errorTransfer: (args) => {
+    const error = errorOf(args[0]);
+    return error === undefined ? undefined : ({ kind: "error", error: error.error } as Transfer);
+  },
+  unknownFormValue: (args) => {
+    const node = formOf(args[0]);
+    return new MachineErrorValue({ tag: "unknown-syntax", construct: node?.tag ?? "unknown" });
+  },
+  literalTag: (args) => {
+    const node = formOf(args[0]);
+    return node === undefined ? "" : node.tag;
+  },
+});
+
+/** The guest renderer used for output and errors. */
+export const renderValue = (value: Value): string =>
+  typeof value === "string" ? value : format(value as never);
+
+// ---------------------------------------------------------------------
+// Form predicates: real runtime discrimination over the shared AST.
+// ---------------------------------------------------------------------
+
+const tagsOf =
+  (...names: string[]): Operation<Word> =>
+  (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && names.includes(node.tag);
+  };
+
+const predicates: Readonly<Record<string, Operation<Word>>> = {
+  isLiteral: tagsOf("number", "string", "boolean", "null", "undefined"),
+  isTemplate: tagsOf("template"),
+  isVariable: tagsOf("variable"),
+  isAssign: tagsOf("assign"),
+  isConditionalExpr: tagsOf("conditional"),
+  isArrow: tagsOf("arrow"),
+  isCall: tagsOf("call"),
+  isMember: tagsOf("member"),
+  isIndex: tagsOf("index"),
+  isArray: tagsOf("array"),
+  isObject: tagsOf("object"),
+  isUnary: tagsOf("unary"),
+  isBinary: tagsOf("binary"),
+  isLogical: tagsOf("logical"),
+  isNewError: tagsOf("new-error"),
+  isNewMap: tagsOf("new-map"),
+  isNewSet: tagsOf("new-set"),
+  isExprStmt: tagsOf("expr-stmt"),
+  isVarDecl: tagsOf("var-decl"),
+  isFunctionDecl: tagsOf("function-decl"),
+  isBlockStmt: tagsOf("block"),
+  isIfStmt: tagsOf("if"),
+  isWhileStmt: tagsOf("while"),
+  isForOfStmt: tagsOf("for-of"),
+  isSwitchStmt: tagsOf("switch"),
+  isReturnStmt: tagsOf("return"),
+  isThrowStmt: tagsOf("throw"),
+  isTryStmt: tagsOf("try"),
+  isBreakStmt: tagsOf("break"),
+  isContinueStmt: tagsOf("continue"),
+  isTypeDecl: tagsOf("type-decl", "interface-decl", "import"),
+};
+
+const isConsoleCall: Operation<Word> = (args) => {
+  const node = formOf(args[0]);
+  if (node === undefined || node.tag !== "call") {
+    return false;
+  }
+  const callee = formOf((node as unknown as { callee: Expr }).callee);
+  return (
+    callee !== undefined &&
+    callee.tag === "member" &&
+    formOf((callee as unknown as { object: Expr }).object)?.tag === "variable" &&
+    (callee as unknown as { object: { name: string } }).object.name === "console" &&
+    (callee as unknown as { name: string }).name === "log" &&
+    findCell(envOf(args[1]) ?? null, "console") === undefined
+  );
+};
+
+// ---------------------------------------------------------------------
+// The controller: every continuation restores its frame, forwards an
+// unresolved transfer to its own continue, then does its work.
+// ---------------------------------------------------------------------
+
+const label = (name: string): EvaluatorMachineStatement => ({ tag: "label", name });
+
+/**
+ * The evaluator controller over the shared checked syntax: dispatch,
+ * operand accumulation, sequencing, and the transfer register for
+ * return, throw, break, and loop continue.
+ */
+export const evaluatorController: ReadonlyArray<EvaluatorMachineStatement> = [
+  label("start"),
+  assign("expr", op("nextForm")),
+  test("isDone", register("expr")),
+  branch("done"),
+  assign("continue", constant({ tag: "symbol", name: "record-result" })),
+  gotoLabel("eval-form"),
+  label("record-result"),
+  test("isTransfer", register("transfer")),
+  branch("done"),
+  test("isErrorValue", register("val")),
+  branch("record-error"),
+  perform("recordResult", register("val")),
+  gotoLabel("start"),
+  label("record-error"),
+  assign("transfer", op("errorTransfer", register("val"))),
+  gotoLabel("done"),
+  gotoLabel("start"),
+
+  label("eval-form"),
+  ...(
+    [
+      ["isLiteral", "ef-literal"],
+      ["isTemplate", "ev-template"],
+      ["isVariable", "ef-variable"],
+      ["isAssign", "ev-assign"],
+      ["isConditionalExpr", "ev-cond-expr"],
+      ["isArrow", "ef-arrow"],
+      ["isCall", "ev-call"],
+      ["isMember", "ev-member"],
+      ["isIndex", "ev-index"],
+      ["isArray", "ev-array"],
+      ["isObject", "ev-object"],
+      ["isUnary", "ev-unary"],
+      ["isBinary", "ev-binary"],
+      ["isLogical", "ev-logical"],
+      ["isNewError", "ev-new-error"],
+      ["isNewMap", "ev-new-map"],
+      ["isNewSet", "ev-new-set"],
+      ["isExprStmt", "ef-expr-stmt"],
+      ["isVarDecl", "ev-var-decl"],
+      ["isFunctionDecl", "ef-function-decl"],
+      ["isBlockStmt", "ev-block"],
+      ["isIfStmt", "ev-if-stmt"],
+      ["isWhileStmt", "ev-while"],
+      ["isForOfStmt", "ev-for-of"],
+      ["isSwitchStmt", "ev-switch"],
+      ["isReturnStmt", "ev-return"],
+      ["isThrowStmt", "ev-throw"],
+      ["isTryStmt", "ev-try"],
+      ["isBreakStmt", "ef-break"],
+      ["isContinueStmt", "ef-continue"],
+      ["isTypeDecl", "ef-noop"],
+    ] as const
+  ).flatMap(([predicate, target]): EvaluatorMachineStatement[] => [
+    test(predicate, register("expr")),
+    branch(target),
+  ]),
+  gotoLabel("ef-unknown"),
+
+  label("ef-literal"),
+  assign("val", op("literalValue", register("expr"))),
+  gotoLabel("continue-dispatch"),
+  label("ef-variable"),
+  assign("val", op("lookupVariableValue", op("variableName", register("expr")), register("env"))),
+  test("isErrorValue", register("val")),
+  branch("raise-error"),
+  gotoLabel("continue-dispatch"),
+  label("ef-arrow"),
+  assign(
+    "val",
+    op(
+      "makeProcedure",
+      op("lambdaParams", register("expr")),
+      op("lambdaBody", register("expr")),
+      register("env"),
+    ),
+  ),
+  gotoLabel("continue-dispatch"),
+  label("ef-expr-stmt"),
+  assign("expr", op("exprStmtExpr", register("expr"))),
+  gotoLabel("eval-form"),
+  label("ef-function-decl"),
+  assign("val", op("defineFunction", register("expr"), register("env"))),
+  test("isErrorValue", register("val")),
+  branch("raise-error"),
+  gotoLabel("continue-dispatch"),
+  label("ef-break"),
+  assign("transfer", op("breakTransfer")),
+  gotoLabel("continue-dispatch"),
+  label("ef-continue"),
+  assign("transfer", op("loopContinueTransfer")),
+  gotoLabel("continue-dispatch"),
+  label("ef-noop"),
+  assign("val", constant(undefined)),
+  gotoLabel("continue-dispatch"),
+  label("ef-unknown"),
+  assign("val", op("unknownFormValue", register("expr"))),
+  label("raise-error"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  gotoLabel("continue-dispatch"),
+  label("continue-dispatch"),
+  gotoRegister("continue"),
+
+  label("ev-var-decl"),
+  save("item"),
+  save("continue"),
+  assign("item", register("expr")),
+  assign("expr", op("varInit", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-var-decl-done" })),
+  gotoLabel("eval-form"),
+  label("ev-var-decl-done"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-var-decl-exit"),
+  test("isErrorValue", register("val")),
+  branch("ev-var-decl-raise"),
+  assign(
+    "val",
+    op(
+      "declareVariable",
+      op("varKindName", register("item")),
+      op("variableName", register("item")),
+      register("val"),
+      register("env"),
+    ),
+  ),
+  test("isErrorValue", register("val")),
+  branch("ev-var-decl-raise"),
+  gotoLabel("ev-var-decl-exit"),
+  label("ev-var-decl-raise"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  label("ev-var-decl-exit"),
+  restore("item"),
+  gotoLabel("continue-dispatch"),
+
+  label("ev-block"),
+  save("env"),
+  save("continue"),
+  assign("env", op("extendEnvironment", constant([]), constant([]), register("env"))),
+  assign("unev", op("blockForms", register("expr"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-block-done" })),
+  gotoLabel("ev-sequence"),
+  label("ev-block-done"),
+  restore("continue"),
+  restore("env"),
+  gotoLabel("continue-dispatch"),
+
+  label("ev-if-stmt"),
+  save("item"),
+  save("continue"),
+  assign("item", register("expr")),
+  assign("expr", op("conditionalTest", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-if-stmt-decide" })),
+  gotoLabel("eval-form"),
+  label("ev-if-stmt-decide"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-if-stmt-exit"),
+  test("isErrorValue", register("val")),
+  branch("ev-if-stmt-raise"),
+  test("truthy", register("val")),
+  branch("ev-if-stmt-then"),
+  assign("expr", op("ifAlternative", register("item"))),
+  gotoLabel("ev-if-stmt-run"),
+  label("ev-if-stmt-then"),
+  assign("expr", op("ifConsequent", register("item"))),
+  label("ev-if-stmt-run"),
+  test("isDone", register("expr")),
+  branch("ev-if-stmt-none"),
+  save("continue"),
+  assign("continue", constant({ tag: "symbol", name: "ev-if-stmt-done" })),
+  gotoLabel("eval-form"),
+  label("ev-if-stmt-none"),
+  assign("val", constant(undefined)),
+  gotoLabel("ev-if-stmt-exit"),
+  label("ev-if-stmt-done"),
+  restore("continue"),
+  label("ev-if-stmt-exit"),
+  restore("item"),
+  gotoLabel("continue-dispatch"),
+  label("ev-if-stmt-raise"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  gotoLabel("ev-if-stmt-exit"),
+
+  label("ev-cond-expr"),
+  test("isTailReturnContinuation", register("continue")),
+  branch("ev-cond-tail"),
+  save("item"),
+  save("continue"),
+  assign("item", register("expr")),
+  assign("expr", op("conditionalTest", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-cond-decide" })),
+  gotoLabel("eval-form"),
+  label("ev-cond-decide"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-cond-exit"),
+  test("isErrorValue", register("val")),
+  branch("ev-cond-raise"),
+  test("truthy", register("val")),
+  branch("ev-cond-consequent"),
+  assign("expr", op("conditionalAlternative", register("item"))),
+  gotoLabel("ev-cond-run"),
+  label("ev-cond-consequent"),
+  assign("expr", op("conditionalConsequent", register("item"))),
+  label("ev-cond-run"),
+  save("continue"),
+  assign("continue", constant({ tag: "symbol", name: "ev-cond-done" })),
+  gotoLabel("eval-form"),
+  label("ev-cond-done"),
+  restore("continue"),
+  label("ev-cond-exit"),
+  restore("item"),
+  gotoLabel("continue-dispatch"),
+  label("ev-cond-raise"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  gotoLabel("ev-cond-exit"),
+  label("ev-cond-tail"),
+  assign("item", register("expr")),
+  assign("expr", op("conditionalTest", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-cond-tail-decide" })),
+  gotoLabel("eval-form"),
+  label("ev-cond-tail-decide"),
+  test("isTransfer", register("transfer")),
+  branch("ev-cond-tail-exit"),
+  test("isErrorValue", register("val")),
+  branch("ev-cond-tail-raise"),
+  test("truthy", register("val")),
+  branch("ev-cond-tail-consequent"),
+  assign("expr", op("conditionalAlternative", register("item"))),
+  gotoLabel("ev-cond-tail-run"),
+  label("ev-cond-tail-consequent"),
+  assign("expr", op("conditionalConsequent", register("item"))),
+  label("ev-cond-tail-run"),
+  assign("continue", constant({ tag: "symbol", name: "tail-return" })),
+  gotoLabel("eval-form"),
+  label("ev-cond-tail-raise"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  label("ev-cond-tail-exit"),
+  assign("continue", constant({ tag: "symbol", name: "apply-body-done" })),
+  gotoLabel("apply-body-done"),
+
+  label("ev-assign"),
+  test("isVariable", op("assignTarget", register("expr"))),
+  branch("ev-assign-var"),
+  test("isMember", op("assignTarget", register("expr"))),
+  branch("ev-assign-member"),
+  gotoLabel("ev-assign-index"),
+  label("ev-assign-var"),
+  save("item"),
+  save("continue"),
+  assign("item", register("expr")),
+  assign("expr", op("assignValue", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-assign-var-done" })),
+  gotoLabel("eval-form"),
+  label("ev-assign-var-done"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-assign-var-exit"),
+  test("isErrorValue", register("val")),
+  branch("ev-assign-var-raise"),
+  assign(
+    "val",
+    op(
+      "setVariableValue",
+      op("assignTargetName", register("item")),
+      register("val"),
+      register("env"),
+    ),
+  ),
+  test("isErrorValue", register("val")),
+  branch("ev-assign-var-raise"),
+  gotoLabel("ev-assign-var-exit"),
+  label("ev-assign-var-raise"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  label("ev-assign-var-exit"),
+  restore("item"),
+  gotoLabel("continue-dispatch"),
+
+  label("ev-assign-member"),
+  save("item"),
+  save("continue"),
+  assign("item", register("expr")),
+  assign("expr", op("memberObject", op("assignTarget", register("item")))),
+  assign("continue", constant({ tag: "symbol", name: "ev-assign-member-obj" })),
+  gotoLabel("eval-form"),
+  label("ev-assign-member-obj"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-assign-member-exit"),
+  test("isErrorValue", register("val")),
+  branch("ev-assign-member-raise"),
+  save("proc"),
+  save("continue"),
+  assign("proc", register("val")),
+  assign("expr", op("assignValue", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-assign-member-val" })),
+  gotoLabel("eval-form"),
+  label("ev-assign-member-val"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-assign-member-forward"),
+  test("isErrorValue", register("val")),
+  branch("ev-assign-member-inner-raise"),
+  assign(
+    "val",
+    op(
+      "memberSet",
+      register("proc"),
+      op("memberName", op("assignTarget", register("item"))),
+      register("val"),
+    ),
+  ),
+  test("isErrorValue", register("val")),
+  branch("ev-assign-member-inner-raise"),
+  restore("proc"),
+  gotoLabel("ev-assign-member-exit"),
+  label("ev-assign-member-inner-raise"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  label("ev-assign-member-forward"),
+  restore("proc"),
+  gotoLabel("ev-assign-member-exit"),
+  label("ev-assign-member-raise"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  label("ev-assign-member-exit"),
+  restore("item"),
+  gotoLabel("continue-dispatch"),
+
+  label("ev-assign-index"),
+  save("item"),
+  save("continue"),
+  assign("item", register("expr")),
+  assign("expr", op("indexObject", op("assignTarget", register("item")))),
+  assign("continue", constant({ tag: "symbol", name: "ev-assign-index-obj" })),
+  gotoLabel("eval-form"),
+  label("ev-assign-index-obj"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-assign-index-exit"),
+  test("isErrorValue", register("val")),
+  branch("ev-assign-index-raise"),
+  save("proc"),
+  save("argl"),
+  save("continue"),
+  assign("proc", register("val")),
+  assign("expr", op("indexIndex", op("assignTarget", register("item")))),
+  assign("continue", constant({ tag: "symbol", name: "ev-assign-index-idx" })),
+  gotoLabel("eval-form"),
+  label("ev-assign-index-idx"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-assign-index-forward"),
+  test("isErrorValue", register("val")),
+  branch("ev-assign-index-inner-raise"),
+  save("continue"),
+  assign("argl", register("val")),
+  assign("expr", op("assignValue", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-assign-index-val" })),
+  gotoLabel("eval-form"),
+  label("ev-assign-index-val"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-assign-index-forward"),
+  test("isErrorValue", register("val")),
+  branch("ev-assign-index-inner-raise"),
+  assign("val", op("indexSet", register("proc"), register("argl"), register("val"))),
+  test("isErrorValue", register("val")),
+  branch("ev-assign-index-inner-raise"),
+  restore("argl"),
+  restore("proc"),
+  gotoLabel("ev-assign-index-exit"),
+  label("ev-assign-index-inner-raise"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  label("ev-assign-index-forward"),
+  restore("argl"),
+  restore("proc"),
+  gotoLabel("ev-assign-index-exit"),
+  label("ev-assign-index-raise"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  label("ev-assign-index-exit"),
+  restore("item"),
+  gotoLabel("continue-dispatch"),
+
+  label("ev-member"),
+  save("item"),
+  save("continue"),
+  assign("item", register("expr")),
+  assign("expr", op("memberObject", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-member-done" })),
+  gotoLabel("eval-form"),
+  label("ev-member-done"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-member-exit"),
+  test("isErrorValue", register("val")),
+  branch("ev-member-raise"),
+  assign("val", op("memberGet", register("val"), op("memberName", register("item")))),
+  test("isErrorValue", register("val")),
+  branch("ev-member-raise"),
+  gotoLabel("ev-member-exit"),
+  label("ev-member-raise"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  label("ev-member-exit"),
+  restore("item"),
+  gotoLabel("continue-dispatch"),
+
+  label("ev-index"),
+  save("item"),
+  save("continue"),
+  assign("item", register("expr")),
+  assign("expr", op("indexObject", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-index-obj" })),
+  gotoLabel("eval-form"),
+  label("ev-index-obj"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-index-exit"),
+  test("isErrorValue", register("val")),
+  branch("ev-index-raise"),
+  save("proc"),
+  save("continue"),
+  assign("proc", register("val")),
+  assign("expr", op("indexIndex", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-index-done" })),
+  gotoLabel("eval-form"),
+  label("ev-index-done"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-index-forward"),
+  test("isErrorValue", register("val")),
+  branch("ev-index-inner-raise"),
+  assign("val", op("indexGet", register("proc"), register("val"))),
+  test("isErrorValue", register("val")),
+  branch("ev-index-inner-raise"),
+  restore("proc"),
+  gotoLabel("ev-index-exit"),
+  label("ev-index-inner-raise"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  label("ev-index-forward"),
+  restore("proc"),
+  gotoLabel("ev-index-exit"),
+  label("ev-index-raise"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  label("ev-index-exit"),
+  restore("item"),
+  gotoLabel("continue-dispatch"),
+
+  label("ev-unary"),
+  save("item"),
+  save("continue"),
+  assign("item", register("expr")),
+  assign("expr", op("unaryOperand", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-unary-done" })),
+  gotoLabel("eval-form"),
+  label("ev-unary-done"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-unary-exit"),
+  test("isErrorValue", register("val")),
+  branch("ev-unary-raise"),
+  assign("val", op("unaryValue", op("unaryOperator", register("item")), register("val"))),
+  test("isErrorValue", register("val")),
+  branch("ev-unary-raise"),
+  gotoLabel("ev-unary-exit"),
+  label("ev-unary-raise"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  label("ev-unary-exit"),
+  restore("item"),
+  gotoLabel("continue-dispatch"),
+
+  label("ev-binary"),
+  save("item"),
+  save("continue"),
+  assign("item", register("expr")),
+  assign("expr", op("binaryLeft", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-binary-left" })),
+  gotoLabel("eval-form"),
+  label("ev-binary-left"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-binary-exit"),
+  test("isErrorValue", register("val")),
+  branch("ev-binary-raise"),
+  save("proc"),
+  save("continue"),
+  assign("proc", register("val")),
+  assign("expr", op("binaryRight", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-binary-right" })),
+  gotoLabel("eval-form"),
+  label("ev-binary-right"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-binary-forward"),
+  test("isErrorValue", register("val")),
+  branch("ev-binary-inner-raise"),
+  assign(
+    "val",
+    op("binaryValue", op("binaryOperator", register("item")), register("proc"), register("val")),
+  ),
+  test("isErrorValue", register("val")),
+  branch("ev-binary-inner-raise"),
+  restore("proc"),
+  gotoLabel("ev-binary-exit"),
+  label("ev-binary-inner-raise"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  label("ev-binary-forward"),
+  restore("proc"),
+  gotoLabel("ev-binary-exit"),
+  label("ev-binary-raise"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  label("ev-binary-exit"),
+  restore("item"),
+  gotoLabel("continue-dispatch"),
+
+  label("ev-logical"),
+  save("item"),
+  save("continue"),
+  assign("item", register("expr")),
+  assign("expr", op("binaryLeft", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-logical-left" })),
+  gotoLabel("eval-form"),
+  label("ev-logical-left"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-logical-exit"),
+  test("isErrorValue", register("val")),
+  branch("ev-logical-raise"),
+  test("logicalSkipRight", op("binaryOperator", register("item")), register("val")),
+  branch("ev-logical-exit"),
+  save("continue"),
+  assign("expr", op("binaryRight", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-logical-done" })),
+  gotoLabel("eval-form"),
+  label("ev-logical-done"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-logical-exit"),
+  test("isErrorValue", register("val")),
+  branch("ev-logical-raise"),
+  gotoLabel("ev-logical-exit"),
+  label("ev-logical-raise"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  label("ev-logical-exit"),
+  restore("item"),
+  gotoLabel("continue-dispatch"),
+
+  label("ev-array"),
+  save("item"),
+  save("argl"),
+  save("continue"),
+  assign("item", register("expr")),
+  assign("argl", op("emptyArgList")),
+  assign("unev", op("arrayElements", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-array-done" })),
+  gotoLabel("ev-operand-loop"),
+  label("ev-array-done"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-collection-exit"),
+  assign("val", op("arrayValue", register("argl"))),
+  gotoLabel("ev-collection-exit"),
+
+  label("ev-object"),
+  save("item"),
+  save("argl"),
+  save("continue"),
+  assign("item", register("expr")),
+  assign("argl", op("emptyArgList")),
+  assign("unev", op("objectValues", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-object-done" })),
+  gotoLabel("ev-operand-loop"),
+  label("ev-object-done"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-collection-exit"),
+  assign("val", op("objectValue", op("objectKeys", register("item")), register("argl"))),
+  gotoLabel("ev-collection-exit"),
+
+  label("ev-template"),
+  save("item"),
+  save("argl"),
+  save("continue"),
+  assign("item", register("expr")),
+  assign("argl", op("emptyArgList")),
+  assign("unev", op("templateExprs", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-template-done" })),
+  gotoLabel("ev-operand-loop"),
+  label("ev-template-done"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-collection-exit"),
+  assign("val", op("templateValue", op("templateChunks", register("item")), register("argl"))),
+  gotoLabel("ev-collection-exit"),
+
+  label("ev-new-error"),
+  save("item"),
+  save("argl"),
+  save("continue"),
+  assign("item", register("expr")),
+  assign("argl", op("emptyArgList")),
+  assign("unev", op("argExprs", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-new-error-done" })),
+  gotoLabel("ev-operand-loop"),
+  label("ev-new-error-done"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-collection-exit"),
+  assign("val", op("newErrorValue", register("argl"))),
+  gotoLabel("ev-collection-exit"),
+
+  label("ev-new-map"),
+  save("item"),
+  save("argl"),
+  save("continue"),
+  assign("item", register("expr")),
+  assign("argl", op("emptyArgList")),
+  assign("unev", op("argExprs", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-new-map-done" })),
+  gotoLabel("ev-operand-loop"),
+  label("ev-new-map-done"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-collection-exit"),
+  assign("val", op("newMapValue", register("argl"))),
+  gotoLabel("ev-collection-exit"),
+
+  label("ev-new-set"),
+  save("item"),
+  save("argl"),
+  save("continue"),
+  assign("item", register("expr")),
+  assign("argl", op("emptyArgList")),
+  assign("unev", op("argExprs", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-new-set-done" })),
+  gotoLabel("ev-operand-loop"),
+  label("ev-new-set-done"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-collection-exit"),
+  assign("val", op("newSetValue", register("argl"))),
+  label("ev-collection-exit"),
+  restore("argl"),
+  restore("item"),
+  gotoLabel("continue-dispatch"),
+
+  label("ev-call"),
+  test("isConsoleCall", register("expr"), register("env")),
+  branch("ev-output"),
+  test("isTailReturnContinuation", register("continue")),
+  branch("ev-call-tail"),
+  save("item"),
+  save("proc"),
+  save("argl"),
+  save("continue"),
+  assign("item", register("expr")),
+  assign("expr", op("calleeOf", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-call-proc" })),
+  gotoLabel("eval-form"),
+  label("ev-call-tail"),
+  assign("item", register("expr")),
+  assign("expr", op("calleeOf", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-call-tail-proc" })),
+  gotoLabel("eval-form"),
+  label("ev-call-proc"),
+  test("isTransfer", register("transfer")),
+  branch("call-forward"),
+  test("isErrorValue", register("val")),
+  branch("call-raise"),
+  assign("proc", register("val")),
+  assign("argl", op("emptyArgList")),
+  assign("unev", op("argExprs", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-call-args-done" })),
+  gotoLabel("ev-operand-loop"),
+  label("ev-call-args-done"),
+  test("isTransfer", register("transfer")),
+  branch("call-forward"),
+  gotoLabel("apply-dispatch"),
+  label("ev-call-tail-proc"),
+  test("isTransfer", register("transfer")),
+  branch("ev-call-tail-forward"),
+  test("isErrorValue", register("val")),
+  branch("ev-call-tail-raise"),
+  assign("proc", register("val")),
+  assign("argl", op("emptyArgList")),
+  assign("unev", op("argExprs", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-call-tail-args-done" })),
+  gotoLabel("ev-operand-loop"),
+  label("ev-call-tail-args-done"),
+  test("isTransfer", register("transfer")),
+  branch("ev-call-tail-forward"),
+  assign("tailCall", constant(true)),
+  gotoLabel("apply-dispatch"),
+  label("ev-call-tail-raise"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  label("ev-call-tail-forward"),
+  assign("tailCall", constant(true)),
+  gotoLabel("call-forward"),
+  label("apply-dispatch"),
+  test("isPrimitiveProcedure", register("proc")),
+  branch("apply-primitive"),
+  test("isClosure", register("proc")),
+  branch("apply-compound"),
+  assign("val", op("unknownProcedureValue", register("proc"))),
+  gotoLabel("call-raise"),
+  label("apply-primitive"),
+  assign("val", op("applyPrimitiveProcedure", register("proc"), register("argl"))),
+  test("isErrorValue", register("val")),
+  branch("call-raise"),
+  test("isTailCall", register("tailCall")),
+  branch("apply-tail-primitive"),
+  gotoLabel("call-end"),
+  label("apply-tail-primitive"),
+  assign("tailCall", constant(false)),
+  assign("continue", constant({ tag: "symbol", name: "apply-body-done" })),
+  gotoLabel("apply-body-done"),
+  label("apply-compound"),
+  test("isTailCall", register("tailCall")),
+  branch("apply-tail-compound"),
+  save("env"),
+  assign(
+    "env",
+    op(
+      "extendEnvironment",
+      op("procedureParams", register("proc")),
+      register("argl"),
+      op("procedureEnv", register("proc")),
+      op("procedureRest", register("proc")),
+    ),
+  ),
+  assign("unev", op("procedureBody", register("proc"))),
+  assign("continue", constant({ tag: "symbol", name: "apply-body-done" })),
+  gotoLabel("ev-sequence"),
+  label("apply-tail-compound"),
+  assign("tailCall", constant(false)),
+  assign(
+    "env",
+    op(
+      "extendEnvironment",
+      op("procedureParams", register("proc")),
+      register("argl"),
+      op("procedureEnv", register("proc")),
+      op("procedureRest", register("proc")),
+    ),
+  ),
+  assign("unev", op("procedureBody", register("proc"))),
+  assign("continue", constant({ tag: "symbol", name: "apply-body-done" })),
+  gotoLabel("ev-sequence"),
+  label("apply-body-done"),
+  restore("env"),
+  restore("continue"),
+  test("isReturnTransfer", register("transfer")),
+  branch("apply-return-clear"),
+  gotoLabel("apply-body-exit"),
+  label("apply-return-clear"),
+  assign("transfer", op("nullTransfer")),
+  label("apply-body-exit"),
+  restore("argl"),
+  restore("proc"),
+  restore("item"),
+  gotoLabel("continue-dispatch"),
+  label("call-end"),
+  restore("continue"),
+  restore("argl"),
+  restore("proc"),
+  restore("item"),
+  gotoLabel("continue-dispatch"),
+  label("call-raise"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  label("call-forward"),
+  test("isTailCall", register("tailCall")),
+  branch("call-tail-forward"),
+  restore("continue"),
+  restore("argl"),
+  restore("proc"),
+  restore("item"),
+  gotoLabel("continue-dispatch"),
+  label("call-tail-forward"),
+  assign("tailCall", constant(false)),
+  assign("continue", constant({ tag: "symbol", name: "apply-body-done" })),
+  gotoLabel("apply-body-done"),
+
+  label("ev-output"),
+  save("item"),
+  save("argl"),
+  save("continue"),
+  assign("item", register("expr")),
+  assign("argl", op("emptyArgList")),
+  assign("unev", op("argExprs", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-output-done" })),
+  gotoLabel("ev-operand-loop"),
+  label("ev-output-done"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-output-exit"),
+  perform("recordOutput", register("argl")),
+  assign("val", constant(undefined)),
+  label("ev-output-exit"),
+  restore("argl"),
+  restore("item"),
+  gotoLabel("continue-dispatch"),
+
+  label("ev-operand-loop"),
+  test("noOperands", register("unev")),
+  branch("continue-dispatch"),
+  save("unev"),
+  save("continue"),
+  assign("expr", op("firstOperand", register("unev"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-operand-next" })),
+  gotoLabel("eval-form"),
+  label("ev-operand-next"),
+  restore("continue"),
+  restore("unev"),
+  test("isTransfer", register("transfer")),
+  branch("continue-dispatch"),
+  test("isErrorValue", register("val")),
+  branch("raise-error"),
+  assign("argl", op("adjoinArg", register("argl"), register("unev"), register("val"))),
+  assign("unev", op("restOperands", register("unev"))),
+  gotoLabel("ev-operand-loop"),
+
+  label("ev-return"),
+  test("isApplyBodyContinuation", register("continue")),
+  branch("ev-return-tail"),
+  save("item"),
+  save("continue"),
+  assign("item", register("expr")),
+  assign("expr", op("returnArgument", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-return-done" })),
+  test("isDone", register("expr")),
+  branch("ev-return-bare"),
+  gotoLabel("eval-form"),
+  label("ev-return-bare"),
+  assign("val", constant(undefined)),
+  label("ev-return-done"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-return-exit"),
+  test("isErrorValue", register("val")),
+  branch("ev-return-raise"),
+  assign("transfer", op("returnTransfer")),
+  gotoLabel("ev-return-exit"),
+  label("ev-return-raise"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  label("ev-return-exit"),
+  restore("item"),
+  gotoLabel("continue-dispatch"),
+  label("ev-return-tail"),
+  assign("expr", op("returnArgument", register("expr"))),
+  test("isDone", register("expr")),
+  branch("ev-return-tail-bare"),
+  assign("continue", constant({ tag: "symbol", name: "tail-return" })),
+  gotoLabel("eval-form"),
+  label("ev-return-tail-bare"),
+  assign("val", constant(undefined)),
+  gotoLabel("apply-body-done"),
+  label("tail-return"),
+  assign("continue", constant({ tag: "symbol", name: "apply-body-done" })),
+  gotoLabel("apply-body-done"),
+
+  label("ev-throw"),
+  save("item"),
+  save("continue"),
+  assign("item", register("expr")),
+  assign("expr", op("throwArgument", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-throw-done" })),
+  gotoLabel("eval-form"),
+  label("ev-throw-done"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("ev-throw-exit"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  label("ev-throw-exit"),
+  restore("item"),
+  gotoLabel("continue-dispatch"),
+
+  label("ev-while"),
+  save("item"),
+  save("continue"),
+  assign("item", register("expr")),
+  label("while-test"),
+  save("continue"),
+  assign("expr", op("conditionalTest", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "while-decide" })),
+  gotoLabel("eval-form"),
+  label("while-decide"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("while-exit"),
+  test("isErrorValue", register("val")),
+  branch("while-raise"),
+  test("truthy", register("val")),
+  branch("while-body"),
+  gotoLabel("while-exit"),
+  label("while-body"),
+  save("continue"),
+  assign("expr", op("whileBody", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "while-continue" })),
+  gotoLabel("eval-form"),
+  label("while-continue"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("while-transfer"),
+  gotoLabel("while-test"),
+  label("while-transfer"),
+  test("isBreakTransfer", register("transfer")),
+  branch("while-break"),
+  test("isLoopContinueTransfer", register("transfer")),
+  branch("while-next"),
+  gotoLabel("while-exit"),
+  label("while-break"),
+  assign("transfer", op("nullTransfer")),
+  gotoLabel("while-exit"),
+  label("while-next"),
+  assign("transfer", op("nullTransfer")),
+  gotoLabel("while-test"),
+  label("while-raise"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  label("while-exit"),
+  restore("continue"),
+  restore("item"),
+  gotoLabel("continue-dispatch"),
+
+  label("ev-for-of"),
+  save("item"),
+  save("continue"),
+  assign("item", register("expr")),
+  save("continue"),
+  assign("expr", op("forOfIterable", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "ev-for-of-iter" })),
+  gotoLabel("eval-form"),
+  label("ev-for-of-iter"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("for-of-exit"),
+  test("isErrorValue", register("val")),
+  branch("for-of-raise"),
+  assign("proc", op("makeIteration", register("val"))),
+  gotoLabel("for-of-next"),
+  label("for-of-next"),
+  test("iterationDone", register("proc")),
+  branch("for-of-exit"),
+  save("env"),
+  save("continue"),
+  save("proc"),
+  assign(
+    "env",
+    op(
+      "extendEnvironment",
+      op("forOfName", register("item")),
+      op("iterationItem", register("proc")),
+      register("env"),
+    ),
+  ),
+  assign("expr", op("forOfBody", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "for-of-continue" })),
+  gotoLabel("eval-form"),
+  label("for-of-continue"),
+  restore("proc"),
+  restore("continue"),
+  restore("env"),
+  test("isTransfer", register("transfer")),
+  branch("for-of-transfer"),
+  assign("proc", op("iterationNext", register("proc"))),
+  gotoLabel("for-of-next"),
+  label("for-of-transfer"),
+  test("isBreakTransfer", register("transfer")),
+  branch("for-of-break"),
+  test("isLoopContinueTransfer", register("transfer")),
+  branch("for-of-advance"),
+  gotoLabel("for-of-exit"),
+  label("for-of-break"),
+  assign("transfer", op("nullTransfer")),
+  gotoLabel("for-of-exit"),
+  label("for-of-advance"),
+  assign("transfer", op("nullTransfer")),
+  assign("proc", op("iterationNext", register("proc"))),
+  gotoLabel("for-of-next"),
+  label("for-of-raise"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  label("for-of-exit"),
+  restore("continue"),
+  restore("item"),
+  gotoLabel("continue-dispatch"),
+
+  label("ev-switch"),
+  save("item"),
+  save("proc"),
+  save("argl"),
+  save("continue"),
+  assign("item", register("expr")),
+  save("continue"),
+  assign("expr", op("switchDiscriminant", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "switch-scan" })),
+  gotoLabel("eval-form"),
+  label("switch-scan"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("switch-exit"),
+  test("isErrorValue", register("val")),
+  branch("switch-raise"),
+  assign("proc", register("val")),
+  assign("unev", op("switchCases", register("item"))),
+  assign("argl", constant(0)),
+  gotoLabel("switch-next"),
+  label("switch-next"),
+  test("noCases", register("unev")),
+  branch("switch-default"),
+  save("continue"),
+  assign("expr", op("caseTest", register("unev"))),
+  assign("continue", constant({ tag: "symbol", name: "switch-case-decide" })),
+  gotoLabel("eval-form"),
+  label("switch-case-decide"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("switch-exit"),
+  test("isErrorValue", register("val")),
+  branch("switch-raise"),
+  assign("val", op("binaryValue", constant("==="), register("proc"), register("val"))),
+  test("truthy", register("val")),
+  branch("switch-run"),
+  assign("unev", op("restCases", register("unev"))),
+  assign("argl", op("binaryValue", constant("+"), register("argl"), constant(1))),
+  gotoLabel("switch-next"),
+  label("switch-default"),
+  assign("unev", op("switchDefaultBody", register("item"))),
+  gotoLabel("switch-scope"),
+  label("switch-run"),
+  assign("unev", op("caseBodiesFrom", register("item"), register("argl"))),
+  label("switch-scope"),
+  save("env"),
+  assign("env", op("extendEnvironment", constant([]), constant([]), register("env"))),
+  perform("predeclareForms", op("caseBodiesFrom", register("item"), constant(0)), register("env")),
+  save("continue"),
+  assign("continue", constant({ tag: "symbol", name: "switch-done" })),
+  gotoLabel("ev-sequence"),
+  label("switch-done"),
+  restore("continue"),
+  restore("env"),
+  test("isBreakTransfer", register("transfer")),
+  branch("switch-break"),
+  gotoLabel("switch-exit"),
+  label("switch-break"),
+  assign("transfer", op("nullTransfer")),
+  gotoLabel("switch-exit"),
+  label("switch-raise"),
+  assign("transfer", op("throwTransfer", register("val"))),
+  label("switch-exit"),
+  restore("continue"),
+  restore("argl"),
+  restore("proc"),
+  restore("item"),
+  gotoLabel("continue-dispatch"),
+
+  label("ev-try"),
+  save("item"),
+  save("continue"),
+  assign("item", register("expr")),
+  save("continue"),
+  assign("expr", op("tryBlock", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "try-body-done" })),
+  gotoLabel("eval-form"),
+  label("try-body-done"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("try-pending"),
+  gotoLabel("try-finally"),
+  label("try-pending"),
+  test("isThrowTransfer", register("transfer")),
+  branch("try-handler-check"),
+  gotoLabel("try-finally"),
+  label("try-handler-check"),
+  test("hasHandler", register("item")),
+  branch("try-catch"),
+  gotoLabel("try-finally"),
+  label("try-catch"),
+  assign("val", op("transferValue", register("transfer"))),
+  assign("transfer", op("nullTransfer")),
+  save("env"),
+  assign(
+    "env",
+    op(
+      "extendEnvironment",
+      op("tryHandlerParam", register("item")),
+      register("val"),
+      register("env"),
+    ),
+  ),
+  save("continue"),
+  assign("expr", op("tryHandlerBody", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "try-handler-done" })),
+  gotoLabel("eval-form"),
+  label("try-handler-done"),
+  restore("continue"),
+  restore("env"),
+  gotoLabel("try-finally"),
+  label("try-finally"),
+  test("hasFinalizer", register("item")),
+  branch("try-finally-run"),
+  gotoLabel("try-exit"),
+  label("try-finally-run"),
+  save("transfer"),
+  assign("transfer", op("nullTransfer")),
+  save("val"),
+  save("continue"),
+  assign("expr", op("tryFinalizerBody", register("item"))),
+  assign("continue", constant({ tag: "symbol", name: "try-finally-done" })),
+  gotoLabel("eval-form"),
+  label("try-finally-done"),
+  restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("try-finally-abrupt"),
+  restore("val"),
+  restore("transfer"),
+  gotoLabel("try-exit"),
+  label("try-finally-abrupt"),
+  assign("unev", register("transfer")),
+  assign("argl", register("val")),
+  restore("val"),
+  restore("transfer"),
+  assign("transfer", register("unev")),
+  assign("val", register("argl")),
+  gotoLabel("try-exit"),
+  label("try-exit"),
+  restore("continue"),
+  restore("item"),
+  gotoLabel("continue-dispatch"),
+
+  label("ev-sequence"),
+  perform("predeclareForms", register("unev"), register("env")),
+  test("noOperands", register("unev")),
+  branch("seq-empty"),
+  assign("expr", op("firstOperand", register("unev"))),
+  assign("unev", op("restOperands", register("unev"))),
+  test("noOperands", register("unev")),
+  branch("seq-last"),
+  save("unev"),
+  save("continue"),
+  assign("continue", constant({ tag: "symbol", name: "seq-next" })),
+  gotoLabel("eval-form"),
+  label("seq-next"),
+  restore("continue"),
+  restore("unev"),
+  test("isTransfer", register("transfer")),
+  branch("continue-dispatch"),
+  test("isErrorValue", register("val")),
+  branch("raise-error"),
+  gotoLabel("ev-sequence"),
+  label("seq-last"),
+  gotoLabel("eval-form"),
+  label("seq-empty"),
+  assign("val", constant(undefined)),
+  gotoLabel("continue-dispatch"),
+  label("done"),
+];
+
+// ---------------------------------------------------------------------
+// Machine construction and the run entry points.
+// ---------------------------------------------------------------------
+
+/**
+ * The run's step bound: a guard against non-terminating guest programs. It
+ * sits above legitimate deep recursion (the controller spends roughly 450
+ * steps per non-tail guest call, so 5000-deep recursion is about 2.3 million
+ * steps) and below the point where the machine's per-step trace exhausts the
+ * heap on a diverging program.
+ */
+const EVALUATOR_STEP_LIMIT = 4_000_000;
+
+/** Builds the explicit-control evaluator over one admitted unit. */
+export const makeEvaluator = (
+  source: string,
+  customOperations: Readonly<Record<string, Operation<Word>>> = {},
+  controller: ReadonlyArray<EvaluatorMachineStatement> = evaluatorController,
+  modules: LinkedModules = {},
+): Evaluator => {
+  const session = new Session("core", modules);
+  const state: EvaluatorState = { session, forms: [], next: 0, values: [] };
+  const machine = makeMachine<Word>({
+    registers: [
+      "expr",
+      "env",
+      "val",
+      "proc",
+      "argl",
+      "unev",
+      "continue",
+      "transfer",
+      "item",
+      "tailCall",
+    ],
+    operations: { ...operationsFor(state), ...predicates, isConsoleCall, ...customOperations },
+    controller,
+  });
+  return {
+    machine,
+    run(): RunResult {
+      const admission = admitSource(source);
+      if (!admission.ok) {
+        return {
+          outcome: fail({
+            tag: "unknown-syntax",
+            construct:
+              admission.diagnostics[0]?.construct ?? `TS${admission.hostDiagnostics[0]?.code ?? 0}`,
+          }),
+          transcript: [],
+        };
+      }
+      state.forms = [...admission.program];
+      state.next = 0;
+      state.values = [];
+      const environment = session.globalEnv();
+      for (const form of admission.program) {
+        // Imports link before the first form runs, like module instantiation.
+        const error = form.tag === "import" ? session.linkImport(form, environment) : null;
+        if (error !== null) {
+          return { outcome: fail(error), transcript: [] };
+        }
+      }
+      predeclare(admission.program, environment);
+      machine.writeRegister("env", environment);
+      machine.writeRegister("transfer", undefined);
+      const run = machine.run(EVALUATOR_STEP_LIMIT);
+      const transfer = machine.readRegister("transfer");
+      const pending =
+        typeof transfer === "object" && transfer !== null && "kind" in transfer
+          ? (transfer as Transfer)
+          : undefined;
+      if (run.error !== null) {
+        const detail = run.error.tag === "unknown-operation" ? run.error.name : run.error.tag;
+        return {
+          outcome: fail({ tag: "unknown-syntax", construct: `machine-error/${detail}` }),
+          transcript: session.transcript,
+        };
+      }
+      if (pending?.kind === "error") {
+        return { outcome: fail(pending.error), transcript: session.transcript };
+      }
+      if (pending?.kind === "throw") {
+        return {
+          outcome: fail({ tag: "guest-throw", value: pending.value }),
+          transcript: session.transcript,
+        };
+      }
+      return { outcome: ok(state.values[state.values.length - 1]), transcript: session.transcript };
+    },
+  };
+};
+
+/** Runs one admitted unit on the explicit-control machine. */
+export const runEvaluator = (
+  source: string,
+  customOperations: Readonly<Record<string, Operation<Word>>> = {},
+  modules: LinkedModules = {},
+): RunResult => makeEvaluator(source, customOperations, evaluatorController, modules).run();
+
+/** Renders the machine trace of one evaluator run (the 5.4 monitoring exercises). */
+export const renderTrace = (machine: Machine<Word>): ReadonlyArray<string> =>
+  machine.result().trace;
+
+/** The monitored run: transcript plus stack statistics. */
+export interface MeasuredRun extends RunResult {
+  readonly stackStats: { readonly pushes: number; readonly maxDepth: number };
+  readonly instructionCount: number;
+}
+
+/** Runs one unit and reports the machine's stack statistics (5.4.4). */
+export const runMonitoredEvaluator = (
+  source: string,
+  controller: ReadonlyArray<EvaluatorMachineStatement> = evaluatorController,
+): MeasuredRun => {
+  const evaluator = makeEvaluator(source, {}, controller);
+  const result = evaluator.run();
+  const machine = evaluator.machine.result();
+  return {
+    ...result,
+    stackStats: machine.stackStats,
+    instructionCount: machine.instructionCount,
+  };
+};
+
+/** Replaces one labeled segment of a controller copy (5.4 monitoring exercises). */
+export const replaceSegment = (
+  lines: ReadonlyArray<EvaluatorMachineStatement>,
+  fromLabel: string,
+  toLabelExclusive: string,
+  replacement: ReadonlyArray<EvaluatorMachineStatement>,
+): EvaluatorMachineStatement[] => {
+  const start = lines.findIndex((line) => line.tag === "label" && line.name === fromLabel);
+  const end = lines.findIndex((line) => line.tag === "label" && line.name === toLabelExclusive);
+  if (start < 0 || end < 0 || end < start) {
+    return [...lines];
+  }
+  return [...lines.slice(0, start), ...replacement, ...lines.slice(end)];
+};
+
+/** Inserts controller lines before the first matching instruction. */
+export const insertBeforeInstruction = (
+  lines: ReadonlyArray<EvaluatorMachineStatement>,
+  matches: (line: EvaluatorMachineStatement) => boolean,
+  description: string,
+  insertions: ReadonlyArray<EvaluatorMachineStatement>,
+): EvaluatorMachineStatement[] => {
+  void description;
+  const at = lines.findIndex(matches);
+  return at < 0 ? [...lines] : [...lines.slice(0, at), ...insertions, ...lines.slice(at)];
+};
+
+/** Appends controller lines to a copy. */
+export const appendLines = (
+  lines: ReadonlyArray<EvaluatorMachineStatement>,
+  additions: ReadonlyArray<EvaluatorMachineStatement>,
+): EvaluatorMachineStatement[] => [...lines, ...additions];
+
+/** The evaluator's value renderer for transcripts. */
+export const formatValue = format;
+
+export type { GenericMachineStatement as MachineStatement, Operation };
+// Re-exported construction helpers used by controller-variant exercises.
+export {
+  assign,
+  branch,
+  constant,
+  gotoLabel,
+  gotoRegister,
+  Machine,
+  makeMachine,
   op,
   perform,
-  reg,
+  register,
   restore,
   save,
   test,
-  type Value,
-} from "./02-simulator.js";
-
-/** A machine word used by the evaluator. Internal words have a reserved tag. */
-const c = (value: Value | { readonly label: string }) =>
-  typeof value === "object" && value !== null && "label" in value
-    ? lbl(value.label)
-    : baseConst(value);
-export type Word = Value | PairWord | TaggedWord;
-export interface PairWord {
-  readonly symbol: "pair";
-  readonly car: Word;
-  readonly cdr: Word;
-}
-export interface TaggedWord {
-  readonly symbol: string;
-  readonly wordTag: string;
-  readonly payload: unknown;
-}
-export const nil: Value = { symbol: "nil" };
-const symbol = (name: string): Value => ({ symbol: name });
-const pair = (car: Word, cdr: Word): PairWord => ({ symbol: "pair", car, cdr });
-const isPair = (v: Word): v is PairWord =>
-  typeof v === "object" && v !== null && "car" in v && "cdr" in v;
-const isNil = (v: Word): boolean =>
-  typeof v === "object" && v !== null && "symbol" in v && v.symbol === "nil";
-const list = (xs: readonly Word[]): Word =>
-  xs.reduceRight((tail, item) => pair(item, tail), nil as Word);
-const items = (v: Word): Word[] => {
-  const out: Word[] = [];
-  let p = v;
-  while (isPair(p)) {
-    out.push(p.car);
-    p = p.cdr;
-  }
-  if (!isNil(p)) throw new EvaluatorFault("expected a proper list");
-  return out;
 };
-const tagged = (tag: string, payload: unknown): TaggedWord => ({
-  symbol: `sicp-word:${tag}`,
-  wordTag: tag,
-  payload,
-});
-const isTagged = (v: Word, tag: string): v is TaggedWord =>
-  typeof v === "object" && v !== null && "wordTag" in v && v.wordTag === tag;
-const render = (v: Word): string => {
-  if (isTagged(v, "primitive")) return `#[primitive ${(v.payload as { name: string }).name}]`;
-  if (isTagged(v, "procedure")) return "#[compound-procedure]";
-  if (isTagged(v, "condition")) return String((v.payload as { detail: string }).detail);
-  if (isNil(v)) return "()";
-  if (isPair(v)) {
-    const xs: string[] = [];
-    let p: Word = v;
-    while (isPair(p)) {
-      xs.push(render(p.car));
-      p = p.cdr;
-    }
-    return isNil(p) ? `(${xs.join(" ")})` : `(${xs.join(" ")} . ${render(p)})`;
-  }
-  if (typeof v === "object" && "symbol" in v) return v.symbol;
-  if (typeof v === "boolean") return v ? "#t" : "#f";
-  return String(v);
-};
-
-export class EvaluatorFault extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "EvaluatorFault";
-  }
-}
-export const INPUT_EXHAUSTED = "the evaluator's input queue is empty";
-
-const tokenize = (source: string): string[] => {
-  const out: string[] = [];
-  let i = 0;
-  while (i < source.length) {
-    const ch = source[i] ?? "";
-    if (/\s/.test(ch)) {
-      i += 1;
-      continue;
-    }
-    if (ch === ";") {
-      while (i < source.length && (source[i] ?? "") !== "\n") i += 1;
-      continue;
-    }
-    if ("()'".includes(ch)) {
-      out.push(ch);
-      i += 1;
-      continue;
-    }
-    if (ch === '"') {
-      let s = "";
-      i += 1;
-      while (i < source.length && (source[i] ?? "") !== '"') {
-        const current = source[i] ?? "";
-        if (current === "\\") {
-          i += 1;
-          s += source[i] ?? "";
-        } else s += current;
-        i += 1;
-      }
-      if ((source[i] ?? "") !== '"') throw new EvaluatorFault("unterminated string");
-      i += 1;
-      out.push(JSON.stringify(s));
-      continue;
-    }
-    let j = i;
-    while (j < source.length && !/\s/.test(source[j] ?? "") && !"()'".includes(source[j] ?? ""))
-      j += 1;
-    out.push(source.slice(i, j));
-    i = j;
-  }
-  return out;
-};
-const readDatum = (tokens: string[], at: { n: number }): Word => {
-  const t = tokens[at.n];
-  if (t === undefined) throw new EvaluatorFault("unexpected end of input");
-  at.n += 1;
-  if (t === "'") return list([symbol("quote"), readDatum(tokens, at)]);
-  if (t === "(") {
-    const xs: Word[] = [];
-    while (tokens[at.n] !== ")") {
-      if (tokens[at.n] === undefined) throw new EvaluatorFault("missing right parenthesis");
-      xs.push(readDatum(tokens, at));
-    }
-    at.n += 1;
-    return list(xs);
-  }
-  if (t === ")") throw new EvaluatorFault("unexpected right parenthesis");
-  if (t === "#t" || t === "true") return true;
-  if (t === "#f" || t === "false") return false;
-  if (/^-?(?:\d+\.?\d*|\.\d+)$/.test(t)) return Number(t);
-  if (t.startsWith('"')) return symbol(t.slice(1, -1));
-  return symbol(t);
-};
-export const readProgram = (source: string): Word[] => {
-  const ts = tokenize(source),
-    at = { n: 0 },
-    out: Word[] = [];
-  while (at.n < ts.length) out.push(readDatum(ts, at));
-  return out;
-};
-
-export interface Frame {
-  readonly bindings: Map<string, Word>;
-  readonly parent: number | null;
-}
-export interface State {
-  readonly frames: Frame[];
-  readonly input: Word[];
-  readonly output: string[];
-  machine?: Machine;
-}
-const envWord = (index: number): TaggedWord => tagged("environment", index);
-const envIndex = (w: Word): number => {
-  if (!isTagged(w, "environment") || typeof w.payload !== "number")
-    throw new EvaluatorFault("expected an environment word");
-  return w.payload;
-};
-const primitiveWord = (name: string): TaggedWord => tagged("primitive", { name });
-const procedureWord = (params: string[], body: Word[], env: Word): TaggedWord =>
-  tagged("procedure", { params, body, env: envIndex(env) });
-const conditionWord = (kind: string, detail: string): TaggedWord =>
-  tagged("condition", { kind, detail });
-
-const nameOf = (v: Word): string => {
-  if (typeof v === "object" && v !== null && "symbol" in v && !("wordTag" in v) && !isPair(v))
-    return v.symbol;
-  throw new EvaluatorFault("expected a variable");
-};
-const taggedForm = (name: string, v: Word): v is PairWord =>
-  isPair(v) &&
-  !isPair(v.car) &&
-  typeof v.car === "object" &&
-  "symbol" in v.car &&
-  v.car.symbol === name;
-const nth = (v: Word, n: number): Word => {
-  const xs = items(v);
-  const value = xs[n];
-  if (value === undefined) throw new EvaluatorFault("malformed form");
-  return value;
-};
-const _seqWord = (body: Word[]): Word =>
-  body.length === 1 ? (body[0] ?? nil) : list([symbol("begin"), ...body]);
-
-export const baseOperations = (state: State): Record<string, Operation> => {
-  const one =
-    (name: string, f: (a: Word) => Word): Operation =>
-    (args) => {
-      if (args.length !== 1) throw new EvaluatorFault(`${name} needs one argument`);
-      return f(args[0] as Word) as Value;
-    };
-  const two =
-    (name: string, f: (a: Word, b: Word) => Word): Operation =>
-    (args) => {
-      if (args.length !== 2) throw new EvaluatorFault(`${name} needs two arguments`);
-      return f(args[0] as Word, args[1] as Word) as Value;
-    };
-  const three =
-    (name: string, f: (a: Word, b: Word, c: Word) => Word): Operation =>
-    (args) => {
-      if (args.length !== 3) throw new EvaluatorFault(`${name} needs three arguments`);
-      return f(args[0] as Word, args[1] as Word, args[2] as Word) as Value;
-    };
-  const bool = (x: boolean): Value => x;
-  const global = state.frames[0];
-  if (!global) throw new EvaluatorFault("missing global frame");
-  const find = (env: Word, name: string): Frame => {
-    let i = envIndex(env);
-    while (true) {
-      const f = state.frames[i];
-      if (!f) throw new EvaluatorFault("bad environment index");
-      if (f.bindings.has(name)) return f;
-      if (f.parent === null) throw new EvaluatorFault(`unbound variable: ${name}`);
-      i = f.parent;
-    }
-  };
-  const syntax: Record<string, Operation> = {
-    "self-evaluating?": one("self-evaluating?", (w) =>
-      bool(typeof w === "number" || typeof w === "string" || typeof w === "boolean"),
-    ),
-    "variable?": one("variable?", (w) =>
-      bool(
-        typeof w === "object" &&
-          !isPair(w) &&
-          !isTagged(w, "environment") &&
-          !isTagged(w, "procedure") &&
-          !isTagged(w, "primitive") &&
-          !isTagged(w, "condition") &&
-          !isNil(w),
-      ),
-    ),
-    "quoted?": one("quoted?", (w) => bool(taggedForm("quote", w))),
-    "assignment?": one("assignment?", (w) => bool(taggedForm("set!", w))),
-    "definition?": one("definition?", (w) => bool(taggedForm("define", w))),
-    "if?": one("if?", (w) => bool(taggedForm("if", w))),
-    "lambda?": one("lambda?", (w) => bool(taggedForm("lambda", w))),
-    "begin?": one("begin?", (w) => bool(taggedForm("begin", w))),
-    "application?": one("application?", (w) => bool(isPair(w))),
-    "text-of-quotation": one("text-of-quotation", (w) => nth(w, 1)),
-    "if-predicate": one("if-predicate", (w) => nth(w, 1)),
-    "if-consequent": one("if-consequent", (w) => nth(w, 2)),
-    "if-alternative": one("if-alternative", (w) => {
-      const xs = items(w);
-      return xs[3] ?? false;
-    }),
-    "begin-actions": one("begin-actions", (w) => {
-      if (!isPair(w)) throw new EvaluatorFault("begin-actions needs a list");
-      return w.cdr;
-    }),
-    "lambda-parameters": one("lambda-parameters", (w) => nth(w, 1)),
-    "lambda-body": one("lambda-body", (w) => {
-      const xs = items(w);
-      return list(xs.slice(2));
-    }),
-    operator: one("operator", (w) => nth(w, 0)),
-    operands: one("operands", (w) => {
-      if (!isPair(w)) throw new EvaluatorFault("operands needs a combination");
-      return w.cdr;
-    }),
-    "assignment-variable": one("assignment-variable", (w) => nth(w, 1)),
-    "assignment-value": one("assignment-value", (w) => nth(w, 2)),
-    "definition-variable": one("definition-variable", (w) => {
-      const target = nth(w, 1);
-      return isPair(target) ? target.car : target;
-    }),
-    "definition-value": one("definition-value", (w) => {
-      const xs = items(w),
-        target = xs[1] ?? nil;
-      if (isPair(target)) return list([symbol("lambda"), target.cdr, ...xs.slice(2)]);
-      return xs[2] ?? nil;
-    }),
-    "first-exp": one("first-exp", (w) => nth(w, 0)),
-    "rest-exps": one("rest-exps", (w) => {
-      const xs = items(w);
-      return list(xs.slice(1));
-    }),
-    "last-exp?": one("last-exp?", (w) => bool(items(w).length === 1)),
-    "no-more-exps?": one("no-more-exps?", (w) => bool(isNil(w))),
-    "no-operands?": one("no-operands?", (w) => bool(isNil(w))),
-    "first-operand": one("first-operand", (w) => nth(w, 0)),
-    "rest-operands": one("rest-operands", (w) => list(items(w).slice(1))),
-    "last-operand?": one("last-operand?", (w) => bool(items(w).length === 1)),
-    "empty-arglist": () => nil,
-    "adjoin-arg": two("adjoin-arg", (a, l) => list([...items(l), a])),
-    "primitive-procedure?": one("primitive-procedure?", (w) => bool(isTagged(w, "primitive"))),
-    "compound-procedure?": one("compound-procedure?", (w) => bool(isTagged(w, "procedure"))),
-    "procedure-parameters": one("procedure-parameters", (w) =>
-      list(((w as TaggedWord).payload as { params: string[] }).params.map(symbol)),
-    ),
-    "procedure-body": one("procedure-body", (w) =>
-      list(((w as TaggedWord).payload as { body: Word[] }).body),
-    ),
-    "procedure-environment": one("procedure-environment", (w) =>
-      envWord(((w as TaggedWord).payload as { env: number }).env),
-    ),
-    "true?": one("true?", (w) => bool(w !== false)),
-    "make-procedure": three("make-procedure", (p, b, e) =>
-      procedureWord(items(p).map(nameOf), items(b), e),
-    ),
-    "apply-primitive-procedure": two("apply-primitive-procedure", (p, args) => {
-      const name = ((p as TaggedWord).payload as { name: string }).name;
-      return applyPrimitive(name, items(args));
-    }),
-  };
-  const envOps: Record<string, Operation> = {
-    "get-global-environment": () => envWord(0) as Value,
-    "lookup-variable-value": two("lookup-variable-value", (v, e) => {
-      const found = find(e, nameOf(v)).bindings.get(nameOf(v));
-      if (found === undefined) throw new EvaluatorFault(`unbound variable: ${nameOf(v)}`);
-      return found;
-    }),
-    "set-variable-value!": three("set-variable-value!", (v, value, e) => {
-      find(e, nameOf(v)).bindings.set(nameOf(v), value);
-      return nil;
-    }),
-    "define-variable!": three("define-variable!", (v, value, e) => {
-      const frame = state.frames[envIndex(e)];
-      if (!frame) throw new EvaluatorFault("bad environment index");
-      frame.bindings.set(nameOf(v), value);
-      return nil;
-    }),
-    "extend-environment": three("extend-environment", (p, a, e) => {
-      const ps = items(p).map(nameOf),
-        as = items(a);
-      if (ps.length !== as.length)
-        throw new EvaluatorFault(`arity mismatch: expected ${ps.length}, given ${as.length}`);
-      const i = state.frames.length;
-      state.frames.push({
-        bindings: new Map(ps.map((n, j) => [n, as[j] as Word])),
-        parent: envIndex(e),
-      });
-      return envWord(i);
-    }),
-    read: () => {
-      const value = state.input.shift();
-      if (value === undefined) throw new EvaluatorFault(INPUT_EXHAUSTED);
-      return value as Value;
-    },
-    "prompt-for-input": () => {
-      state.output.push(";;; EC-Eval input:");
-      return nil;
-    },
-    "announce-output": () => {
-      state.output.push(";;; EC-Eval value:");
-      return nil;
-    },
-    "user-print": one("user-print", (w) => {
-      state.output.push(render(w));
-      return w;
-    }),
-  };
-  const applyPrimitive = (name: string, args: Word[]): Word => {
-    const n = (w: Word): number => {
-      if (typeof w !== "number") throw new EvaluatorFault(`${name}: not a number`);
-      return w;
-    };
-    switch (name) {
-      case "cons":
-        if (args.length !== 2) throw new EvaluatorFault("arity mismatch");
-        return pair(args[0] as Word, args[1] as Word);
-      case "car":
-        if (!isPair(args[0] as Word)) throw new EvaluatorFault("type error: car");
-        return (args[0] as PairWord).car;
-      case "cdr":
-        if (!isPair(args[0] as Word)) throw new EvaluatorFault("type error: cdr");
-        return (args[0] as PairWord).cdr;
-      case "null?":
-        return isNil(args[0] as Word);
-      case "pair?":
-        return isPair(args[0] as Word);
-      case "symbol?":
-        return (
-          typeof args[0] === "object" &&
-          !isPair(args[0] as Word) &&
-          !isTagged(args[0] as Word, "environment")
-        );
-      case "number?":
-        return typeof args[0] === "number";
-      case "not":
-        return args[0] === false;
-      case "eq?":
-        return args[0] === args[1] || (typeof args[0] === "number" && args[0] === args[1]);
-      case "list":
-        return list(args);
-      case "+":
-        return args.reduce<number>((a, b) => a + n(b), 0);
-      case "-":
-        return args.length === 1
-          ? -n(args[0] as Word)
-          : args.slice(1).reduce<number>((a, b) => a - n(b), n(args[0] as Word));
-      case "*":
-        return args.reduce<number>((a, b) => a * n(b), 1);
-      case "/": {
-        let x = n(args[0] as Word);
-        for (const a of args.slice(1)) {
-          const d = n(a);
-          if (d === 0) throw new EvaluatorFault("division by zero");
-          x /= d;
-        }
-        return x;
-      }
-      case "=":
-        return n(args[0] as Word) === n(args[1] as Word);
-      case "<":
-        return n(args[0] as Word) < n(args[1] as Word);
-      case ">":
-        return n(args[0] as Word) > n(args[1] as Word);
-      case "remainder":
-        return n(args[0] as Word) % n(args[1] as Word);
-      default:
-        throw new EvaluatorFault(`unknown primitive procedure: ${name}`);
-    }
-  };
-  return { ...syntax, ...envOps };
-};
-
-const controller: ControllerLine[] = [
-  mark("read-eval-print-loop"),
-  perform("initialize-stack"),
-  perform("prompt-for-input"),
-  assign("exp", op("read")),
-  assign("env", op("get-global-environment")),
-  assign("continue", c({ label: "print-result" })),
-  jump("eval-dispatch"),
-  mark("print-result"),
-  perform("announce-output"),
-  perform("user-print", reg("val")),
-  jump("read-eval-print-loop"),
-  mark("eval-dispatch"),
-  test("self-evaluating?", reg("exp")),
-  branch("ev-self-eval"),
-  test("variable?", reg("exp")),
-  branch("ev-variable"),
-  test("quoted?", reg("exp")),
-  branch("ev-quoted"),
-  test("assignment?", reg("exp")),
-  branch("ev-assignment"),
-  test("definition?", reg("exp")),
-  branch("ev-definition"),
-  test("if?", reg("exp")),
-  branch("ev-if"),
-  test("lambda?", reg("exp")),
-  branch("ev-lambda"),
-  test("begin?", reg("exp")),
-  branch("ev-begin"),
-  test("application?", reg("exp")),
-  branch("ev-application"),
-  jump("unknown-expression-type"),
-  mark("ev-self-eval"),
-  assign("val", reg("exp")),
-  jumpReg("continue"),
-  mark("ev-variable"),
-  assign("val", op("lookup-variable-value", reg("exp"), reg("env"))),
-  jumpReg("continue"),
-  mark("ev-quoted"),
-  assign("val", op("text-of-quotation", reg("exp"))),
-  jumpReg("continue"),
-  mark("ev-lambda"),
-  assign("unev", op("lambda-parameters", reg("exp"))),
-  assign("exp", op("lambda-body", reg("exp"))),
-  assign("val", op("make-procedure", reg("unev"), reg("exp"), reg("env"))),
-  jumpReg("continue"),
-  mark("ev-application"),
-  save("continue"),
-  save("env"),
-  assign("unev", op("operands", reg("exp"))),
-  save("unev"),
-  assign("exp", op("operator", reg("exp"))),
-  assign("continue", c({ label: "ev-appl-did-operator" })),
-  jump("eval-dispatch"),
-  mark("ev-appl-did-operator"),
-  restore("unev"),
-  restore("env"),
-  assign("argl", op("empty-arglist")),
-  assign("proc", reg("val")),
-  test("no-operands?", reg("unev")),
-  branch("apply-dispatch"),
-  save("proc"),
-  mark("ev-appl-operand-loop"),
-  save("argl"),
-  assign("exp", op("first-operand", reg("unev"))),
-  test("last-operand?", reg("unev")),
-  branch("ev-appl-last-arg"),
-  save("env"),
-  save("unev"),
-  assign("continue", c({ label: "ev-appl-accumulate-arg" })),
-  jump("eval-dispatch"),
-  mark("ev-appl-accumulate-arg"),
-  restore("unev"),
-  restore("env"),
-  restore("argl"),
-  assign("argl", op("adjoin-arg", reg("val"), reg("argl"))),
-  assign("unev", op("rest-operands", reg("unev"))),
-  jump("ev-appl-operand-loop"),
-  mark("ev-appl-last-arg"),
-  assign("continue", c({ label: "ev-appl-accum-last-arg" })),
-  jump("eval-dispatch"),
-  mark("ev-appl-accum-last-arg"),
-  restore("argl"),
-  assign("argl", op("adjoin-arg", reg("val"), reg("argl"))),
-  restore("proc"),
-  jump("apply-dispatch"),
-  mark("apply-dispatch"),
-  test("primitive-procedure?", reg("proc")),
-  branch("primitive-apply"),
-  test("compound-procedure?", reg("proc")),
-  branch("compound-apply"),
-  jump("unknown-procedure-type"),
-  mark("primitive-apply"),
-  assign("val", op("apply-primitive-procedure", reg("proc"), reg("argl"))),
-  restore("continue"),
-  jumpReg("continue"),
-  mark("compound-apply"),
-  assign("unev", op("procedure-parameters", reg("proc"))),
-  assign("env", op("procedure-environment", reg("proc"))),
-  assign("env", op("extend-environment", reg("unev"), reg("argl"), reg("env"))),
-  assign("unev", op("procedure-body", reg("proc"))),
-  jump("ev-sequence"),
-  mark("ev-begin"),
-  assign("unev", op("begin-actions", reg("exp"))),
-  save("continue"),
-  jump("ev-sequence"),
-  mark("ev-sequence"),
-  assign("exp", op("first-exp", reg("unev"))),
-  test("last-exp?", reg("unev")),
-  branch("ev-sequence-last-exp"),
-  save("unev"),
-  save("env"),
-  assign("continue", c({ label: "ev-sequence-continue" })),
-  jump("eval-dispatch"),
-  mark("ev-sequence-continue"),
-  restore("env"),
-  restore("unev"),
-  assign("unev", op("rest-exps", reg("unev"))),
-  jump("ev-sequence"),
-  mark("ev-sequence-last-exp"),
-  restore("continue"),
-  jump("eval-dispatch"),
-  mark("ev-if"),
-  save("exp"),
-  save("env"),
-  save("continue"),
-  assign("continue", c({ label: "ev-if-decide" })),
-  assign("exp", op("if-predicate", reg("exp"))),
-  jump("eval-dispatch"),
-  mark("ev-if-decide"),
-  restore("continue"),
-  restore("env"),
-  restore("exp"),
-  test("true?", reg("val")),
-  branch("ev-if-consequent"),
-  mark("ev-if-alternative"),
-  assign("exp", op("if-alternative", reg("exp"))),
-  jump("eval-dispatch"),
-  mark("ev-if-consequent"),
-  assign("exp", op("if-consequent", reg("exp"))),
-  jump("eval-dispatch"),
-  mark("ev-assignment"),
-  assign("unev", op("assignment-variable", reg("exp"))),
-  save("unev"),
-  assign("exp", op("assignment-value", reg("exp"))),
-  save("env"),
-  save("continue"),
-  assign("continue", c({ label: "ev-assignment-1" })),
-  jump("eval-dispatch"),
-  mark("ev-assignment-1"),
-  restore("continue"),
-  restore("env"),
-  restore("unev"),
-  perform("set-variable-value!", reg("unev"), reg("val"), reg("env")),
-  assign("val", c(symbol("ok"))),
-  jumpReg("continue"),
-  mark("ev-definition"),
-  assign("unev", op("definition-variable", reg("exp"))),
-  save("unev"),
-  assign("exp", op("definition-value", reg("exp"))),
-  save("env"),
-  save("continue"),
-  assign("continue", c({ label: "ev-definition-1" })),
-  jump("eval-dispatch"),
-  mark("ev-definition-1"),
-  restore("continue"),
-  restore("env"),
-  restore("unev"),
-  perform("define-variable!", reg("unev"), reg("val"), reg("env")),
-  assign("val", c(symbol("ok"))),
-  jumpReg("continue"),
-  mark("unknown-expression-type"),
-  assign("val", c(symbol("unknown-expression-type-error"))),
-  jump("signal-error"),
-  mark("unknown-procedure-type"),
-  restore("continue"),
-  assign("val", c(symbol("unknown-procedure-type-error"))),
-  jump("signal-error"),
-  mark("signal-error"),
-  perform("user-print", reg("val")),
-  jump("read-eval-print-loop"),
-];
-export const evaluatorController = controller;
-export const monitoredEvaluatorController = controller.map((line) => line);
-export const evaluatorRegisters = [
-  "exp",
-  "env",
-  "val",
-  "continue",
-  "proc",
-  "argl",
-  "unev",
-] as const;
-export const controllerText = controller.map((x) => (x.tag === "label" ? x.name : "")).join("\n");
-
-export interface Evaluator {
-  readonly machine: Machine;
-  readonly state: State;
-  readonly transcript: readonly string[];
-  run: () => readonly string[];
-}
-export type OperationsSpec =
-  | Readonly<Record<string, Operation>>
-  | ((state: State, base: Record<string, Operation>) => Readonly<Record<string, Operation>>);
-
-const buildEvaluator = (
-  source: string,
-  lines: readonly ControllerLine[],
-  operations: OperationsSpec = {},
-): Evaluator => {
-  const state: State = {
-    frames: [{ bindings: new Map(), parent: null }],
-    input: readProgram(source),
-    output: [],
-  };
-  const global = state.frames[0];
-  if (!global) throw new EvaluatorFault("missing global frame");
-  for (const n of [
-    "cons",
-    "car",
-    "cdr",
-    "null?",
-    "pair?",
-    "symbol?",
-    "number?",
-    "not",
-    "eq?",
-    "list",
-    "+",
-    "-",
-    "*",
-    "/",
-    "=",
-    "<",
-    ">",
-    "remainder",
-  ])
-    global.bindings.set(n, primitiveWord(n));
-  global.bindings.set("true", true);
-  global.bindings.set("false", false);
-  const base = baseOperations(state);
-  const customOperations = typeof operations === "function" ? operations(state, base) : operations;
-  const machine = makeNewMachine(evaluatorRegisters, {
-    ...base,
-    ...customOperations,
-  });
-  state.machine = machine;
-  const assembled = assemble(lines, machine);
-  if (!assembled.ok) throw new EvaluatorFault(JSON.stringify(assembled.error));
-  machine.install(assembled.value);
-  let ran = false;
-  const run = (): readonly string[] => {
-    if (ran) return state.output;
-    ran = true;
-    try {
-      const result = machine.start();
-      if (!result.ok) throw new EvaluatorFault(JSON.stringify(result.error));
-    } catch (e) {
-      if (!(e instanceof EvaluatorFault) || e.message !== INPUT_EXHAUSTED) throw e;
-    }
-    return state.output;
-  };
-  return {
-    machine,
-    state,
-    get transcript() {
-      return state.output;
-    },
-    run,
-  };
-};
-export const makeEvaluator = (
-  source: string,
-  customOperations: Readonly<Record<string, Operation>> = {},
-  _monitored = false,
-): Evaluator => buildEvaluator(source, controller, customOperations);
-export const runEvaluator = (
-  source: string,
-  customOperations: Readonly<Record<string, Operation>> = {},
-): readonly string[] => makeEvaluator(source, customOperations).run();
-
-/** An evaluator over a modified controller line list with operation
- * overrides. A function spec receives the machine state and the base
- * operation table, so a variant can guard or reuse base entries. */
-export const makeVariantEvaluator = (
-  source: string,
-  lines: readonly ControllerLine[],
-  operations: OperationsSpec = {},
-): Evaluator => buildEvaluator(source, lines, operations);
-
-// Word-level helpers for the exercise variants: the operations a variant
-// adds are functions over the same words the base operations read.
-export const makeSymbolWord = symbol;
-export const makePairWord = pair;
-export const makeListWord = list;
-export const wordItems = items;
-export const isPairWord = isPair;
-export const isNilWord = isNil;
-export const wordName = nameOf;
-export const isSpecialForm = taggedForm;
-export const wordAt = nth;
-
-/** One-argument machine operation over evaluator words. */
-export const wordOperation1 =
-  (name: string, f: (a: Word) => Word): Operation =>
-  (args) => {
-    if (args.length !== 1) throw new EvaluatorFault(`${name} needs one argument`);
-    return f(args[0] as Word) as Value;
-  };
-/** Two-argument machine operation over evaluator words. */
-export const wordOperation2 =
-  (name: string, f: (a: Word, b: Word) => Word): Operation =>
-  (args) => {
-    if (args.length !== 2) throw new EvaluatorFault(`${name} needs two arguments`);
-    return f(args[0] as Word, args[1] as Word) as Value;
-  };
-
-// Controller splices: the exercise variants copy the base controller and
-// rewrite segments between labels; the base array is never mutated.
-const labelPosition = (lines: readonly ControllerLine[], name: string): number => {
-  const index = lines.findIndex((line) => line.tag === "label" && line.name === name);
-  if (index < 0) throw new EvaluatorFault(`the controller lacks label ${name}`);
-  return index;
-};
-export const replaceSegment = (
-  lines: readonly ControllerLine[],
-  fromLabel: string,
-  toLabelExclusive: string,
-  replacement: readonly ControllerLine[],
-): ControllerLine[] => {
-  const from = labelPosition(lines, fromLabel);
-  const to = labelPosition(lines, toLabelExclusive);
-  return [...lines.slice(0, from + 1), ...replacement, ...lines.slice(to)];
-};
-export const insertBeforeInstruction = (
-  lines: readonly ControllerLine[],
-  matches: (line: ControllerLine) => boolean,
-  description: string,
-  insertions: readonly ControllerLine[],
-): ControllerLine[] => {
-  const index = lines.findIndex(matches);
-  if (index < 0) throw new EvaluatorFault(`the controller lacks ${description}`);
-  return [...lines.slice(0, index), ...insertions, ...lines.slice(index)];
-};
-export const appendLines = (
-  lines: readonly ControllerLine[],
-  additions: readonly ControllerLine[],
-): ControllerLine[] => [...lines, ...additions];
-
-/** One monitored run: the program's transcript plus the stack counters
- * of its final interaction, captured the way the book's 5.4.4 monitored
- * driver does, between @code{print-result} and the value announcement,
- * where the counters still hold the interaction that produced the
- * value. */
-export interface MeasuredRun {
-  readonly transcript: readonly string[];
-  readonly pushes: number;
-  readonly maximumDepth: number;
-}
-export const runMonitoredEvaluator = (
-  source: string,
-  lines: readonly ControllerLine[] = controller,
-): MeasuredRun => {
-  const monitoredController = insertBeforeInstruction(
-    lines,
-    (line) => line.tag === "perform" && line.op === "announce-output",
-    "the announce-output instruction",
-    [perform("capture-stack-statistics")],
-  );
-  let pushes = 0;
-  let maximumDepth = 0;
-  const evaluator = buildEvaluator(source, monitoredController, (state) => ({
-    "capture-stack-statistics": () => {
-      const stats = state.machine?.stack.statistics();
-      if (stats) {
-        pushes = stats.pushes;
-        maximumDepth = stats.maxDepth;
-      }
-      return 0;
-    },
-  }));
-  const transcript = evaluator.run();
-  return { transcript, pushes, maximumDepth };
-};
-export const formatWord = render;
-export const parse = readProgram;
-export const makeTaggedWord = tagged;
-export const isTaggedWord = isTagged;
-export const makeEnvironmentWord = envWord;
-export const makeConditionWord = conditionWord;

@@ -12,6 +12,12 @@ public class E4_63Test :
         test("Exercise 4.63: the Genesis queries").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            genesisQueries() shouldBe listOf("MEASURE")
+            genesisQueries() shouldBe
+                listOf(
+                    "?x = Irad",
+                    "?x = Jabal",
+                    "?x = Jubal",
+                    "?x = Irad",
+                )
         }
     })

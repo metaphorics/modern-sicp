@@ -4,5 +4,5 @@
 import { test } from "vitest";
 
 test.todo(
-  "Exercise 4.51: implement permanent-set!, an assignment that is not undone upon failure, and give the values the count example displays",
+  "Exercise 4.51: implement permanent assignment, an assignment that is not undone upon failure, and give the values the count example displays",
 );

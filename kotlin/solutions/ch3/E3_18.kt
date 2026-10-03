@@ -3,24 +3,23 @@
 
 package sicp.ch3.exercises
 
-import sicp.runtime.VPair
-import sicp.runtime.Value
+import sicp.runtime.Datum
+import sicp.runtime.PairCell
 
 /**
- * Cycle detection by remembering: walk the cdr chain, keeping the pairs
- * already visited in a plain list scanned with `===` (there is no
- * identity-keyed set in the standard library). Meeting a pair a second
- * time means some cdr chain loops; reaching `VNil` means it does not.
+ * Cycle detection by remembering: follow the second-field chain and keep
+ * visited `PairCell` objects in a list scanned with `===`. Seeing a cell
+ * twice means the chain loops; reaching `Empty` means it terminates.
  */
-public fun containsCycle(x: Value): Boolean {
-    val seen = mutableListOf<VPair>()
+public fun containsCycle(x: Datum): Boolean {
+    val seen = mutableListOf<PairCell>()
     var cursor = x
-    while (cursor is VPair) {
+    while (cursor is PairCell) {
         if (seen.any { it === cursor }) {
             return true
         }
         seen.add(cursor)
-        cursor = cursor.cdr
+        cursor = cursor.second
     }
     return false
 }

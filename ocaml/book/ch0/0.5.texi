@@ -3,10 +3,8 @@
 
 @noindent
 OCaml's built-in @code{'a list} is a proper homogeneous sequence, written
-with semicolons and built the same way Scheme's list is: an empty list,
-@code{[]}, and @code{::} (pronounced ``cons''), which prepends one element
-to an existing list, exactly like Scheme's @code{cons} onto a list built from
-nested pairs terminated by @code{'()}:
+with semicolons and built two ways: an empty list, @code{[]}, and @code{::}
+(pronounced ``cons''), which prepends one element to an existing list:
 
 @example
 # 0 :: [ 1; 2; 3 ];;
@@ -25,8 +23,7 @@ several possible shapes.
 @subsubheading Library higher-order functions
 
 @code{List.map} and @code{List.filter} take a function and a list and
-produce a new list, translating Scheme's @code{map} and @code{filter}
-directly:
+produce a new list:
 
 @example
 # List.map (fun x -> x * x) [ 1; 2; 3; 4 ];;
@@ -42,8 +39,8 @@ here it stands in for the range @code{1} through @code{10}.)
 @subsubheading Deriving @code{map} and @code{filter} by hand
 
 Before reaching for the library, this section rebuilds both by hand, the way
-the original book rebuilds list primitives from @code{cons}, @code{car}, and
-@code{cdr} to show they hold no magic:
+the original book rebuilds its own list operations to show they hold no
+magic:
 
 @example
 # let rec my_map f = function

@@ -9,7 +9,7 @@ import io.kotest.matchers.shouldBe
 
 public class E2_23Test :
     FunSpec({
-        test("Exercise 2.23: forEachValue visits (57 321 88) left to right").config(
+        test("Exercise 2.23 visits the recorded values from left to right").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
             ex_2_23() shouldBe listOf(57L, 321L, 88L)

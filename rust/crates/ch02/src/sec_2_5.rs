@@ -27,7 +27,7 @@
 
 use std::rc::Rc;
 
-use sicp_runtime::{Handler, Key, OpTable, SchemeError, Symbol, Value, car, cdr, cons_cell};
+use sicp_runtime::{Handler, Key, OpTable, SicpError, Symbol, Value, car, cdr, cons_cell};
 
 use crate::sec_2_4::{
     imag_part_dispatch, install_polar_package, install_rectangular_package, real_part_dispatch,
@@ -38,30 +38,33 @@ use crate::sec_2_4::{
 // Tags (with the exercise 2.78 accommodation the section's footnote assumes)
 // ---------------------------------------------------------------------
 
-/// Builds a tagged datum: the book's `attach-tag`. An ordinary number
-/// (plain [`Value::Int`] or [`Value::Real`]) is left bare — exercise
-/// 2.78's accommodation, which the section's own footnote at 2.5.3
-/// assumes for polynomial coefficients.
+/// Builds a tagged datum. An ordinary number (plain [`Value::Int`] or
+/// [`Value::Real`]) is left bare — exercise 2.78's accommodation, which
+/// the section's own footnote at 2.5.3 assumes for polynomial
+/// coefficients. The host enum already names these domains, so a bare
+/// number's own variant is its tag and needs no wrapper.
 #[must_use]
 pub fn attach_tag(type_tag: &str, contents: Value) -> Value {
     match (type_tag, contents) {
-        ("scheme-number", n @ (Value::Int(_) | Value::Real(_))) => n,
+        ("integer", n @ Value::Int(_)) | ("real", n @ Value::Real(_)) => n,
         (tag, data) => Value::tagged(tag, data),
     }
 }
 
-/// Extracts the tag of a datum: the book's `type-tag`. A plain integer or
-/// real answers `scheme-number` — the host enum is the internal type
-/// system the exercise leans on.
+/// Extracts the tag of a datum. A plain integer answers `integer` and a
+/// plain real answers `real` — the host enum is the internal type
+/// system the exercise leans on, so a bare number answers its own
+/// domain.
 ///
 /// # Errors
-/// [`SchemeError::UserRaised`] with the book's message when `datum`
+/// [`SicpError::UserRaised`] with the section's message when `datum`
 /// carries no tag.
-pub fn type_tag(datum: &Value) -> Result<Symbol, SchemeError> {
+pub fn type_tag(datum: &Value) -> Result<Symbol, SicpError> {
     match datum {
-        Value::Int(_) | Value::Real(_) => Ok(Symbol::from("scheme-number")),
+        Value::Int(_) => Ok(Symbol::from("integer")),
+        Value::Real(_) => Ok(Symbol::from("real")),
         Value::Tagged { tag, .. } => Ok(Rc::clone(tag)),
-        other => Err(SchemeError::UserRaised {
+        other => Err(SicpError::UserRaised {
             message: "Bad tagged datum: TYPE-TAG".into(),
             irritants: vec![other.clone()],
         }),
@@ -72,13 +75,13 @@ pub fn type_tag(datum: &Value) -> Result<Symbol, SchemeError> {
 /// number is its own contents.
 ///
 /// # Errors
-/// [`SchemeError::UserRaised`] with the book's message when `datum`
+/// [`SicpError::UserRaised`] with the book's message when `datum`
 /// carries no tag.
-pub fn contents(datum: &Value) -> Result<Value, SchemeError> {
+pub fn contents(datum: &Value) -> Result<Value, SicpError> {
     match datum {
         Value::Int(_) | Value::Real(_) => Ok(datum.clone()),
         Value::Tagged { data, .. } => Ok((**data).clone()),
-        other => Err(SchemeError::UserRaised {
+        other => Err(SicpError::UserRaised {
             message: "Bad tagged datum: CONTENTS".into(),
             irritants: vec![other.clone()],
         }),
@@ -89,7 +92,7 @@ pub fn contents(datum: &Value) -> Result<Value, SchemeError> {
 /// plain integer and real shapes and nothing else. An exact integer
 /// converts losslessly only up to 2^53; past that the inexact arithmetic
 /// this feeds rounds, which is the documented, wanted truncation.
-fn as_arith_real(v: &Value) -> Result<f64, SchemeError> {
+fn as_arith_real(v: &Value) -> Result<f64, SicpError> {
     match v {
         #[expect(
             clippy::cast_precision_loss,
@@ -97,17 +100,17 @@ fn as_arith_real(v: &Value) -> Result<f64, SchemeError> {
         )]
         Value::Int(n) => Ok(*n as f64),
         Value::Real(x) => Ok(*x),
-        other => Err(SchemeError::TypeMismatch(format!(
+        other => Err(SicpError::TypeMismatch(format!(
             "expected a number: {other}"
         ))),
     }
 }
 
 /// The single exact integer behind a rational component.
-fn as_int(v: &Value) -> Result<i128, SchemeError> {
+fn as_int(v: &Value) -> Result<i128, SicpError> {
     match v {
         Value::Int(n) => Ok(*n),
-        other => Err(SchemeError::TypeMismatch(format!(
+        other => Err(SicpError::TypeMismatch(format!(
             "expected an exact integer: {other}"
         ))),
     }
@@ -128,20 +131,20 @@ fn key_list(keys: &[Key]) -> Key {
     out
 }
 
-/// The tags of all arguments, the book's `(map type-tag args)`.
-fn tags_of(args: &[Value]) -> Result<Vec<Symbol>, SchemeError> {
+/// The tags of all arguments, `type_tag` mapped over them.
+fn tags_of(args: &[Value]) -> Result<Vec<Symbol>, SicpError> {
     args.iter().map(type_tag).collect()
 }
 
-/// The bare contents of all arguments, the book's `(map contents args)`.
-fn contents_of(args: &[Value]) -> Result<Vec<Value>, SchemeError> {
+/// The bare contents of all arguments, `contents` mapped over them.
+fn contents_of(args: &[Value]) -> Result<Vec<Value>, SicpError> {
     args.iter().map(contents).collect()
 }
 
 /// The book's "No method for these types" error, naming the operation and
 /// the tag list.
-fn no_method(op: &str, tags: &[Symbol]) -> SchemeError {
-    SchemeError::UserRaised {
+fn no_method(op: &str, tags: &[Symbol]) -> SicpError {
+    SicpError::UserRaised {
         message: "No method for these types".into(),
         irritants: vec![
             Value::sym(op),
@@ -159,11 +162,12 @@ fn gcd_u128(a: u128, b: u128) -> u128 {
 // 2.5.1 Generic arithmetic operations
 // ---------------------------------------------------------------------
 
-/// The generic `add`: the book's `(define (add x y) (apply-generic 'add x y))`.
+/// The generic `add`: one [`apply_generic`] call dispatching on the
+/// arguments' tags.
 ///
 /// # Errors
 /// Whatever [`apply_generic`] raises.
-pub fn add(table: &OpTable, x: &Value, y: &Value) -> Result<Value, SchemeError> {
+pub fn add(table: &OpTable, x: &Value, y: &Value) -> Result<Value, SicpError> {
     apply_generic(table, "add", &[x.clone(), y.clone()])
 }
 
@@ -171,7 +175,7 @@ pub fn add(table: &OpTable, x: &Value, y: &Value) -> Result<Value, SchemeError> 
 ///
 /// # Errors
 /// Whatever [`apply_generic`] raises.
-pub fn sub(table: &OpTable, x: &Value, y: &Value) -> Result<Value, SchemeError> {
+pub fn sub(table: &OpTable, x: &Value, y: &Value) -> Result<Value, SicpError> {
     apply_generic(table, "sub", &[x.clone(), y.clone()])
 }
 
@@ -179,7 +183,7 @@ pub fn sub(table: &OpTable, x: &Value, y: &Value) -> Result<Value, SchemeError> 
 ///
 /// # Errors
 /// Whatever [`apply_generic`] raises.
-pub fn mul(table: &OpTable, x: &Value, y: &Value) -> Result<Value, SchemeError> {
+pub fn mul(table: &OpTable, x: &Value, y: &Value) -> Result<Value, SicpError> {
     apply_generic(table, "mul", &[x.clone(), y.clone()])
 }
 
@@ -187,16 +191,16 @@ pub fn mul(table: &OpTable, x: &Value, y: &Value) -> Result<Value, SchemeError> 
 ///
 /// # Errors
 /// Whatever [`apply_generic`] raises.
-pub fn div(table: &OpTable, x: &Value, y: &Value) -> Result<Value, SchemeError> {
+pub fn div(table: &OpTable, x: &Value, y: &Value) -> Result<Value, SicpError> {
     apply_generic(table, "div", &[x.clone(), y.clone()])
 }
 
 /// Exact integer division with Scheme's shape: an exact result stays an
 /// integer, an inexact one becomes a real — the "limited-precision
 /// division" the book's exercise 2.95 footnote blames for broken divisors.
-fn int_div(x: i128, y: i128) -> Result<Value, SchemeError> {
+fn int_div(x: i128, y: i128) -> Result<Value, SicpError> {
     if y == 0 {
-        return Err(SchemeError::DivisionByZero);
+        return Err(SicpError::DivisionByZero);
     }
     if x % y == 0 {
         return Ok(Value::Int(x / y));
@@ -215,9 +219,9 @@ fn int_div(x: i128, y: i128) -> Result<Value, SchemeError> {
 fn arith2(
     a: &Value,
     b: &Value,
-    int_op: fn(i128, i128) -> Result<i128, SchemeError>,
+    int_op: fn(i128, i128) -> Result<i128, SicpError>,
     real_op: fn(f64, f64) -> f64,
-) -> Result<Value, SchemeError> {
+) -> Result<Value, SicpError> {
     match (a, b) {
         (Value::Int(x), Value::Int(y)) => int_op(*x, *y).map(Value::Int),
         _ => Ok(Value::real(real_op(as_arith_real(a)?, as_arith_real(b)?))),
@@ -226,32 +230,32 @@ fn arith2(
 
 /// The division handler: exact integer division stays exact, everything
 /// else divides in `f64`.
-fn arith_div(a: &Value, b: &Value) -> Result<Value, SchemeError> {
+fn arith_div(a: &Value, b: &Value) -> Result<Value, SicpError> {
     match (a, b) {
         (Value::Int(x), Value::Int(y)) => int_div(*x, *y),
         _ => Ok(Value::real(as_arith_real(a)? / as_arith_real(b)?)),
     }
 }
 
-fn checked_add(x: i128, y: i128) -> Result<i128, SchemeError> {
-    x.checked_add(y).ok_or(SchemeError::Overflow)
+fn checked_add(x: i128, y: i128) -> Result<i128, SicpError> {
+    x.checked_add(y).ok_or(SicpError::Overflow)
 }
 
-fn checked_sub(x: i128, y: i128) -> Result<i128, SchemeError> {
-    x.checked_sub(y).ok_or(SchemeError::Overflow)
+fn checked_sub(x: i128, y: i128) -> Result<i128, SicpError> {
+    x.checked_sub(y).ok_or(SicpError::Overflow)
 }
 
-fn checked_mul(x: i128, y: i128) -> Result<i128, SchemeError> {
-    x.checked_mul(y).ok_or(SchemeError::Overflow)
+fn checked_mul(x: i128, y: i128) -> Result<i128, SicpError> {
+    x.checked_mul(y).ok_or(SicpError::Overflow)
 }
 
 /// The two-argument handler shape the ordinary-number package installs:
 /// integer contents through the checked operation, everything else
 /// through the real one.
 fn ordinary2(
-    int_op: fn(i128, i128) -> Result<i128, SchemeError>,
+    int_op: fn(i128, i128) -> Result<i128, SicpError>,
     real_op: fn(f64, f64) -> f64,
-) -> impl Fn(&[Value]) -> Result<Value, SchemeError> {
+) -> impl Fn(&[Value]) -> Result<Value, SicpError> {
     move |args: &[Value]| arith2(&args[0], &args[1], int_op, real_op)
 }
 
@@ -271,59 +275,64 @@ fn f64_div(a: f64, b: f64) -> f64 {
     a / b
 }
 
-fn table_err(package: &str) -> SchemeError {
-    SchemeError::UserRaised {
+fn table_err(package: &str) -> SicpError {
+    SicpError::UserRaised {
         message: format!("{package} package is not installed"),
         irritants: vec![],
     }
 }
 
 /// Fetches a one-slot constructor from the table.
-fn get_make(table: &OpTable, package: &str) -> Result<Handler, SchemeError> {
+fn get_make(table: &OpTable, package: &str) -> Result<Handler, SicpError> {
     table
         .get(&Key::sym("make"), &Key::sym(package))
         .ok_or_else(|| table_err(package))
 }
 
-/// Installs the package for ordinary numbers: the book's
-/// `install-scheme-number-package`, keyed by
-/// `(scheme-number scheme-number)`. With the 2.78 accommodation the
-/// package's `tag` is the identity on plain numbers.
-pub fn install_scheme_number_package(table: &OpTable) {
-    let sn2 = key_list(&[Key::sym("scheme-number"), Key::sym("scheme-number")]);
-    table.put(
-        Key::sym("add"),
-        sn2.clone(),
-        Rc::new(ordinary2(checked_add, f64_add)),
-    );
-    table.put(
-        Key::sym("sub"),
-        sn2.clone(),
-        Rc::new(ordinary2(checked_sub, f64_sub)),
-    );
-    table.put(
-        Key::sym("mul"),
-        sn2.clone(),
-        Rc::new(ordinary2(checked_mul, f64_mul)),
-    );
-    table.put(
-        Key::sym("div"),
-        sn2,
-        Rc::new(|args: &[Value]| arith_div(&args[0], &args[1])),
-    );
+/// Installs the package for plain numbers: checked `i128` arithmetic on
+/// the `integer` domain and `f64` arithmetic whenever a real meets it.
+/// With the 2.78 accommodation the package's `tag` is the identity on
+/// plain numbers. A real-only pair dispatches the `real` level's own
+/// entries instead.
+pub fn install_number_package(table: &OpTable) {
+    let ii = key_list(&[Key::sym("integer"), Key::sym("integer")]);
+    let ir = key_list(&[Key::sym("integer"), Key::sym("real")]);
+    let ri = key_list(&[Key::sym("real"), Key::sym("integer")]);
+    for key in [&ii, &ir, &ri] {
+        table.put(
+            Key::sym("add"),
+            key.clone(),
+            Rc::new(ordinary2(checked_add, f64_add)),
+        );
+        table.put(
+            Key::sym("sub"),
+            key.clone(),
+            Rc::new(ordinary2(checked_sub, f64_sub)),
+        );
+        table.put(
+            Key::sym("mul"),
+            key.clone(),
+            Rc::new(ordinary2(checked_mul, f64_mul)),
+        );
+        table.put(
+            Key::sym("div"),
+            key.clone(),
+            Rc::new(|args: &[Value]| arith_div(&args[0], &args[1])),
+        );
+    }
     table.put(
         Key::sym("make"),
-        Key::sym("scheme-number"),
+        Key::sym("integer"),
         Rc::new(|args: &[Value]| Ok(args[0].clone())),
     );
 }
 
-/// Builds a tagged ordinary number: the book's `make-scheme-number`.
+/// Builds a plain integer through the table's `integer` constructor.
 ///
 /// # Errors
-/// When the scheme-number package is not installed.
-pub fn make_scheme_number(table: &OpTable, n: i128) -> Result<Value, SchemeError> {
-    let make = get_make(table, "scheme-number")?;
+/// When the number package is not installed.
+pub fn make_integer(table: &OpTable, n: i128) -> Result<Value, SicpError> {
+    let make = get_make(table, "integer")?;
     make(&[Value::Int(n)])
 }
 
@@ -331,16 +340,16 @@ pub fn make_scheme_number(table: &OpTable, n: i128) -> Result<Value, SchemeError
 /// numerator, denominator positive. Magnitudes stay in `u128` so
 /// `i128::MIN` divides without wrapping; the reduced parts convert back
 /// with a real overflow check.
-fn norm_ratio(n: i128, d: i128) -> Result<(i128, i128), SchemeError> {
+fn norm_ratio(n: i128, d: i128) -> Result<(i128, i128), SicpError> {
     if d == 0 {
-        return Err(SchemeError::DivisionByZero);
+        return Err(SicpError::DivisionByZero);
     }
     let (sn, sd) = (n.is_negative(), d.is_negative());
     let (an, ad) = (n.unsigned_abs(), d.unsigned_abs());
     let g = gcd_u128(an, ad);
     let (an, ad) = (an / g, ad / g);
-    let numer = i128::try_from(an).map_err(|_| SchemeError::Overflow)?;
-    let denom = i128::try_from(ad).map_err(|_| SchemeError::Overflow)?;
+    let numer = i128::try_from(an).map_err(|_| SicpError::Overflow)?;
+    let denom = i128::try_from(ad).map_err(|_| SicpError::Overflow)?;
     if sn ^ sd {
         Ok((-numer, denom))
     } else {
@@ -352,13 +361,13 @@ fn norm_ratio(n: i128, d: i128) -> Result<(i128, i128), SchemeError> {
 /// with the rational-number code of 2.1.1 as the unmodified internal
 /// procedures.
 pub fn install_rational_package(table: &OpTable) {
-    fn numer(x: &Value) -> Result<i128, SchemeError> {
+    fn numer(x: &Value) -> Result<i128, SicpError> {
         as_int(&car(x)?)
     }
-    fn denom(x: &Value) -> Result<i128, SchemeError> {
+    fn denom(x: &Value) -> Result<i128, SicpError> {
         as_int(&cdr(x)?)
     }
-    fn make_rat(n: i128, d: i128) -> Result<Value, SchemeError> {
+    fn make_rat(n: i128, d: i128) -> Result<Value, SicpError> {
         let (n, d) = norm_ratio(n, d)?;
         Ok(pair(Value::Int(n), Value::Int(d)))
     }
@@ -367,8 +376,8 @@ pub fn install_rational_package(table: &OpTable) {
         d1: i128,
         n2: i128,
         d2: i128,
-        op: fn(i128, i128) -> Result<i128, SchemeError>,
-    ) -> Result<(i128, i128), SchemeError> {
+        op: fn(i128, i128) -> Result<i128, SicpError>,
+    ) -> Result<(i128, i128), SicpError> {
         Ok((
             op(checked_mul(n1, d2)?, checked_mul(n2, d1)?)?,
             checked_mul(d1, d2)?,
@@ -376,7 +385,7 @@ pub fn install_rational_package(table: &OpTable) {
     }
 
     let rat_key = key_list(&[Key::sym("rational"), Key::sym("rational")]);
-    let binary = |f: fn(&Value, &Value) -> Result<Value, SchemeError>| {
+    let binary = |f: fn(&Value, &Value) -> Result<Value, SicpError>| {
         move |args: &[Value]| f(&args[0], &args[1]).map(|v| attach_tag("rational", v))
     };
     let add_rat = |x: &Value, y: &Value| {
@@ -413,9 +422,9 @@ pub fn install_rational_package(table: &OpTable) {
 /// Builds a tagged rational number: the book's `make-rational`.
 ///
 /// # Errors
-/// [`SchemeError::DivisionByZero`] for a zero denominator; whatever the
+/// [`SicpError::DivisionByZero`] for a zero denominator; whatever the
 /// table's `make` entry raises.
-pub fn make_rational(table: &OpTable, n: i128, d: i128) -> Result<Value, SchemeError> {
+pub fn make_rational(table: &OpTable, n: i128, d: i128) -> Result<Value, SicpError> {
     let make = get_make(table, "rational")?;
     make(&[Value::Int(n), Value::Int(d)])
 }
@@ -425,8 +434,8 @@ pub fn make_rational(table: &OpTable, n: i128, d: i128) -> Result<Value, SchemeE
 /// handlers work at.
 ///
 /// # Errors
-/// [`SchemeError::TypeMismatch`] when `x` is not a pair of integers.
-pub fn numer(x: &Value) -> Result<i128, SchemeError> {
+/// [`SicpError::TypeMismatch`] when `x` is not a pair of integers.
+pub fn numer(x: &Value) -> Result<i128, SicpError> {
     as_int(&car(x)?)
 }
 
@@ -434,8 +443,8 @@ pub fn numer(x: &Value) -> Result<i128, SchemeError> {
 /// pair like [`numer`].
 ///
 /// # Errors
-/// [`SchemeError::TypeMismatch`] when `x` is not a pair of integers.
-pub fn denom(x: &Value) -> Result<i128, SchemeError> {
+/// [`SicpError::TypeMismatch`] when `x` is not a pair of integers.
+pub fn denom(x: &Value) -> Result<i128, SicpError> {
     as_int(&cdr(x)?)
 }
 
@@ -466,7 +475,7 @@ pub fn install_real_package(table: &OpTable) {
 ///
 /// # Errors
 /// When the real package is not installed.
-pub fn make_real(table: &OpTable, x: f64) -> Result<Value, SchemeError> {
+pub fn make_real(table: &OpTable, x: f64) -> Result<Value, SicpError> {
     let make = get_make(table, "real")?;
     make(&[Value::real(x)])
 }
@@ -479,21 +488,21 @@ mod complex_parts {
     use crate::sec_2_4::{
         angle_dispatch, imag_part_dispatch, magnitude_dispatch, real_part_dispatch,
     };
-    use sicp_runtime::{SchemeError, Value};
+    use sicp_runtime::{SicpError, Value};
 
-    pub(super) fn real_of(z: &Value) -> Result<f64, SchemeError> {
+    pub(super) fn real_of(z: &Value) -> Result<f64, SicpError> {
         as_arith_real(&real_part_dispatch(z)?)
     }
 
-    pub(super) fn imag_of(z: &Value) -> Result<f64, SchemeError> {
+    pub(super) fn imag_of(z: &Value) -> Result<f64, SicpError> {
         as_arith_real(&imag_part_dispatch(z)?)
     }
 
-    pub(super) fn mag_of(z: &Value) -> Result<f64, SchemeError> {
+    pub(super) fn mag_of(z: &Value) -> Result<f64, SicpError> {
         as_arith_real(&magnitude_dispatch(z)?)
     }
 
-    pub(super) fn ang_of(z: &Value) -> Result<f64, SchemeError> {
+    pub(super) fn ang_of(z: &Value) -> Result<f64, SicpError> {
         as_arith_real(&angle_dispatch(z)?)
     }
 }
@@ -505,14 +514,14 @@ mod complex_parts {
 /// written against nothing of theirs.
 ///
 /// # Errors
-/// [`SchemeError::UserRaised`] when the rectangular or polar package is
+/// [`SicpError::UserRaised`] when the rectangular or polar package is
 /// missing from the table.
-pub fn install_complex_package(table: &OpTable) -> Result<(), SchemeError> {
+pub fn install_complex_package(table: &OpTable) -> Result<(), SicpError> {
     use complex_parts::{ang_of, imag_of, mag_of, real_of};
 
     fn tagged_binary(
-        f: impl Fn(&[Value]) -> Result<Value, SchemeError> + 'static,
-    ) -> impl Fn(&[Value]) -> Result<Value, SchemeError> {
+        f: impl Fn(&[Value]) -> Result<Value, SicpError> + 'static,
+    ) -> impl Fn(&[Value]) -> Result<Value, SicpError> {
         move |args: &[Value]| f(args).map(|z| attach_tag("complex", z))
     }
 
@@ -598,7 +607,7 @@ pub fn install_complex_package(table: &OpTable) -> Result<(), SchemeError> {
 ///
 /// # Errors
 /// When the complex package is not installed.
-pub fn make_complex_from_real_imag(table: &OpTable, x: f64, y: f64) -> Result<Value, SchemeError> {
+pub fn make_complex_from_real_imag(table: &OpTable, x: f64, y: f64) -> Result<Value, SicpError> {
     let make = table
         .get(&Key::sym("make-from-real-imag"), &Key::sym("complex"))
         .ok_or_else(|| table_err("complex"))?;
@@ -610,7 +619,7 @@ pub fn make_complex_from_real_imag(table: &OpTable, x: f64, y: f64) -> Result<Va
 ///
 /// # Errors
 /// When the complex package is not installed.
-pub fn make_complex_from_mag_ang(table: &OpTable, r: f64, a: f64) -> Result<Value, SchemeError> {
+pub fn make_complex_from_mag_ang(table: &OpTable, r: f64, a: f64) -> Result<Value, SicpError> {
     let make = table
         .get(&Key::sym("make-from-mag-ang"), &Key::sym("complex"))
         .ok_or_else(|| table_err("complex"))?;
@@ -620,32 +629,36 @@ pub fn make_complex_from_mag_ang(table: &OpTable, r: f64, a: f64) -> Result<Valu
 /// Installs the generic equality predicate `equ?` of exercise 2.79
 /// across the number packages; the section's `drop` (2.85) leans on it.
 pub fn install_equ(table: &OpTable) {
-    fn numeric_eq(a: &Value, b: &Value) -> Result<Value, SchemeError> {
+    fn numeric_eq(a: &Value, b: &Value) -> Result<Value, SicpError> {
         let eq = match (a, b) {
             (Value::Int(x), Value::Int(y)) => x == y,
             _ => as_arith_real(a)? == as_arith_real(b)?,
         };
         Ok(Value::boolean(eq))
     }
-    fn rational_eq(a: &Value, b: &Value) -> Result<Value, SchemeError> {
+    fn rational_eq(a: &Value, b: &Value) -> Result<Value, SicpError> {
         let left = checked_mul(numer(a)?, denom(b)?)?;
         let right = checked_mul(numer(b)?, denom(a)?)?;
         Ok(Value::boolean(left == right))
     }
-    fn real_eq(a: &Value, b: &Value) -> Result<Value, SchemeError> {
+    fn real_eq(a: &Value, b: &Value) -> Result<Value, SicpError> {
         Ok(Value::boolean(as_arith_real(a)? == as_arith_real(b)?))
     }
-    fn complex_eq(a: &Value, b: &Value) -> Result<Value, SchemeError> {
+    fn complex_eq(a: &Value, b: &Value) -> Result<Value, SicpError> {
         Ok(Value::boolean(
             real_part_dispatch(a)? == real_part_dispatch(b)?
                 && imag_part_dispatch(a)? == imag_part_dispatch(b)?,
         ))
     }
-    let boolean = |f: fn(&Value, &Value) -> Result<Value, SchemeError>| {
+    let boolean = |f: fn(&Value, &Value) -> Result<Value, SicpError>| {
         move |args: &[Value]| f(&args[0], &args[1])
     };
-    let sn2 = key_list(&[Key::sym("scheme-number"), Key::sym("scheme-number")]);
-    table.put(Key::sym("equ?"), sn2, Rc::new(boolean(numeric_eq)));
+    let ii = key_list(&[Key::sym("integer"), Key::sym("integer")]);
+    let ir = key_list(&[Key::sym("integer"), Key::sym("real")]);
+    let ri = key_list(&[Key::sym("real"), Key::sym("integer")]);
+    for key in [&ii, &ir, &ri] {
+        table.put(Key::sym("equ?"), key.clone(), Rc::new(boolean(numeric_eq)));
+    }
     table.put(
         Key::sym("equ?"),
         key_list(&[Key::sym("rational"), Key::sym("rational")]),
@@ -666,32 +679,32 @@ pub fn install_equ(table: &OpTable) {
 /// Installs the generic `=zero?` predicate of exercise 2.80; the
 /// section's `adjoin-term` calls it to drop zero coefficients.
 pub fn install_zero(table: &OpTable) {
-    fn ordinary_zero(args: &[Value]) -> Result<Value, SchemeError> {
+    fn ordinary_zero(args: &[Value]) -> Result<Value, SicpError> {
         let zero = match &args[0] {
             Value::Int(n) => *n == 0,
             Value::Real(x) => *x == 0.0,
             other => {
-                return Err(SchemeError::TypeMismatch(format!(
+                return Err(SicpError::TypeMismatch(format!(
                     "=zero?: not an ordinary number: {other}"
                 )));
             }
         };
         Ok(Value::boolean(zero))
     }
-    fn rational_zero(args: &[Value]) -> Result<Value, SchemeError> {
+    fn rational_zero(args: &[Value]) -> Result<Value, SicpError> {
         Ok(Value::boolean(numer(&args[0])? == 0))
     }
-    fn real_zero(args: &[Value]) -> Result<Value, SchemeError> {
+    fn real_zero(args: &[Value]) -> Result<Value, SicpError> {
         Ok(Value::boolean(as_arith_real(&args[0])? == 0.0))
     }
-    fn complex_zero(args: &[Value]) -> Result<Value, SchemeError> {
+    fn complex_zero(args: &[Value]) -> Result<Value, SicpError> {
         let re = as_arith_real(&real_part_dispatch(&args[0])?)?;
         let im = as_arith_real(&imag_part_dispatch(&args[0])?)?;
         Ok(Value::boolean(re == 0.0 && im == 0.0))
     }
     table.put(
         Key::sym("=zero?"),
-        key_list(&[Key::sym("scheme-number")]),
+        key_list(&[Key::sym("integer")]),
         Rc::new(ordinary_zero),
     );
     table.put(
@@ -718,12 +731,12 @@ pub fn install_zero(table: &OpTable) {
 /// shows.
 ///
 /// # Errors
-/// [`SchemeError::UserRaised`] when the table lacks the rectangular or
+/// [`SicpError::UserRaised`] when the table lacks the rectangular or
 /// polar constructors the complex package imports.
-pub fn install_generic_arithmetic(table: &OpTable) -> Result<(), SchemeError> {
+pub fn install_generic_arithmetic(table: &OpTable) -> Result<(), SicpError> {
     install_rectangular_package(table);
     install_polar_package(table);
-    install_scheme_number_package(table);
+    install_number_package(table);
     install_rational_package(table);
     install_real_package(table);
     install_complex_package(table)?;
@@ -748,14 +761,13 @@ pub fn get_coercion(table: &OpTable, from: &str, to: &str) -> Option<Handler> {
     table.get(&Key::sym(from), &Key::sym(to))
 }
 
-/// The typical coercion procedure: an ordinary number becomes the complex
-/// number with that real part and zero imaginary part, the book's
-/// `scheme-number->complex`. This mirrors the rectangular constructor the
-/// complex package exports.
+/// The typical coercion procedure: a plain number becomes the complex
+/// number with that real part and zero imaginary part. This mirrors the
+/// rectangular constructor the complex package exports.
 ///
 /// # Errors
-/// [`SchemeError::TypeMismatch`] when `n` is not a number.
-pub fn scheme_number_to_complex(n: &Value) -> Result<Value, SchemeError> {
+/// [`SicpError::TypeMismatch`] when `n` is not a number.
+pub fn number_to_complex(n: &Value) -> Result<Value, SicpError> {
     Ok(Value::tagged(
         "complex",
         rect_make_from_real_imag_tagged(as_arith_real(n)?, 0.0),
@@ -767,10 +779,10 @@ pub fn scheme_number_to_complex(n: &Value) -> Result<Value, SchemeError> {
 /// the second's type, then the second to the first's, then give up.
 ///
 /// # Errors
-/// [`SchemeError::UserRaised`] naming the operation and tag list when no
+/// [`SicpError::UserRaised`] naming the operation and tag list when no
 /// method and no coercion applies; whatever the dispatched handler or a
 /// coercion raises.
-pub fn apply_generic(table: &OpTable, op: &str, args: &[Value]) -> Result<Value, SchemeError> {
+pub fn apply_generic(table: &OpTable, op: &str, args: &[Value]) -> Result<Value, SicpError> {
     let tags = tags_of(args)?;
     let tag_key = key_list(
         &tags
@@ -799,7 +811,7 @@ pub fn apply_generic(table: &OpTable, op: &str, args: &[Value]) -> Result<Value,
 // ---------------------------------------------------------------------
 
 /// One term of a polynomial: an order (the power of the indeterminate)
-/// and a coefficient, the book's `(list order coeff)` abstraction. The
+/// and a coefficient, the term's order-and-coefficient abstraction. The
 /// coefficient is a full [`Value`], so it can itself be a tagged
 /// polynomial.
 #[derive(Clone, Debug, PartialEq)]
@@ -840,22 +852,22 @@ pub fn is_empty_termlist(terms: &[Term]) -> bool {
     terms.is_empty()
 }
 
-/// Encodes a term as the book's `(list order coeff)` value.
+/// Encodes a term as its order-and-coefficient pair.
 fn term_to_value(term: &Term) -> Value {
     Value::list(vec![Value::Int(i128::from(term.order)), term.coeff.clone()])
 }
 
 /// Decodes a term value back into a [`Term`].
-fn term_from_value(v: &Value) -> Result<Term, SchemeError> {
+fn term_from_value(v: &Value) -> Result<Term, SicpError> {
     let items = v.list_items()?;
     let [ord, coeff] = items.as_slice() else {
-        return Err(SchemeError::TypeMismatch(format!(
+        return Err(SicpError::TypeMismatch(format!(
             "not an (order coeff) term: {v}"
         )));
     };
     let raw = as_int(ord)?;
     let order =
-        u32::try_from(raw).map_err(|_| SchemeError::TypeMismatch("negative term order".into()))?;
+        u32::try_from(raw).map_err(|_| SicpError::TypeMismatch("negative term order".into()))?;
     Ok(Term {
         order,
         coeff: coeff.clone(),
@@ -872,20 +884,20 @@ pub fn terms_to_value(terms: &[Term]) -> Value {
 /// Decodes the book's list structure back into a term list.
 ///
 /// # Errors
-/// [`SchemeError::TypeMismatch`] when the value is not a list of
+/// [`SicpError::TypeMismatch`] when the value is not a list of
 /// two-element terms.
-pub fn value_to_terms(v: &Value) -> Result<Vec<Term>, SchemeError> {
+pub fn value_to_terms(v: &Value) -> Result<Vec<Term>, SicpError> {
     v.list_items()?.iter().map(term_from_value).collect()
 }
 
 /// The book's `first-term`: the highest-order term of a non-empty list.
 ///
 /// # Errors
-/// [`SchemeError::TypeMismatch`] when the list is empty.
-pub fn first_term(terms: &[Term]) -> Result<&Term, SchemeError> {
+/// [`SicpError::TypeMismatch`] when the list is empty.
+pub fn first_term(terms: &[Term]) -> Result<&Term, SicpError> {
     terms
         .first()
-        .ok_or_else(|| SchemeError::TypeMismatch("first-term of an empty term list".into()))
+        .ok_or_else(|| SicpError::TypeMismatch("first-term of an empty term list".into()))
 }
 
 /// The book's `rest-terms`: all but the highest-order term.
@@ -898,10 +910,10 @@ pub fn rest_terms(terms: &[Term]) -> &[Term] {
 ///
 /// # Errors
 /// When no `=zero?` handler is installed for the value's type.
-pub fn is_zero(table: &OpTable, v: &Value) -> Result<bool, SchemeError> {
+pub fn is_zero(table: &OpTable, v: &Value) -> Result<bool, SicpError> {
     match apply_generic(table, "=zero?", std::slice::from_ref(v))? {
         Value::Bool(b) => Ok(b),
-        other => Err(SchemeError::TypeMismatch(format!(
+        other => Err(SicpError::TypeMismatch(format!(
             "=zero? did not answer a boolean: {other}"
         ))),
     }
@@ -911,10 +923,10 @@ pub fn is_zero(table: &OpTable, v: &Value) -> Result<bool, SchemeError> {
 ///
 /// # Errors
 /// When no `equ?` handler is installed for the pair of types.
-pub fn is_equ(table: &OpTable, a: &Value, b: &Value) -> Result<bool, SchemeError> {
+pub fn is_equ(table: &OpTable, a: &Value, b: &Value) -> Result<bool, SicpError> {
     match apply_generic(table, "equ?", &[a.clone(), b.clone()])? {
         Value::Bool(b) => Ok(b),
-        other => Err(SchemeError::TypeMismatch(format!(
+        other => Err(SicpError::TypeMismatch(format!(
             "equ? did not answer a boolean: {other}"
         ))),
     }
@@ -926,7 +938,7 @@ pub fn is_equ(table: &OpTable, a: &Value, b: &Value) -> Result<bool, SchemeError
 ///
 /// # Errors
 /// Whatever the generic `=zero?` raises on the coefficient.
-pub fn adjoin_term(table: &OpTable, term: Term, terms: &[Term]) -> Result<Vec<Term>, SchemeError> {
+pub fn adjoin_term(table: &OpTable, term: Term, terms: &[Term]) -> Result<Vec<Term>, SicpError> {
     if is_zero(table, &term.coeff)? {
         return Ok(terms.to_vec());
     }
@@ -942,7 +954,7 @@ pub fn adjoin_term(table: &OpTable, term: Term, terms: &[Term]) -> Result<Vec<Te
 ///
 /// # Errors
 /// Whatever the coefficient arithmetic raises.
-pub fn add_terms(table: &OpTable, l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SchemeError> {
+pub fn add_terms(table: &OpTable, l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SicpError> {
     if is_empty_termlist(l1) {
         return Ok(l2.to_vec());
     }
@@ -977,7 +989,7 @@ pub fn mul_term_by_all_terms(
     table: &OpTable,
     t1: &Term,
     l: &[Term],
-) -> Result<Vec<Term>, SchemeError> {
+) -> Result<Vec<Term>, SicpError> {
     let Some(t2) = l.first() else {
         return Ok(the_empty_termlist());
     };
@@ -990,7 +1002,7 @@ pub fn mul_term_by_all_terms(
 ///
 /// # Errors
 /// Whatever the coefficient arithmetic raises.
-pub fn mul_terms(table: &OpTable, l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SchemeError> {
+pub fn mul_terms(table: &OpTable, l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SicpError> {
     let Some(t1) = l1.first() else {
         return Ok(the_empty_termlist());
     };
@@ -1004,9 +1016,9 @@ fn make_poly(var: &str, terms: &[Term]) -> Value {
 }
 
 /// Splits an untagged poly into its variable and term list.
-fn poly_parts(p: &Value) -> Result<(Symbol, Vec<Term>), SchemeError> {
+fn poly_parts(p: &Value) -> Result<(Symbol, Vec<Term>), SicpError> {
     let Value::Sym(var) = &car(p)? else {
-        return Err(SchemeError::TypeMismatch(format!(
+        return Err(SicpError::TypeMismatch(format!(
             "poly variable is not a symbol: {p}"
         )));
     };
@@ -1020,7 +1032,7 @@ fn same_variable(a: &Symbol, b: &Symbol) -> bool {
 }
 
 /// A term-list operation the poly-level procedures defer to.
-type TermsOp = fn(&OpTable, &[Term], &[Term]) -> Result<Vec<Term>, SchemeError>;
+type TermsOp = fn(&OpTable, &[Term], &[Term]) -> Result<Vec<Term>, SicpError>;
 
 /// Shared shape of `add-poly` and `mul-poly`: check the variables agree,
 /// run the term-list operation, and assemble. Works on bare polys — the
@@ -1031,11 +1043,11 @@ fn poly_binary(
     p2: &Value,
     op: &str,
     terms_op: TermsOp,
-) -> Result<Value, SchemeError> {
+) -> Result<Value, SicpError> {
     let (v1, t1) = poly_parts(p1)?;
     let (v2, t2) = poly_parts(p2)?;
     if !same_variable(&v1, &v2) {
-        return Err(SchemeError::UserRaised {
+        return Err(SicpError::UserRaised {
             message: format!("Polys not in same var: {op}"),
             irritants: vec![p1.clone(), p2.clone()],
         });
@@ -1047,20 +1059,20 @@ fn poly_binary(
 /// by [`apply_generic`] before the package's handler runs).
 ///
 /// # Errors
-/// [`SchemeError::UserRaised`] with the book's message when the polys
+/// [`SicpError::UserRaised`] with the book's message when the polys
 /// are not in the same variable; whatever the coefficient arithmetic
 /// raises.
-pub fn add_poly(table: &OpTable, p1: &Value, p2: &Value) -> Result<Value, SchemeError> {
+pub fn add_poly(table: &OpTable, p1: &Value, p2: &Value) -> Result<Value, SicpError> {
     poly_binary(table, p1, p2, "ADD-POLY", add_terms)
 }
 
 /// The book's `mul-poly`, on bare poly data.
 ///
 /// # Errors
-/// [`SchemeError::UserRaised`] with the book's message when the polys
+/// [`SicpError::UserRaised`] with the book's message when the polys
 /// are not in the same variable; whatever the coefficient arithmetic
 /// raises.
-pub fn mul_poly(table: &OpTable, p1: &Value, p2: &Value) -> Result<Value, SchemeError> {
+pub fn mul_poly(table: &OpTable, p1: &Value, p2: &Value) -> Result<Value, SicpError> {
     poly_binary(table, p1, p2, "MUL-POLY", mul_terms)
 }
 
@@ -1083,7 +1095,7 @@ pub fn install_polynomial_package(table: &Rc<OpTable>) {
     table.put(Key::sym("mul"), poly_key, Rc::new(poly_mul));
     let make = |args: &[Value]| {
         let Value::Sym(var) = &args[0] else {
-            return Err(SchemeError::TypeMismatch(format!(
+            return Err(SicpError::TypeMismatch(format!(
                 "poly variable is not a symbol: {}",
                 args[0]
             )));
@@ -1099,7 +1111,7 @@ pub fn install_polynomial_package(table: &Rc<OpTable>) {
 ///
 /// # Errors
 /// When the polynomial package is not installed.
-pub fn make_polynomial(table: &OpTable, var: &str, terms: &[Term]) -> Result<Value, SchemeError> {
+pub fn make_polynomial(table: &OpTable, var: &str, terms: &[Term]) -> Result<Value, SicpError> {
     let make = get_make(table, "polynomial")?;
     let term_values: Vec<Value> = terms.iter().map(term_to_value).collect();
     make(&[Value::sym(var), Value::list(term_values)])
@@ -1108,8 +1120,8 @@ pub fn make_polynomial(table: &OpTable, var: &str, terms: &[Term]) -> Result<Val
 /// The variable of a bare poly datum: the book's `variable`.
 ///
 /// # Errors
-/// [`SchemeError::TypeMismatch`] when `p` is not a poly.
-pub fn poly_variable(p: &Value) -> Result<Symbol, SchemeError> {
+/// [`SicpError::TypeMismatch`] when `p` is not a poly.
+pub fn poly_variable(p: &Value) -> Result<Symbol, SicpError> {
     let (var, _) = poly_parts(p)?;
     Ok(var)
 }
@@ -1117,8 +1129,8 @@ pub fn poly_variable(p: &Value) -> Result<Symbol, SchemeError> {
 /// The term list of a bare poly datum: the book's `term-list`.
 ///
 /// # Errors
-/// [`SchemeError::TypeMismatch`] when `p` is not a poly.
-pub fn poly_term_list(p: &Value) -> Result<Vec<Term>, SchemeError> {
+/// [`SicpError::TypeMismatch`] when `p` is not a poly.
+pub fn poly_term_list(p: &Value) -> Result<Vec<Term>, SicpError> {
     let (_, terms) = poly_parts(p)?;
     Ok(terms)
 }
@@ -1184,7 +1196,8 @@ mod tests {
     #[test]
     fn ordinary_numbers_are_bare_per_exercise_2_78() {
         let t = table();
-        assert_eq!(type_tag(&Value::Int(7)).unwrap().as_ref(), "scheme-number");
+        assert_eq!(type_tag(&Value::Int(7)).unwrap().as_ref(), "integer");
+        assert_eq!(type_tag(&Value::Real(1.5)).unwrap().as_ref(), "real");
         assert_eq!(contents(&Value::Int(7)).unwrap(), Value::Int(7));
         assert_eq!(
             mul(&t, &Value::Int(6), &Value::Int(7)).unwrap(),
@@ -1193,14 +1206,23 @@ mod tests {
     }
 
     #[test]
+    fn mixed_plain_arithmetic_stays_direct() {
+        let t = table();
+        let sum = add(&t, &Value::Int(1), &Value::real(2.5)).unwrap();
+        assert!(matches!(sum, Value::Real(x) if (x - 3.5).abs() < f64::EPSILON));
+        assert!(is_equ(&t, &Value::Int(1), &Value::real(1.0)).unwrap());
+        assert!(is_zero(&t, &Value::real(0.0)).unwrap());
+    }
+
+    #[test]
     fn coercion_makes_mixed_addition_work() {
         let t = OpTable::new();
         install_generic_arithmetic(&t).expect("packages install");
         put_coercion(
             &t,
-            "scheme-number",
+            "integer",
             "complex",
-            Rc::new(|args: &[Value]| scheme_number_to_complex(&args[0])),
+            Rc::new(|args: &[Value]| number_to_complex(&args[0])),
         );
         let z = make_complex_from_real_imag(&t, 1.0, 2.0).unwrap();
         let sum = add(&t, &Value::Int(3), &z).unwrap();
@@ -1211,12 +1233,9 @@ mod tests {
     fn apply_generic_names_missing_methods() {
         let t = table();
         let z = make_complex_from_real_imag(&t, 1.0, 1.0).unwrap();
-        let err = apply_generic(&t, "add", &[z, Value::Int(1)])
-            .expect_err("no (complex scheme-number) entry");
-        assert!(
-            err.to_string().contains("No method for these types"),
-            "{err}"
-        );
+        let err =
+            apply_generic(&t, "add", &[z, Value::Int(1)]).expect_err("no (complex, integer) entry");
+        assert!(matches!(err, SicpError::UserRaised { .. }), "{err:?}");
     }
 
     #[test]
@@ -1365,7 +1384,8 @@ mod tests {
     fn real_package_sits_in_the_tower() {
         let t = table();
         let x = make_real(&t, 2.5).unwrap();
-        assert_eq!(x.to_string(), "(real 2.5)");
+        assert_eq!(type_tag(&x).unwrap().as_ref(), "real");
+        assert_eq!(contents(&x).unwrap(), Value::Real(2.5));
         let y = make_real(&t, 0.5).unwrap();
         assert_eq!(add(&t, &x, &y).unwrap(), make_real(&t, 3.0).unwrap());
     }

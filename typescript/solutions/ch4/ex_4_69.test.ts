@@ -2,20 +2,25 @@
 // Original exercise
 
 import { describe, expect, it } from "vitest";
-import { ex_4_69, familyAnswers } from "./ex_4_69.js";
+import { greatAnswers, openRelationship } from "./ex_4_69.js";
 
-describe("exercise 4.69: great-grandson rules", () => {
-  it("finds Adam's great-grandson through the grandson anchor", () => {
-    expect(familyAnswers("((great grandson) Adam ?who)")).toStrictEqual([
-      "((great grandson) Adam Irad)",
+const fiveGreats = '["great", "great", "great", "great", "great", "grandson"]';
+
+describe("exercise 4.69: greats through grandson-ended relations", () => {
+  it("finds Irad as Adam's great-grandson", () => {
+    const [irad] = greatAnswers();
+    expect(irad).toStrictEqual(['related(["great", "grandson"], "Adam", "Irad")']);
+  });
+
+  it("finds both five-greats grandsons of Adam", () => {
+    const [, distant] = greatAnswers();
+    expect(distant).toStrictEqual([
+      `related(${fiveGreats}, "Adam", "Jabal")`,
+      `related(${fiveGreats}, "Adam", "Jubal")`,
     ]);
   });
 
-  it("reaches Jabal and Jubal at five greats", () => {
-    expect(familyAnswers("((great great great great great grandson) Adam ?who)")).toStrictEqual([
-      "((great great great great great grandson) Adam Jabal)",
-      "((great great great great great grandson) Adam Jubal)",
-    ]);
-    expect(ex_4_69()).toContain("Irad");
+  it("exhibits the open-relationship query without running it", () => {
+    expect(openRelationship.tag).toBe("atom");
   });
 });

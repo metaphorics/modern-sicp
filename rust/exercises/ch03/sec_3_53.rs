@@ -2,7 +2,7 @@
 // Original exercise
 
 //! The pending scaffold of exercise 3.53: the self-referential stream
-//! defined as 1 consed onto its own elementwise doubling, answered by
+//! defined as 1 followed by its own elementwise doubling, answered by
 //! the prefix the description predicts.
 
 mod ex_3_53 {
@@ -16,7 +16,7 @@ mod ex_3_53 {
 
     /// Exercise 3.53: predict self-referential doubling stream
     ///
-    /// Answers the first eight elements of `s`, defined as 1 consed onto
+    /// Answers the first eight elements of `s`, defined as 1 followed by
     /// the elementwise sum of `s` with itself.
     pub fn ex_3_53() -> Result<Vec<i128>, Pending> {
         Err(Pending { exercise: "3.53" })
@@ -28,6 +28,6 @@ mod ex_3_53 {
 fn ex_3_53() {
     let prefix = ex_3_53::ex_3_53().expect("solved");
     // The tail is s + s, and adding a stream to itself doubles every
-    // element: after the consed 1 the elements are the powers of two.
+    // element: after the leading 1 the elements are the powers of two.
     assert_eq!(prefix, vec![1, 2, 4, 8, 16, 32, 64, 128]);
 }

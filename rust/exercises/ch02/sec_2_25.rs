@@ -7,10 +7,11 @@
 mod ex_2_25 {
     use sicp_runtime::Pending;
 
-    /// Exercise 2.25: picking 7 with accessor chains
+    /// Exercise 2.25: picking 7 with fallible accessor chains
     ///
-    /// Returns `7` picked out of each of the three nested lists `(1 3 (5 7) 9)`,
-    /// `((7))`, and `(1 (2 (3 (4 (5 (6 7))))))` by `car`/`cdr` chains.
+    /// Returns `7` picked out of each of three nested values. Each chain
+    /// uses the edition's `first`/`rest` accessors and propagates a
+    /// `Result` when a branch or leaf cannot be traversed.
     pub fn ex_2_25() -> Result<[i128; 3], Pending> {
         Err(Pending::new("2.25"))
     }

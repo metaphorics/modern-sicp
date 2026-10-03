@@ -1,15 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 2, exercise 2.55 (replaced)
+// Chapter 2, exercise 2.55
 
 package sicp.ch2.exercises
 
-import sicp.runtime.VPair
-import sicp.runtime.VSym
-import sicp.runtime.Value
-import sicp.runtime.vlist
+/** A host syntax tree for nested quotation, kept distinct from executable source. */
+public sealed interface QuotationForm {
+    public data class Name(
+        public val value: String,
+    ) : QuotationForm
 
-/** The value `''abracadabra` would read as: `(quote (quote abracadabra))`. */
-public val doubledQuoteAbracadabra: Value = vlist(VSym("quote"), vlist(VSym("quote"), VSym("abracadabra")))
+    public data class Quoted(
+        public val operand: QuotationForm,
+    ) : QuotationForm
+}
 
-/** `car` of [doubledQuoteAbracadabra]. */
-public fun ex_2_55(): Value = (doubledQuoteAbracadabra as VPair).car
+/** The host tree makes both quotation layers explicit. */
+public val doubledQuoteAbracadabra: QuotationForm =
+    QuotationForm.Quoted(QuotationForm.Quoted(QuotationForm.Name("abracadabra")))
+
+/** Inspect one layer: the result is another quotation node. */
+public fun ex_2_55(): QuotationForm = (doubledQuoteAbracadabra as QuotationForm.Quoted).operand

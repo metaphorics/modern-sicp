@@ -1,58 +1,68 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, exercise 5.15: instruction counting. The counting machine
-// overrides the one execution loop: before each execution procedure runs,
-// the counter advances. The counts are read after the run, the way
-// Alyssa's monitor would report them.
+// Original exercise
+//
+// Chapter 5, exercise 5.15: instruction counting. The book asks the model
+// to keep track of executed instructions and to accept a message that
+// prints the count and resets it to zero. The substrate's own counter
+// counts every step, label definitions included; the book's count is the
+// instructions a controller listing shows, so this counter steps the
+// machine and counts the non-label instructions, and `printAndReset`
+// answers the report and zeroes the count.
 
 package sicp.ch5.solutions
 
-import arrow.core.raise.Raise
-import sicp.ch5.Machine
-import sicp.ch5.MachineError
-import sicp.ch5.Op
-import sicp.ch5.arithOperations
-import sicp.ch5.setRegisterContents
-import sicp.runtime.Reg
-import sicp.runtime.VInt
+import sicp.guest.GValue
+import sicp.runtime.Label
+import sicp.runtime.Machine
 
 /** The counting machine: every executed instruction increments the
  *  counter, transfers included. */
-public class CountingMachine(
-    registerNames: List<Reg>,
-    userOperations: Map<String, Op>,
-) : Machine(registerNames, userOperations) {
-    /** Executed instructions since the machine was built or the counter
-     *  was reset. */
-    public var instructionCount: Long = 0
+public class InstructionCounter(
+    private val machine: Machine,
+) {
+    /** Executed instructions since the counter was reset; labels excluded. */
+    public var count: Long = 0
+        private set
 
-    context(r: Raise<MachineError>)
-    override fun execute() {
-        while (pc < insts.size) {
-            instructionCount += 1
-            insts[pc].exec(r)
+    /** The book's message: report the count and reset it to zero. */
+    public fun printAndReset(): String {
+        val line = "$count instructions"
+        count = 0
+        return line
+    }
+
+    /** Runs the machine to its halt under the counter. */
+    public fun run(): Long {
+        while (!machine.halted()) {
+            val instruction = machine.controller[machine.pc]
+            stepOrFail(machine, instruction)
+            if (instruction !is Label) count++
         }
+        return count
     }
 }
 
 /** The gcd and factorial machines with their instruction counts for one
  *  run each. */
-public fun gcdInstructionCounts(): List<String> =
-    machineRun {
-        val gcd =
-            CountingMachine(listOf("a", "b", "t"), arithOperations).apply {
-                install(gcdController)
-                setRegisterContents("a", VInt(206))
-                setRegisterContents("b", VInt(40))
-                start()
-            }
-        val fact =
-            CountingMachine(listOf("n", "continue", "val"), arithOperations).apply {
-                install(recursiveFactorialSimController)
-                setRegisterContents("n", VInt(5))
-                start()
-            }
-        listOf(
-            "gcd(206, 40): ${gcd.instructionCount} instructions",
-            "factorial(5): ${fact.instructionCount} instructions",
+public fun gcdInstructionCounts(): List<String> {
+    val gcd =
+        freshMachine(
+            setOf("a", "b", "t"),
+            machineArithmetic,
+            gcdController,
+            mapOf("a" to GValue.VLong(206), "b" to GValue.VLong(40)),
         )
-    }
+    val gcdCount = InstructionCounter(gcd).run()
+    val fact =
+        freshMachine(
+            setOf("n", "continue", "val"),
+            machineArithmetic,
+            recursiveFactorialController,
+            mapOf("n" to GValue.VLong(5)),
+        )
+    val factCount = InstructionCounter(fact).run()
+    return listOf(
+        "gcd(206, 40): $gcdCount instructions",
+        "factorial(5): $factCount instructions",
+    )
+}

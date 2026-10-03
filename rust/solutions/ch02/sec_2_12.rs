@@ -7,15 +7,15 @@
 
 mod ex_2_12 {
     use ch02::sec_2_1::Interval;
-    use sicp_runtime::SchemeError;
+    use sicp_runtime::SicpError;
 
     /// Exercise 2.12's `make-center-percent`: a center and a percentage
     /// tolerance, built on `Interval::from_center_width` (the book's
     /// `make-center-width`, given in the main text).
     ///
     /// # Errors
-    /// [`SchemeError::TypeMismatch`] when `percent` is negative.
-    fn from_center_percent(center: f64, percent: f64) -> Result<Interval, SchemeError> {
+    /// [`SicpError::TypeMismatch`] when `percent` is negative.
+    fn from_center_percent(center: f64, percent: f64) -> Result<Interval, SicpError> {
         Interval::from_center_width(center, center.abs() * percent / 100.0)
     }
 
@@ -33,9 +33,9 @@ mod ex_2_12 {
     /// `5.0` percent.
     ///
     /// # Errors
-    /// [`SchemeError`] when the fixed inputs below fail to build an
+    /// [`SicpError`] when the fixed inputs below fail to build an
     /// interval, which they do not.
-    pub fn ex_2_12() -> Result<(f64, f64, f64), SchemeError> {
+    pub fn ex_2_12() -> Result<(f64, f64, f64), SicpError> {
         let interval = from_center_percent(100.0, 5.0)?;
         Ok((
             interval.lower_bound(),

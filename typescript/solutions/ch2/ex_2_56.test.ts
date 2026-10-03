@@ -8,7 +8,7 @@ import { derivPow, makeExponentiation, numPow, showExprPow, varPow } from "./ex_
 describe("exercise 2.56", () => {
   it("differentiates u^n by the power rule", () => {
     expect(showExprPow(derivPow(makeExponentiation(varPow("x"), numPow(2)), sym("x")))).toBe(
-      "(* 2 x)",
+      "2 * x",
     );
   });
 
@@ -19,7 +19,7 @@ describe("exercise 2.56", () => {
 
   it("keeps symbolic exponents and folds constants in the result", () => {
     expect(showExprPow(derivPow(makeExponentiation(varPow("x"), numPow(3)), sym("x")))).toBe(
-      "(* 3 (** x 2))",
+      "3 * x ** 2",
     );
     expect(showExprPow(derivPow(makeExponentiation(varPow("y"), numPow(2)), sym("x")))).toBe("0");
   });

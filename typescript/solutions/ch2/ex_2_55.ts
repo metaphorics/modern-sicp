@@ -4,26 +4,27 @@
 import { car, getOrElse } from "../../packages/ch2/src/02-picture-language.js";
 import {
   type Datum,
-  qlist,
-  qnum,
-  qsym,
+  listDatum,
+  numDatum,
   showDatum,
+  symDatum,
 } from "../../packages/ch2/src/03-symbolic-data.js";
 
 /**
- * Exercise 2.55: the book's `(car ''abracadabra)`, built by hand. The
- * reader expands the typed expression to `(quote (quote abracadabra))`;
- * evaluating that wraps the inner list once more, so the value is the
- * two-element list whose first item is the symbol `quote`. The outer
- * `qlist` below plays the outer quote mark of `''abracadabra`, and the
- * `qsym("quote")` inside it is what the inner quote mark left behind.
+ * Exercise 2.55: the doubled quotation mark, built by hand. Applying the
+ * quotation operation to the symbol `abracadabra` twice in a row
+ * abbreviates a quotation of a quotation; evaluating it once leaves the
+ * two-element list whose first item is the symbol `quote` and whose
+ * second item is `abracadabra`. The outer `listDatum` below plays the
+ * outer quotation mark, and the `symDatum("quote")` inside it is what the
+ * inner mark left behind.
  */
-export const valueOfDoubleQuote: Datum = qlist(qsym("quote"), qsym("abracadabra"));
+export const valueOfDoubleQuote: Datum = listDatum(symDatum("quote"), symDatum("abracadabra"));
 
-/** The book's `(car ''abracadabra)`: the symbol `quote`. */
+/** Head of the hand-built double quotation: the symbol `quote`. */
 export const carOfDoubleQuote = (): string => {
   if (valueOfDoubleQuote._tag !== "Lst") {
     throw new Error("the double-quoted value must be a list");
   }
-  return showDatum(getOrElse(car(valueOfDoubleQuote.items), qnum(0)));
+  return showDatum(getOrElse(car(valueOfDoubleQuote.items), numDatum(0)));
 };

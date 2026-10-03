@@ -8,10 +8,10 @@ import { reverseViaFoldLeft, reverseViaFoldRight } from "./ex_2_39.js";
 
 describe("exercise 2.39", () => {
   it("fold-right reverses by appending each element last", () => {
-    expect(showList(reverseViaFoldRight(list(1, 4, 9, 16, 25)))).toBe("(25 16 9 4 1)");
+    expect(showList(reverseViaFoldRight(list(1, 4, 9, 16, 25)))).toBe("[25, 16, 9, 4, 1]");
   });
 
   it("fold-left reverses by consing each element in front", () => {
-    expect(showList(reverseViaFoldLeft(list(1, 4, 9, 16, 25)))).toBe("(25 16 9 4 1)");
+    expect(showList(reverseViaFoldLeft(list(1, 4, 9, 16, 25)))).toBe("[25, 16, 9, 4, 1]");
   });
 });

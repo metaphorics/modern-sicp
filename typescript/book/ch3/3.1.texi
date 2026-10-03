@@ -135,14 +135,10 @@ Running @code{Ref.set} changes the cell so that its value is the result
 obtained by evaluating @code{⟨}@var{new-value}@code{⟩}.  In the case at
 hand, we are changing @code{balance} so that its new value will be the result
 of subtracting @code{amount} from the previous value of
-@code{balance}.@footnote{The @code{Ref} operations answer values: the plain
-@code{Ref.set} answers nothing and is run for its effect alone, while the
-composing forms such as @code{Ref.setAndGet} answer the value the cell now
-holds.  The Scheme convention behind the book's @code{set!} name survives in
-the vocabulary: an operation that changes a cell (or that changes data
-structures, as we will see in @ref{3.3}) says so in its name.  The
-same convention that designates predicates by names ending with a question
-mark.}
+@code{balance}.@footnote{@code{Ref.set} returns no value when its effect runs.
+@code{Ref.setAndGet} returns the cell's updated value.  The operation names
+distinguish changing a cell from reading it; @ref{3.3} applies the same
+distinction to mutable data structures.}
 
 @code{Withdraw} also needs two statements to run in sequence when the test is
 true: first decrementing @code{balance} and then returning the value of
@@ -234,7 +230,9 @@ This will be clearer after the discussion of the environment model of
 evaluation in @ref{3.2}.  (See also @ref{Exercise 3.10}.)}
 
 @example typescript
-export const makeWithdraw = (initialBalance: number): WithdrawalProcessor => @{
+export const makeWithdraw = (
+  initialBalance: number,
+): WithdrawalProcessor => @{
   const encapsulated = Ref.makeUnsafe(initialBalance);
   return (amount) =>
     Effect.gen(function* () @{
@@ -248,7 +246,7 @@ export const makeWithdraw = (initialBalance: number): WithdrawalProcessor => @{
 @end example
 
 @noindent
-@code{MakeWithdraw} can be used as follows to create two objects @code{W1} and
+@code{makeWithdraw} can be used as follows to create two objects @code{W1} and
 @code{W2}:
 
 @example typescript
@@ -282,7 +280,9 @@ export type AccountRequest =
   | @{ readonly _tag: "Withdraw"; readonly amount: number @}
   | @{ readonly _tag: "Deposit"; readonly amount: number @};
 
-export const makeAccount = (initialBalance: number): Account => @{
+export const makeAccount = (
+  initialBalance: number,
+): Account => @{
   const encapsulated = Ref.makeUnsafe(initialBalance);
   return (request) =>
     Effect.gen(function* () @{
@@ -291,9 +291,15 @@ export const makeAccount = (initialBalance: number): Account => @{
         if (current < request.amount) @{
           return yield* new InsufficientFunds();
         @}
-        return yield* Ref.setAndGet(encapsulated, current - request.amount);
+        return yield* Ref.setAndGet(
+          encapsulated,
+          current - request.amount,
+        );
       @}
-      return yield* Ref.updateAndGet(encapsulated, (b) => b + request.amount);
+      return yield* Ref.updateAndGet(
+        encapsulated,
+        (b) => b + request.amount,
+      );
     @});
 @};
 @end example
@@ -424,10 +430,14 @@ by the password with which the account was created, and should otherwise fail
 with the @emph{Incorrect password} error:
 
 @example typescript
-Effect.runSync(acc("secret-password", @{ _tag: "Withdraw", amount: 40 @}))
+Effect.runSync(
+  acc("secret-password", @{ _tag: "Withdraw", amount: 40 @}),
+)
 // => 60
 
-Effect.runSync(acc("some-other-password", @{ _tag: "Deposit", amount: 50 @}))
+Effect.runSync(
+  acc("some-other-password", @{ _tag: "Deposit", amount: 50 @}),
+)
 // => Error: IncorrectPassword
 @end example
 @end quotation
@@ -558,7 +568,10 @@ export const monteCarlo = <E, R>(
   trials: number,
   experiment: Effect.Effect<boolean, E, R>,
 ): Effect.Effect<number, E, R> => @{
-  const iter = (remaining: number, passed: number): Effect.Effect<number, E, R> =>
+  const iter = (
+    remaining: number,
+    passed: number,
+  ): Effect.Effect<number, E, R> =>
     remaining === 0
       ? Effect.succeed(passed / trials)
       : Effect.flatMap(experiment, (hit) =>
@@ -576,7 +589,10 @@ assignment to model local state:
 export const estimatePiWithoutState = (trials: number): number =>
   Math.sqrt(6 / randomGcdTest(trials, randomInit));
 
-export const randomGcdTest = (trials: number, initialX: number): number => @{
+export const randomGcdTest = (
+  trials: number,
+  initialX: number,
+): number => @{
   let remaining = trials;
   let passed = 0;
   let x = initialX;
@@ -671,7 +687,10 @@ const randomInRange = (
   high: number,
   rand: Effect.Effect<number>,
 ): Effect.Effect<number> =>
-  Effect.map(rand, (r) => low + (high - low) * (r / 4294967296));
+  Effect.map(
+    rand,
+    (r) => low + (high - low) * (r / 4294967296),
+  );
 @end example
 @end quotation
 
@@ -969,8 +988,13 @@ programs.  For example, recall the iterative factorial program from
 
 @example typescript
 const factorial = (n: number): number => @{
-  const iter = (product: number, counter: number): number =>
-    counter > n ? product : iter(counter * product, counter + 1);
+  const iter = (
+    product: number,
+    counter: number,
+  ): number =>
+    counter > n
+      ? product
+      : iter(counter * product, counter + 1);
   return iter(1, 1);
 @};
 @end example

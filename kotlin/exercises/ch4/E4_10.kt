@@ -4,25 +4,26 @@
 package sicp.ch4.exercises
 
 import sicp.runtime.PendingSolution
-import sicp.runtime.Value
 
 /**
- * Exercise 4.10: syntax in the interpreter is not sacred -- redefine it.
- * This host answers at the reader level: [syntaxize] is a `Value`->
- * `Value` transform that rewrites `(defun name (params...) body...)` into
- * the procedure-defining `define` sugar and `(fun (params...) body...)`
- * into `lambda`, before the parser ever sees the program. The rewrite is
- * structural and recursive, so a `fun` nested inside a `defun` body comes
- * out as a `lambda`, and a malformed `defun`/`fun` passes through
- * untouched for the interpreter to report. Pins: the transformed demo
- * `(defun cube (x) (* x x x)) (cube 7) ...` reads `"343\n512\n"`, the
- * same program without the transform reads
- * `"Error: unbound variable: defun\n"`.
+ * Exercise 4.10: syntax in the kernel is not sacred -- redefine it. The
+ * rewrite runs before dispatch: `defun(name, params, body)` becomes the
+ * procedure-defining derived form and `fun(params, body)` becomes `GLam`,
+ * structurally and recursively, so a `fun` inside a `defun` body comes out
+ * as a lambda and a malformed shape passes through untouched for the
+ * kernel to answer null. Without the rewrite the same program never
+ * admits: `defun` is an undeclared name and admission rejects it before
+ * any effect.
+ *
+ * Expected: the transformed demo answers 343 then 512; the untransformed
+ * program is rejected with the `UndeclaredName` category.
  */
-public fun syntaxize(v: Value): Value = throw PendingSolution()
-
-/** The demo program under the defun/fun transform. => "343\n512\n" */
 public fun defunTranscript(): String = throw PendingSolution()
 
-/** The same program without the transform. => "Error: unbound variable: defun\n" */
-public fun defunPlainTranscript(): String = throw PendingSolution()
+/** The same program without the rewrite is rejected at admission.
+ * => "UndeclaredName" */
+public fun defunPlainRejection(): String = throw PendingSolution()
+
+/** The rewrite is structural: a nested `fun` inside a `defun` body
+ * becomes a lambda and the probe applies it. => "49\n" */
+public fun nestedFunTranscript(): String = throw PendingSolution()

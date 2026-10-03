@@ -14,7 +14,7 @@ import sicp.runtime.PendingSolution
  * Expected answers: 3125 assignments before the distinctness requirement
  * and 120 after; the unprompted program costs 1470 backtracks to the
  * first answer while the pruned nest costs 210, and both answer
- * ((baker 3) (cooper 2) (fletcher 4) (miller 5) (smith 1)).
+ * [[baker, 3], [cooper, 2], [fletcher, 4], [miller, 5], [smith, 1]].
  */
 public fun assignmentsBeforeDistinct(): Int = throw PendingSolution()
 

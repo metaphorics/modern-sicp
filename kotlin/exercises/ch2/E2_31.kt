@@ -3,15 +3,11 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
- * Exercise 2.31: Abstract your answer to Exercise 2.30 to produce a procedure
- * `treeMap` with the property that `squareTree` could be defined as
- * `treeMap({ x -> x * x }, tree)`.
+ * Exercise 2.31: abstract the leaf transformation from Exercise 2.30 into
+ * `treeMap`, preserving each internal node and its child order. Define the
+ * squaring operation through that traversal.
  *
- * The statement lives in the section 2.2 chapter text.
- *
- * The scaffold returns the book-syntax rendering of the `treeMap`-based `squareTree` result.
+ * The scaffold returns the squared shared sample tree as typed data.
  */
-public fun ex_2_31(): String = throw PendingSolution()
+public fun ex_2_31(): Tree = throw PendingExercise()

@@ -60,23 +60,23 @@ The primitive mutators for pairs are @code{setCar} and @code{setCdr}.
 @code{setCar} takes two arguments, the first of which must be a pair; its type,
 @code{MCons}, says so, and the empty list is rejected before the program runs.
 It modifies this pair, replacing the @code{head} pointer by a pointer to the
-second argument of @code{setCar}.@footnote{The book's @code{set-car!} and
-@code{set-cdr!} return implementation-dependent values.  The edition's mutators
+second argument of @code{setCar}.@footnote{The original's two mutators
+return implementation-dependent values.  The edition's mutators
 return the modified pair, so a chain of calls reads like the book's
 interactions, but like assignment they should be used only for their effect.}
 
 @noindent
-As an example, suppose that @code{x} is bound to the list @code{((a b) c d)}
-and @code{y} to the list @code{(e f)} as illustrated in @ref{Figure 3.12}.
+As an example, suppose that @code{x} is bound to the list @code{[[a, b], c, d]}
+and @code{y} to the list @code{[e, f]} as illustrated in @ref{Figure 3.12}.
 Evaluating the expression @code{setCar(x, y)} modifies the pair to which
 @code{x} is bound, replacing its @code{head} by the value of @code{y}.  The
 result of the operation is shown in @ref{Figure 3.13}.  The structure @code{x}
-has been modified and @code{showMList(x)} would now print @code{((e f) c d)}.
-The pairs representing the list @code{(a b)}, identified by the pointer that was
+has been modified and @code{showMList(x)} would now print @code{[[e, f], c, d]}.
+The pairs representing the list @code{[a, b]}, identified by the pointer that was
 replaced, are now detached from the original structure.@footnote{We see from
 this that mutation operations on lists can create ``garbage'' that is not part
-of any accessible structure.  We will see in @ref{5.3.2} that Lisp
-memory-management systems include a @newterm{garbage collector}, which
+of any accessible structure.  We will see in @ref{5.3.2} that managed-memory
+systems include a @newterm{garbage collector}, which
 identifies and recycles the memory space used by unneeded pairs; every
 JavaScript engine carries one, so a detached pair simply disappears once
 nothing refers to it.}
@@ -85,7 +85,7 @@ nothing refers to it.}
 @anchor{Figure 3.12}
 @ifinfo
 @quotation
-@strong{Figure 3.12:} Lists @code{x}: @code{((a b) c d)} and @code{y}: @code{(e f)}.
+@strong{Figure 3.12:} Lists @code{x}: @code{[[a, b], c, d]} and @code{y}: @code{[e, f]}.
 
 @example
      +---+---+     +---+---+     +---+---+
@@ -113,20 +113,20 @@ x -->| * | *-+---->| * | *-+---->| * | / |
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.12b,,123mm,Figure 3.12: Lists x: ((a b) c d) and y: (e f).,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.12b,,123mm,Figure 3.12: Lists x: [[a@comma{} b]@comma{} c@comma{} d] and y: [e@comma{} f].,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.12b.std,,123mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.12b.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.12:} Lists @code{x}: @code{((a b) c d)} and @code{y}: @code{(e f)}.}
+@caption{@strong{Figure 3.12:} Lists @code{x}: @code{[[a, b], c, d]} and @code{y}: @code{[e, f]}.}
 @end float
 
 @float
 @anchor{Figure 3.13}
 @ifinfo
 @quotation
-@strong{Figure 3.13:} Effect of @code{(set-car! x y)} on the lists in @ref{Figure 3.12}.
+@strong{Figure 3.13:} Effect of @code{setCar(x, y)} on the lists in @ref{Figure 3.12}.
 
 @example
      +---+---+     +---+---+     +---+---+
@@ -154,13 +154,13 @@ x -->| * | *-+---->| * | *-+---->| * | / |
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.13b,,123mm,Figure 3.13: Effect of (set-car! x y) on the lists in Figure 3.12.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.13b,,123mm,Figure 3.13: Effect of setCar(x@comma{} y) on the lists in Figure 3.12.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.13b.std,,123mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.13b.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.13:} Effect of @code{(set-car! x y)} on the lists in @ref{Figure 3.12}.}
+@caption{@strong{Figure 3.13:} Effect of @code{setCar(x, y)} on the lists in @ref{Figure 3.12}.}
 @end float
 
 Compare @ref{Figure 3.13} with @ref{Figure 3.14}, which illustrates the result
@@ -173,7 +173,7 @@ bound to a new pair created by the @code{mcons} operation; the list to which
 @anchor{Figure 3.14}
 @ifinfo
 @quotation
-@strong{Figure 3.14:} Effect of @code{(define z (cons y (cdr x)))} on the lists in @ref{Figure 3.12}.
+@strong{Figure 3.14:} Effect of @code{const z = mcons(y, x.tail)} on the lists in @ref{Figure 3.12}.
 
 @example
      +---+---+     +---+---+     +---+---+
@@ -201,28 +201,28 @@ z -->| * | *-+-+   +---+         +---+
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.14b,,123mm,Figure 3.14: Effect of (define z (cons y (cdr x))) on the lists in Figure 3.12.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.14b,,123mm,Figure 3.14: Effect of const z = mcons(y@comma{} x.tail) on the lists in Figure 3.12.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.14b.std,,123mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.14b.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.14:} Effect of @code{(define z (cons y (cdr x)))} on the lists in @ref{Figure 3.12}.}
+@caption{@strong{Figure 3.14:} Effect of @code{const z = mcons(y, x.tail)} on the lists in @ref{Figure 3.12}.}
 @end float
 
 The @code{setCdr} operation is similar to @code{setCar}.  The only difference
 is that the @code{tail} pointer of the pair, rather than the @code{head}
 pointer, is replaced.  The effect of executing @code{setCdr(x, y)} on the lists
 of @ref{Figure 3.12} is shown in @ref{Figure 3.15}.  Here the @code{tail}
-pointer of @code{x} has been replaced by the pointer to @code{(e f)}.  Also,
-the list @code{(c d)}, which used to be the @code{tail} of @code{x}, is now
+pointer of @code{x} has been replaced by the pointer to @code{[e, f]}.  Also,
+the list @code{[c, d]}, which used to be the @code{tail} of @code{x}, is now
 detached from the structure.
 
 @float
 @anchor{Figure 3.15}
 @ifinfo
 @quotation
-@strong{Figure 3.15:} Effect of @code{(set-cdr! x y)} on the lists in @ref{Figure 3.12}.
+@strong{Figure 3.15:} Effect of @code{setCdr(x, y)} on the lists in @ref{Figure 3.12}.
 
 @example
      +---+---+     +---+---+     +---+---+
@@ -250,13 +250,13 @@ x -->| * | * |     | * | *-+---->| * | / |
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.15b,,123mm,Figure 3.15: Effect of (set-cdr! x y) on the lists in Figure 3.12.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.15b,,123mm,Figure 3.15: Effect of setCdr(x@comma{} y) on the lists in Figure 3.12.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.15b.std,,123mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.15b.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.15:} Effect of @code{(set-cdr! x y)} on the lists in @ref{Figure 3.12}.}
+@caption{@strong{Figure 3.15:} Effect of @code{setCdr(x, y)} on the lists in @ref{Figure 3.12}.}
 @end float
 
 @noindent
@@ -267,7 +267,7 @@ implement @code{mcons} in terms of the two mutators, together with a procedure
 list structure.  We obtain the new pair, set its @code{head} and @code{tail}
 pointers to the designated objects, and return the new pair as the result of
 the @code{mcons}.@footnote{@code{getNewPair} is one of the operations that
-must be implemented as part of the memory management required by a Lisp
+must be implemented as part of the memory management required by a language
 implementation.  We will discuss this in @ref{5.3.1}.  In JavaScript the object
 literal plays this part, and the engine's allocator stands behind it.}
 
@@ -299,15 +299,18 @@ const append = <A>(x: MList<A>, y: MList<A>): MList<A> =>
 @end example
 
 @code{append} forms a new list by successively @code{mcons}ing the
-elements of @code{x} onto @code{y}.  The procedure @code{appendBang}, the
-book's @code{append!}, is similar to @code{append}, but it is a mutator rather
-than a constructor.  It appends the lists by splicing them together, modifying
+elements of @code{x} onto @code{y}.  @code{appendBang} is similar to
+@code{append}, but it is a mutator rather than a constructor.  It appends the
+lists by splicing them together, modifying
 the final pair of @code{x} so that its @code{tail} is now @code{y}.  (It is an
 error to call @code{appendBang} with an empty @code{x}; the parameter type
 @code{MCons} turns that error into a type error.)
 
 @example typescript
-const appendBang = <A>(x: MCons<A>, y: MList<A>): MCons<A> => @{
+const appendBang = <A>(
+  x: MCons<A>,
+  y: MList<A>,
+): MCons<A> => @{
   setCdr(lastPair(x), y);
   return x;
 @};
@@ -329,7 +332,7 @@ const y = mlist("c", "d");
 const z = append(x, y);
 
 showMList(z)
-// => "(a b c d)"
+// => "[a, b, c, d]"
 
 showMList(x.tail)
 // ⟨@var{response}⟩
@@ -337,7 +340,7 @@ showMList(x.tail)
 const w = appendBang(x, y);
 
 showMList(w)
-// => "(a b c d)"
+// => "[a, b, c, d]"
 
 showMList(x.tail)
 // ⟨@var{response}⟩
@@ -409,7 +412,7 @@ const z1: MCons<unknown> = mcons<unknown>(x, x);
 @end example
 
 @noindent
-The type argument is spelled out because the book's @code{(cons x x)} asks one
+The type argument is spelled out because the original's construction asks one
 pair to hold @code{x} as its head and to hold @code{x} as a list element, and
 @code{mcons} takes a head of type @code{A} with a tail of @code{MList<A>}: here
 @code{A} is @code{unknown}.
@@ -424,7 +427,7 @@ pairs in which many individual pairs are shared by many different structures.
 @anchor{Figure 3.16}
 @ifinfo
 @quotation
-@strong{Figure 3.16:} The list @code{z1} formed by @code{(cons x x)}.
+@strong{Figure 3.16:} The list @code{z1} formed by @code{mcons<unknown>(x, x)}.
 
 @example
       +---+---+
@@ -442,27 +445,30 @@ z1 -->| * | * |
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.16b,,78mm,Figure 3.16: The list z1 formed by (cons x x).,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.16b,,78mm,Figure 3.16: The list z1 formed by mcons(x@comma{} x).,.std.svg}
 @end ifhtml
 @iftex
 @image{../../text/original/figures/pdf/chap3/Fig3.16b.std,,78mm,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.16:} The list @code{z1} formed by @code{(cons x x)}.}
+@caption{@strong{Figure 3.16:} The list @code{z1} formed by @code{mcons<unknown>(x, x)}.}
 @end float
 
 In contrast to @ref{Figure 3.16}, @ref{Figure 3.17} shows the structure created
 by
 
 @example typescript
-const z2: MCons<unknown> = mcons<unknown>(mlist("a", "b"), mlist("a", "b"));
+const z2: MCons<unknown> = mcons<unknown>(
+  mlist("a", "b"),
+  mlist("a", "b"),
+);
 @end example
 
 @float
 @anchor{Figure 3.17}
 @ifinfo
 @quotation
-@strong{Figure 3.17:} The list @code{z2} formed by @code{(cons (list 'a 'b) (list 'a 'b))}.
+@strong{Figure 3.17:} The list @code{z2} formed by @code{mcons<unknown>(mlist("a", "b"), mlist("a", "b"))}.
 
 @example
       +---+---+     +---+---+     +---+---+
@@ -481,29 +487,29 @@ z2 -->| * | *-+---->| * | *-+---->| * | / |
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.17b,,121mm,Figure 3.17: The list z2 formed by (cons (list 'a 'b) (list 'a 'b)).,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.17b,,121mm,Figure 3.17: The list z2 formed by mcons(mlist("a"@comma{} "b")@comma{} mlist("a"@comma{} "b")).,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.17b.std,,121mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.17b.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.17:} The list @code{z2} formed by @code{(cons (list 'a 'b) (list 'a 'b))}.}
+@caption{@strong{Figure 3.17:} The list @code{z2} formed by @code{mcons<unknown>(mlist("a", "b"), mlist("a", "b"))}.}
 @end float
 
 @noindent
-In this structure, the pairs in the two @code{(a b)} lists are distinct,
+In this structure, the pairs in the two @code{[a, b]} lists are distinct,
 although the actual symbols are shared.@footnote{The two pairs are distinct
-because each call to @code{mcons} returns a new pair.  The book's symbols are
-shared: in Scheme there is a unique symbol with any given name, and because
-Scheme provides no way to mutate a symbol the sharing is undetectable, except
-that it is what lets @code{eq?} compare symbols by checking equality of
+because each call to @code{mcons} returns a new pair.  The original's symbols are
+shared: its language interns one symbol per name, and because
+it provides no way to mutate a symbol the sharing is undetectable, except
+that it is what lets its identity comparison check equality of
 pointers.  The edition spells those symbols as strings, which JavaScript
 compares by value and does not treat as objects, so the identity tests in this
 section are all tests on pairs.}
 
 @noindent
 When thought of as a list, @code{z1} and @code{z2} both represent ``the same''
-list, @code{((a b) a b)}.  In general, sharing is completely undetectable if we
+list, @code{[[a, b], a, b]}.  In general, sharing is completely undetectable if we
 operate on lists using only @code{mcons} and the two selectors.  However, if we
 allow mutators on list structure, sharing becomes significant.  As an example
 of the difference that sharing can make, consider the following procedure,
@@ -511,7 +517,8 @@ which modifies the @code{head} of the structure to which it is applied:
 
 @example typescript
 const isPair = (v: unknown): v is MCons<unknown> =>
-  typeof v === "object" && v !== null && "_tag" in v && v._tag === "MCons";
+  typeof v === "object" && v !== null &&
+  "_tag" in v && v._tag === "MCons";
 
 const setToWow = (x: MCons<unknown>): MCons<unknown> => @{
   const head = x.head;
@@ -531,16 +538,16 @@ the @code{head} also changes the @code{tail}, because in @code{z1} the
 
 @example typescript
 showMList(z1)
-// => "((a b) a b)"
+// => "[[a, b], a, b]"
 
 showMList(setToWow(z1))
-// => "((wow b) wow b)"
+// => "[[wow, b], wow, b]"
 
 showMList(z2)
-// => "((a b) a b)"
+// => "[[a, b], a, b]"
 
 showMList(setToWow(z2))
-// => "((wow b) a b)"
+// => "[[wow, b], a, b]"
 @end example
 
 @noindent
@@ -587,7 +594,8 @@ current pair.''  So Ben writes the following procedure:
 
 @example typescript
 const isPair = (x: unknown): x is MCons<unknown> =>
-  typeof x === "object" && x !== null && "_tag" in x && x._tag === "MCons";
+  typeof x === "object" && x !== null &&
+  "_tag" in x && x._tag === "MCons";
 
 const countPairs = (x: unknown): number =>
   isPair(x) ? countPairs(x.head) + countPairs(x.tail) + 1 : 0;
@@ -681,8 +689,9 @@ const makePair = (x: PairValue, y: PairValue): Pair => @{
 @end example
 
 @noindent
-The book's second @code{cons} answers four messages from one @code{dispatch},
-and a caller reaches a setter by writing @code{((z 'set-car!) v)}.  The edition
+The original's second pair answers four messages from one @code{dispatch},
+and a caller reaches a setter by sending that setter's message with the new
+value.  The edition
 hands the four closures back as the fields of one object, the same shape the
 module uses for @code{MCons} and @code{Wire}, because a field name is the
 edition's message.  The cells @code{head} and @code{tail} are still the only
@@ -699,9 +708,8 @@ other.  The edition's @code{MCons} is the record form of the argument, and the
 closures above are the message-passing form.}
 
 @quotation
-@strong{@anchor{Exercise 3.20}Exercise 3.20:} @emph{SICP exercise 3.20 is
-about Scheme itself, so this edition replaces it; the exercise below keeps the
-number and teaches the same section material.}  The procedural pair above keeps
+@strong{@anchor{Exercise 3.20}Exercise 3.20:} @emph{This edition replaces SICP exercise 3.20 with a host-language
+exercise that keeps its number and teaching objective.}  The procedural pair above keeps
 its two fields in the cells of one closure, so two names can alias a single
 pair and a message sent through one name is visible through the other.  Draw
 the closure diagram that illustrates the sequence of interactions
@@ -752,14 +760,14 @@ called a @newterm{FIFO} (first in, first out) buffer.
 @strong{Figure 3.18:} Queue operations.
 
 @example
-Operation                Resulting Queue
-(define q (make-queue))
-(insert-queue! q 'a)     a
-(insert-queue! q 'b)     a b
-(delete-queue! q)        b
-(insert-queue! q 'c)     b c
-(insert-queue! q 'd)     b c d
-(delete-queue! q)        c d
+Operation                    Resulting Queue
+q := new empty queue
+enqueue a in q               a
+enqueue b in q               a b
+dequeue from q               b
+enqueue c in q               b c
+enqueue d in q               b c d
+dequeue from q               c d
 @end example
 @end quotation
 @end ifinfo
@@ -767,7 +775,7 @@ Operation                Resulting Queue
 @image{../../text/original/figures/chap3/Fig3.18,,119mm,Figure 3.18: Queue operations.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.18.std,,119mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.18.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.18:} Queue operations.}
@@ -865,7 +873,7 @@ plays the part of the book's @code{cons} of the two pointers.  @ref{Figure
   q -->| * | *-+-------------------+
        +-|-+---+                   |
          |                         |
-         | front-ptr               | rear-ptr
+         | front               | rear
          V                         V
      +---+---+    +---+---+    +---+---+
      | * | *-+--->| * | *-+--->| * | / |
@@ -881,7 +889,7 @@ plays the part of the book's @code{cons} of the two pointers.  @ref{Figure
 @image{../../text/original/figures/chap3/Fig3.19b,,118mm,Figure 3.19: Implementation of a queue as a list with front and rear pointers.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.19b.std,,118mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.19b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.19:} Implementation of a queue as a list with front and rear pointers.}
@@ -897,7 +905,10 @@ const setFrontPtr = <A>(queue: Queue<A>, item: MList<A>): Queue<A> => @{
   queue.front = item;
   return queue;
 @};
-const setRearPtr = <A>(queue: Queue<A>, item: MCons<A> | null): Queue<A> => @{
+const setRearPtr = <A>(
+  queue: Queue<A>,
+  item: MCons<A> | null,
+): Queue<A> => @{
   queue.rear = item;
   return queue;
 @};
@@ -908,7 +919,8 @@ Now we can implement the actual queue operations.  We will consider a queue to
 be empty if its front pointer is the empty list:
 
 @example typescript
-const isEmptyQueue = <A>(queue: Queue<A>): boolean => isMNil(queue.front);
+const isEmptyQueue = <A>(queue: Queue<A>): boolean =>
+  isMNil(queue.front);
 @end example
 
 @noindent
@@ -945,14 +957,14 @@ also set the rear pointer to the new pair.
 @float
 @anchor{Figure 3.20}
 @ifinfo
-@strong{Figure 3.20:} Result of using @code{(insert-queue! q 'd)} on the queue of @ref{Figure 3.19}.
+@strong{Figure 3.20:} Result of using @code{insertQueue(q, "d")} on the queue of @ref{Figure 3.19}.
 
 @example
        +---+---+
   q -->| * | *-+--------------------------------+
        +-|-+---+                                |
          |                                      |
-         | front-ptr                            | rear-ptr
+         | front                            | rear
          V                                      V
      +---+---+    +---+---+    +---+---+    +---+---+
      | * | *-+--->| * | *-+--->| * | *-+--->| * | / |
@@ -964,13 +976,13 @@ also set the rear pointer to the new pair.
 @end example
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.20c,,141mm,Figure 3.20: Result of using (insert-queue! q 'd) on the queue of Figure 3.19.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.20c,,141mm,Figure 3.20: Result of using insertQueue(q@comma{} "d") on the queue of Figure 3.19.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.20c.std,,141mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.20c.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.20:} Result of using @code{(insert-queue! q 'd)} on the queue of @ref{Figure 3.19}.}
+@caption{@strong{Figure 3.20:} Result of using @code{insertQueue(q, "d")} on the queue of @ref{Figure 3.19}.}
 @end float
 
 @example typescript
@@ -1020,14 +1032,14 @@ const deleteQueue = <A>(queue: Queue<A>): Queue<A> => @{
 @float
 @anchor{Figure 3.21}
 @ifinfo
-@strong{Figure 3.21:} Result of using @code{(delete-queue!  q)} on the queue of @ref{Figure 3.20}.
+@strong{Figure 3.21:} Result of using @code{deleteQueue(q)} on the queue of @ref{Figure 3.20}.
 
 @example
        +---+---+
   q -->| * | *-+--------------------------------+
        +-|-+---+                                |
          +------------+                         |
-            front-ptr |                         | rear-ptr
+            front |                         | rear
                       V                         V
      +---+---+    +---+---+    +---+---+    +---+---+
      | * | *-+--->| * | *-+--->| * | *-+--->| * | / |
@@ -1039,13 +1051,13 @@ const deleteQueue = <A>(queue: Queue<A>): Queue<A> => @{
 @end example
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.21c,,141mm,Figure 3.21: Result of using (delete-queue! q) on the queue of Figure 3.20.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.21c,,141mm,Figure 3.21: Result of using deleteQueue(q) on the queue of Figure 3.20.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.21c.std,,141mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.21c.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.21:} Result of using @code{(delete-queue!  q)} on the queue of @ref{Figure 3.20}.}
+@caption{@strong{Figure 3.21:} Result of using @code{deleteQueue(q)} on the queue of @ref{Figure 3.20}.}
 @end float
 
 @quotation
@@ -1057,16 +1069,16 @@ to try them out:
 const q1 = makeQueue<string>();
 
 insertQueue(q1, "a");
-// q1.front: (a)   q1.rear: (a)
+// q1.front: [a]   q1.rear: [a]
 
 insertQueue(q1, "b");
-// q1.front: (a b)   q1.rear: (b)
+// q1.front: [a, b]   q1.rear: [b]
 
 deleteQueue(q1);
-// q1.front: (b)   q1.rear: (b)
+// q1.front: [b]   q1.rear: [b]
 
 deleteQueue(q1);
-// q1.front: ()   q1.rear: null
+// q1.front: []   q1.rear: null
 @end example
 
 @noindent
@@ -1189,7 +1201,7 @@ V   V       V   V       V   V
 @image{../../text/original/figures/chap3/Fig3.22c,,138mm,Figure 3.22: A table represented as a headed list.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.22c.std,,138mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.22c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.22:} A table represented as a headed list.}
@@ -1198,16 +1210,13 @@ V   V       V   V       V   V
 @noindent
 To extract information from a table we use the @code{tableLookup} procedure,
 which takes a key as argument and returns the associated value (or
-@code{undefined} if there is no value stored under that key, the edition's
-spelling of the book's false).  @code{tableLookup} scans the record chain
-directly: it is defined in terms of the @code{assoc} operation, which
-expects a key and a list of records as arguments.  Note that @code{assoc} never
-sees the dummy record.  @code{Assoc} returns the record that has the given key
-as its @code{key}.@footnote{The book's @code{assoc} compares keys with
-@code{equal?}, so it can recognize keys that are symbols, numbers, or list
-structure.  The edition's default @code{sameKey} test is strict equality, which
-covers the strings and numbers this section's keys are; @ref{Exercise 3.24}
-opens the test to whatever comparison a caller supplies.}  @code{tableLookup}
+@code{undefined} if there is no value stored under that key).
+@code{tableLookup} scans the record chain through @code{assoc}, which
+expects a key and a list of records.  @code{assoc} never sees the dummy record.
+It returns the record whose @code{key} matches the given key.@footnote{The
+default @code{sameKey} test uses strict equality, which compares the string and
+number keys in this section by value.  Structured keys can require a different
+comparison; @ref{Exercise 3.24} lets the caller supply one.}  @code{tableLookup}
 then checks to see that the record it found is not absent, and returns the
 value (the @code{value} field) of the record.
 
@@ -1409,8 +1418,8 @@ const makeLocalTable = <K1, K2, V>(): LocalTable<K1, K2, V> => @{
 @end example
 
 @noindent
-The book's generator answers the messages @code{lookup-proc} and
-@code{insert-proc!} from one @code{dispatch}; the edition names the two
+The original's generator answers a lookup message and an insert message from
+one @code{dispatch}; the edition names the two
 closures as fields of the object it returns, and the internal table is
 reachable through no other door.
 
@@ -1433,8 +1442,7 @@ encapsulated within the object created by the call to @code{makeLocalTable}.
 @quotation
 @strong{@anchor{Exercise 3.24}Exercise 3.24:} In the table implementations
 above, the keys are compared with the default @code{sameKey} test, strict
-equality, where the book uses @code{equal?} inside @code{assoc}.  This is not
-always the appropriate test.  For instance, we
+equality.  This is not always the appropriate test.  For instance, we
 might have a table with numeric keys in which we don't need an exact match to
 the number we're looking up, but only a number within some tolerance of it.
 Design a table constructor @code{makeTableSameKey} that takes as an argument a
@@ -1486,7 +1494,11 @@ The memoized version of the same procedure is
 @example typescript
 const memoFib: (n: number) => number = memoize(
   (n: number): number =>
-    n === 0 ? 0 : n === 1 ? 1 : memoFib(n - 1) + memoFib(n - 2),
+    n === 0
+      ? 0
+      : n === 1
+        ? 1
+        : memoFib(n - 1) + memoFib(n - 2),
 );
 @end example
 
@@ -1499,7 +1511,9 @@ const memoize = <A, B>(f: (x: A) => B): ((x: A) => B) => @{
   const table = new Map<A, B>();
   return (x: A): B => @{
     const previouslyComputedResult = table.get(x);
-    if (previouslyComputedResult !== undefined) return previouslyComputedResult;
+    if (previouslyComputedResult !== undefined) @{
+      return previouslyComputedResult;
+    @}
     const result = f(x);
     table.set(x, result);
     return result;
@@ -1577,7 +1591,7 @@ Inverter    And-gate     Or-gate
 @image{../../text/original/figures/chap3/Fig3.24a,,110mm,Figure 3.24: Primitive functions in the digital logic simulator.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.24a.std,,110mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.24a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.24:} Primitive functions in the digital logic simulator.}
@@ -1622,7 +1636,7 @@ B -----*------|___/                        |
 @image{../../text/original/figures/chap3/Fig3.25c,,122mm,Figure 3.25: A half-adder circuit.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.25c.std,,122mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.25c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.25:} A half-adder circuit.}
@@ -1736,7 +1750,7 @@ C -----+       +---------------/___/   |
 @image{../../text/original/figures/chap3/Fig3.26,,129mm,Figure 3.26: A full-adder circuit.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.26.std,,129mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.26.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.26:} A full-adder circuit.}
@@ -1749,7 +1763,7 @@ building block for creating still more complex circuits.  (For example, see
 
 In essence, our simulator provides us with the tools to construct a language of
 circuits.  If we adopt the general perspective on languages with which we
-approached the study of Lisp in @ref{1.1}, we can say that the
+approached the study of programming languages in @ref{1.1}, we can say that the
 primitive function boxes form the primitive elements of the language, that
 wiring boxes together provides a means of combination, and that specifying
 wiring patterns as procedures serves as a means of abstraction.
@@ -1796,7 +1810,11 @@ signal on the input wire changes value.  The procedure computes the
 @example typescript
 const inverter = (input: Wire, output: Wire, agenda: Agenda): void => @{
   const invertInput = (): void => @{
-    afterDelay(inverterDelay, () => output.setSignal(logicalNot(input.getSignal())), agenda);
+    afterDelay(
+      inverterDelay,
+      () => output.setSignal(logicalNot(input.getSignal())),
+      agenda,
+    );
   @};
   input.addAction(invertInput);
 @};
@@ -1805,7 +1823,7 @@ const logicalNot = (value: boolean): boolean => !value;
 @end example
 
 @noindent
-The book's @code{logical-not} also signals an error for a signal that is
+The book's @code{logicalNot} also signals an error for a signal that is
 neither 0 nor 1; here the parameter type @code{boolean} rules that out before
 the program runs.
 
@@ -1820,11 +1838,17 @@ inputs when the delayed action fires, which is the difference the sample
 simulation below shows.
 
 @example typescript
-const andGate = (a1: Wire, a2: Wire, output: Wire, agenda: Agenda): void => @{
+const andGate = (
+  a1: Wire,
+  a2: Wire,
+  output: Wire,
+  agenda: Agenda,
+): void => @{
   const andActionProcedure = (): void => @{
     afterDelay(
       andGateDelay,
-      () => output.setSignal(logicalAnd(a1.getSignal(), a2.getSignal())),
+      () =>
+        output.setSignal(logicalAnd(a1.getSignal(), a2.getSignal())),
       agenda,
     );
   @};
@@ -1894,7 +1918,7 @@ C ------+   |     +-----+   |     +-----+   |     :  ------+   |
 @image{../../text/original/figures/chap3/Fig3.27b,,132mm,Figure 3.27: A ripple-carry adder for n-bit numbers.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.27b.std,,132mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.27b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.27:} A ripple-carry adder for @math{n}-bit numbers.}
@@ -1923,7 +1947,11 @@ const makeWire = (): Wire => @{
     actions = [proc, ...actions];
     proc();
   @};
-  return @{ getSignal: () => signal, setSignal: setMySignal, addAction: acceptActionProcedure @};
+  return @{
+    getSignal: () => signal,
+    setSignal: setMySignal,
+    addAction: acceptActionProcedure,
+  @};
 @};
 @end example
 
@@ -2024,14 +2052,18 @@ specified time.
 @end itemize
 
 @noindent
-The book keeps one particular agenda in a global named @code{the-agenda}.  The
+The original keeps one particular agenda in a single global.  The
 edition has no such global: every procedure that schedules or runs work takes
 the agenda it works on as a parameter, so two simulations can run side by side
 and a test can start from a fresh agenda.  The procedure @code{afterDelay} adds
 new elements to the agenda it is given:
 
 @example typescript
-const afterDelay = (delay: number, action: () => void, agenda: Agenda): void =>
+const afterDelay = (
+  delay: number,
+  action: () => void,
+  agenda: Agenda,
+): void =>
   addToAgenda(currentAgendaTime(agenda) + delay, action, agenda);
 @end example
 
@@ -2069,7 +2101,11 @@ const probe = (
   events: ProbeEvent[],
 ): void => @{
   wire.addAction(() => @{
-    events.push(@{ time: currentAgendaTime(agenda), name, value: wire.getSignal() @});
+    events.push(@{
+      time: currentAgendaTime(agenda),
+      name,
+      value: wire.getSignal(),
+    @});
   @});
 @};
 @end example
@@ -2198,12 +2234,17 @@ interface Agenda @{
 @}
 
 const makeAgenda = (): Agenda => (@{ currentTime: 0, segments: mnil @});
-const currentAgendaTime = (agenda: Agenda): number => agenda.currentTime;
+const currentAgendaTime = (agenda: Agenda): number =>
+  agenda.currentTime;
 const setCurrentTime = (agenda: Agenda, time: number): void => @{
   agenda.currentTime = time;
 @};
-const segmentChain = (agenda: Agenda): MList<TimeSegment> => agenda.segments;
-const setSegments = (agenda: Agenda, segments: MList<TimeSegment>): void => @{
+const segmentChain = (agenda: Agenda): MList<TimeSegment> =>
+  agenda.segments;
+const setSegments = (
+  agenda: Agenda,
+  segments: MList<TimeSegment>,
+): void => @{
   agenda.segments = segments;
 @};
 const firstSegment = (agenda: Agenda): TimeSegment => @{
@@ -2224,7 +2265,8 @@ const firstSegmentCell = (agenda: Agenda): MCons<TimeSegment> => @{
 An agenda is empty if it has no time segments:
 
 @example typescript
-const isAgendaEmpty = (agenda: Agenda): boolean => isMNil(agenda.segments);
+const isAgendaEmpty = (agenda: Agenda): boolean =>
+  isMNil(agenda.segments);
 @end example
 
 @noindent
@@ -2237,16 +2279,26 @@ new time segment into the agenda just before it.  If we reach the end of the
 agenda, we must create a new time segment at the end.
 
 @example typescript
-const addToAgenda = (time: number, action: () => void, agenda: Agenda): void => @{
+const addToAgenda = (
+  time: number,
+  action: () => void,
+  agenda: Agenda,
+): void => @{
   const belongsBefore = (segments: MList<TimeSegment>): boolean =>
     isMNil(segments) || time < segments.head.time;
-  const makeNewTimeSegment = (t: number, a: () => void): TimeSegment => (@{
+  const makeNewTimeSegment = (
+    t: number,
+    a: () => void,
+  ): TimeSegment => (@{
     time: t,
     queue: insertQueue(makeQueue<() => void>(), a),
   @});
   const add = (segments: MList<TimeSegment>): void => @{
     if (isMNil(segments)) @{
-      setSegments(agenda, mcons(makeNewTimeSegment(time, action), mnil));
+      setSegments(
+        agenda,
+        mcons(makeNewTimeSegment(time, action), mnil),
+      );
       return;
     @}
     if (segments.head.time === time) @{
@@ -2254,14 +2306,20 @@ const addToAgenda = (time: number, action: () => void, agenda: Agenda): void => 
       return;
     @}
     if (belongsBefore(segments.tail)) @{
-      setCdr(segments, mcons(makeNewTimeSegment(time, action), segments.tail));
+      setCdr(
+        segments,
+        mcons(makeNewTimeSegment(time, action), segments.tail),
+      );
       return;
     @}
     add(segments.tail);
   @};
   const segments = segmentChain(agenda);
   if (belongsBefore(segments)) @{
-    setSegments(agenda, mcons(makeNewTimeSegment(time, action), segments));
+    setSegments(
+      agenda,
+      mcons(makeNewTimeSegment(time, action), segments),
+    );
     return;
   @}
   add(segments);
@@ -2421,7 +2479,7 @@ C -----+ m1      |  u  |      m1 +-------+ a1      |
 @image{../../text/original/figures/chap3/Fig3.28,,142mm,Figure 3.28: The relation 9C = 5(F - 32) expressed as a constraint network.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.28.std,,142mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.28.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.28:} The relation @math{{9C = 5(F - 32)}} expressed as a constraint network.}
@@ -2460,7 +2518,10 @@ celsiusFahrenheitConverter(C, F);
 The procedure that creates the network is defined as follows:
 
 @example typescript
-const celsiusFahrenheitConverter = (c: Connector, f: Connector): void => @{
+const celsiusFahrenheitConverter = (
+  c: Connector,
+  f: Connector,
+): void => @{
   const u = makeConnector();
   const v = makeConnector();
   const w = makeConnector();
@@ -2501,10 +2562,10 @@ Next we set the value of @code{C} to 25.  (The second argument to
 @code{setValue} tells @code{C} that this directive comes from the
 @code{"user"}.)
 
-@example typescript
+@smallexample
 C.setValue(25, "user")
 // events: @i{[@{ name: "Celsius temp", value: 25 @}, @{ name: "Fahrenheit temp", value: 77 @}]}
-@end example
+@end smallexample
 
 @noindent
 The probe on @code{C} awakens and reports the value.  @code{C} also propagates
@@ -2524,10 +2585,11 @@ The connector complains that it has sensed a contradiction: Its value is 77,
 and someone is trying to set it to 212.  If we really want to reuse the network
 with new values, we can tell @code{C} to forget its old value:
 
-@example typescript
+@smallexample
 C.forgetValue("user")
-// events: @i{[@{ name: "Celsius temp", value: "?" @}, @{ name: "Fahrenheit temp", value: "?" @}]}
-@end example
+// events: @i{[@{ name: "Celsius temp", value: "?" @},
+// @{ name: "Fahrenheit temp", value: "?" @}]}
+@end smallexample
 
 @noindent
 @code{C} finds that the @code{user}, who set its value originally, is now
@@ -2539,10 +2601,11 @@ its value, as shown by the probe.
 
 Now that @code{F} has no value, we are free to set it to 212:
 
-@example typescript
+@smallexample
 F.setValue(212, "user")
-// events: @i{[@{ name: "Fahrenheit temp", value: 212 @}, @{ name: "Celsius temp", value: 100 @}]}
-@end example
+// events: @i{[@{ name: "Fahrenheit temp", value: 212 @},
+// @{ name: "Celsius temp", value: 100 @}]}
+@end smallexample
 
 @noindent
 This new value, when propagated through the network, forces @code{C} to have a
@@ -2597,7 +2660,11 @@ procedure with local state (the @code{me} function below), and the module's
 @code{adder} returns it:
 
 @example typescript
-const adder = (a1: Connector, a2: Connector, sum: Connector): Constraint => @{
+const adder = (
+  a1: Connector,
+  a2: Connector,
+  sum: Connector,
+): Constraint => @{
   const processNewValue = (): void => @{
     if (a1.hasValue() && a2.hasValue()) @{
       sum.setValue(a1.getValue() + a2.getValue(), me);
@@ -2643,7 +2710,7 @@ const informAboutNoValue = (constraint: Constraint): void =>
 @end example
 
 @noindent
-The adder's local procedure @code{process-new-value} is called when the adder
+The adder's local procedure @code{processNewValue} is called when the adder
 is informed that one of its connectors has a value. The adder first checks to
 see if both @code{a1} and @code{a2} have values. If so, it tells @code{sum} to
 set its value to the sum of the two addends.  The @code{informant} argument to
@@ -2654,7 +2721,7 @@ difference of these two.  Finally, if @code{a2} and @code{sum} have values,
 this gives the adder enough information to set @code{a1}.  If the adder is told
 that one of its connectors has lost a value, it requests that all of its
 connectors now lose their values.  (Only those values that were set by this
-adder are actually lost.)  Then it runs @code{process-new-value}.  The reason
+adder are actually lost.)  Then it runs @code{processNewValue}.  The reason
 for this last step is that one or more connectors may still have a value (that
 is, a connector may have had a value that was not originally set by the adder),
 and these values may need to be propagated back through the adder.
@@ -2669,7 +2736,10 @@ const multiplier = (
   product: Connector,
 ): Constraint => @{
   const processNewValue = (): void => @{
-    if ((m1.hasValue() && m1.getValue() === 0) || (m2.hasValue() && m2.getValue() === 0)) @{
+    if (
+      (m1.hasValue() && m1.getValue() === 0) ||
+      (m2.hasValue() && m2.getValue() === 0)
+    ) @{
       product.setValue(0, me);
     @} else if (m1.hasValue() && m2.hasValue()) @{
       product.setValue(m1.getValue() * m2.getValue(), me);
@@ -2777,7 +2847,9 @@ const makeConnector = (): Connector => @{
   return @{
     hasValue: () => value !== undefined,
     getValue: () => @{
-      if (value === undefined) throw new Error("connector has no value");
+      if (value === undefined) @{
+        throw new Error("connector has no value");
+      @}
       return value;
     @},
     setValue: setMyValue,
@@ -2789,11 +2861,11 @@ const makeConnector = (): Connector => @{
 
 @noindent
 The module keeps the five operations as the fields of a @code{Connector}
-object; the book reaches the same locals through a @code{me} dispatch that
-answers the messages @code{has-value?}, @code{value}, @code{set-value!},
-@code{forget}, and @code{connect}.  Where the book starts @code{value} and
-@code{informant} as @code{false} and reads the third state off the informant in
-@code{has-value?}, @code{undefined} says it directly.
+object; the original reaches the same locals through a @code{me} dispatch
+answering five messages: whether it has a value, its value, setting it,
+forgetting it, and connecting a constraint.  Where the original starts its
+value and informant as @code{false} and reads the third state off the
+informant in its has-value test, @code{undefined} says it directly.
 
 The connector's local procedure @code{setMyValue} is called when there is a
 request to set the connector's value.  If the connector does not currently have
@@ -2835,16 +2907,23 @@ represents the connector.  The following wrappers play the part of the book's
 syntax interfaces for the dispatch:
 
 @example typescript
-const hasValue = (connector: Connector): boolean => connector.hasValue();
+const hasValue = (connector: Connector): boolean =>
+  connector.hasValue();
 const getValue = (connector: Connector): number => connector.getValue();
 const setValue = (
   connector: Connector,
   newValue: number,
   informant: Informant,
 ): void => connector.setValue(newValue, informant);
-const forgetValue = (connector: Connector, retractor: Informant): void =>
+const forgetValue = (
+  connector: Connector,
+  retractor: Informant,
+): void =>
   connector.forgetValue(retractor);
-const connect = (connector: Connector, newConstraint: Constraint): void =>
+const connect = (
+  connector: Connector,
+  newConstraint: Constraint,
+): void =>
   connector.connect(newConstraint);
 @end example
 
@@ -2864,7 +2943,10 @@ value @code{a} on the first terminal.  He proposes the following simple device
 made from a multiplier:
 
 @example typescript
-const squarerFromMultiplier = (a: Connector, b: Connector): Constraint =>
+const squarerFromMultiplier = (
+  a: Connector,
+  b: Connector,
+): Constraint =>
   multiplier(a, a, b);
 @end example
 
@@ -2904,9 +2986,8 @@ const squarer = (a: Connector, b: Connector): Constraint => @{
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 3.36}Exercise 3.36:} @emph{SICP exercise 3.36 is
-about Scheme itself, so this edition replaces it; the exercise below keeps the
-number and teaches the same section material.}  Suppose we evaluate the
+@strong{@anchor{Exercise 3.36}Exercise 3.36:} @emph{This edition replaces SICP exercise 3.36 with a host-language
+exercise that keeps its number and teaching objective.}  Suppose we evaluate the
 following sequence in a module scope:
 
 @example typescript
@@ -2933,8 +3014,13 @@ procedure is cumbersome when compared with
 a more expression-oriented style of definition, such as
 
 @example typescript
-const celsiusFahrenheitConverterExpr = (c: Connector): Connector =>
-  cadd(cmul(cdiv(cconst(9), cconst(5)), c), cconst(32));
+const celsiusFahrenheitConverterExpr = (
+  c: Connector,
+): Connector =>
+  cadd(
+    cmul(cdiv(cconst(9), cconst(5)), c),
+    cconst(32),
+  );
 
 const C = makeConnector();
 const F = celsiusFahrenheitConverterExpr(C);

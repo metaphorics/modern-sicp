@@ -2,25 +2,23 @@
 // Original exercise
 
 import {
-  arithmeticOperations,
   assign,
   branch,
-  type ControllerLine,
-  c,
-  getRegisterContents,
-  jump,
-  jumpReg,
-  lbl,
+  constant,
+  expectOk,
+  gotoLabel,
+  gotoRegister,
+  labelRef,
   type Machine,
+  type MachineStatement,
   makeMachine,
   mark,
   op,
-  reg,
+  register,
   restore,
   save,
-  setRegisterContents,
   test,
-} from "../../packages/ch5/src/02-simulator.js";
+} from "./ex_5_07.ts";
 import {
   cons,
   emptyList,
@@ -29,8 +27,7 @@ import {
   makeMemory,
   renderWord,
   type Value,
-} from "../../packages/ch5/src/03-storage.js";
-import { expectOk } from "./ex_5_07.js";
+} from "./exercise-memory.ts";
 
 /** The object-language tree the machines count: a leaf is a number, a
  * node a list of subtrees, e0-terminated, planted as the book's pointers. */
@@ -49,66 +46,67 @@ export const plantTree = (memory: Memory, tree: Tree): Value => {
 
 /** The machine of exercise 5.21a: pure recursion. The car answer waits
  * in val while the cdr is counted, and the two answers combine with +. */
-export const countLeavesRecursive: ControllerLine[] = [
-  assign("continue", lbl("count-done")),
+export const countLeavesRecursive: MachineStatement<Value>[] = [
+  assign<Value>("continue", labelRef<Value>("count-done")),
   mark("count-loop"),
-  test("null?", reg("tree")),
-  branch("null-answer"),
-  test("pair?", reg("tree")),
-  branch("tree-case"),
-  assign("val", c(1)),
-  jumpReg("continue"),
+  test<Value>("null?", register<Value>("tree")),
+  branch<Value>("null-answer"),
+  test<Value>("pair?", register<Value>("tree")),
+  branch<Value>("tree-case"),
+  assign<Value>("val", constant<Value>(1)),
+  gotoRegister<Value>("continue"),
   mark("null-answer"),
-  assign("val", c(0)),
-  jumpReg("continue"),
+  assign<Value>("val", constant<Value>(0)),
+  gotoRegister<Value>("continue"),
   mark("tree-case"),
-  save("continue"),
-  save("tree"),
-  assign("continue", lbl("after-car")),
-  assign("tree", op("car", reg("tree"))),
-  jump("count-loop"),
+  save<Value>("continue"),
+  save<Value>("tree"),
+  assign<Value>("continue", labelRef<Value>("after-car")),
+  assign<Value>("tree", op<Value>("car", register<Value>("tree"))),
+  gotoLabel<Value>("count-loop"),
   mark("after-car"),
-  restore("tree"),
-  assign("tree", op("cdr", reg("tree"))),
-  save("val"),
-  assign("continue", lbl("after-cdr")),
-  jump("count-loop"),
+  restore<Value>("tree"),
+  assign<Value>("tree", op<Value>("cdr", register<Value>("tree"))),
+  save<Value>("val"),
+  assign<Value>("continue", labelRef<Value>("after-cdr")),
+  gotoLabel<Value>("count-loop"),
   mark("after-cdr"),
-  restore("temp"),
-  assign("val", op("+", reg("val"), reg("temp"))),
-  restore("continue"),
-  jumpReg("continue"),
+  assign<Value>("temp", register<Value>("val")),
+  restore<Value>("val"),
+  assign<Value>("val", op<Value>("+", register<Value>("val"), register<Value>("temp"))),
+  restore<Value>("continue"),
+  gotoRegister<Value>("continue"),
   mark("count-done"),
 ];
 
 /** The machine of exercise 5.21b: the explicit counter. n accumulates
  * through both subcalls, so only continue and tree take stack room. */
-export const countLeavesIterative: ControllerLine[] = [
-  assign("n", c(0)),
-  assign("continue", lbl("count-done")),
+export const countLeavesIterative: MachineStatement<Value>[] = [
+  assign<Value>("n", constant<Value>(0)),
+  assign<Value>("continue", labelRef<Value>("count-done")),
   mark("count-loop"),
-  test("null?", reg("tree")),
-  branch("null-case"),
-  test("pair?", reg("tree")),
-  branch("tree-case"),
-  assign("n", op("+", reg("n"), c(1))),
-  jumpReg("continue"),
+  test<Value>("null?", register<Value>("tree")),
+  branch<Value>("null-case"),
+  test<Value>("pair?", register<Value>("tree")),
+  branch<Value>("tree-case"),
+  assign<Value>("n", op<Value>("+", register<Value>("n"), constant<Value>(1))),
+  gotoRegister<Value>("continue"),
   mark("null-case"),
-  jumpReg("continue"),
+  gotoRegister<Value>("continue"),
   mark("tree-case"),
-  save("continue"),
-  save("tree"),
-  assign("continue", lbl("after-car")),
-  assign("tree", op("car", reg("tree"))),
-  jump("count-loop"),
+  save<Value>("continue"),
+  save<Value>("tree"),
+  assign<Value>("continue", labelRef<Value>("after-car")),
+  assign<Value>("tree", op<Value>("car", register<Value>("tree"))),
+  gotoLabel<Value>("count-loop"),
   mark("after-car"),
-  restore("tree"),
-  assign("tree", op("cdr", reg("tree"))),
-  assign("continue", lbl("after-cdr")),
-  jump("count-loop"),
+  restore<Value>("tree"),
+  assign<Value>("tree", op<Value>("cdr", register<Value>("tree"))),
+  assign<Value>("continue", labelRef<Value>("after-cdr")),
+  gotoLabel<Value>("count-loop"),
   mark("after-cdr"),
-  restore("continue"),
-  jumpReg("continue"),
+  restore<Value>("continue"),
+  gotoRegister<Value>("continue"),
   mark("count-done"),
 ];
 
@@ -124,19 +122,26 @@ interface CountRun {
 }
 
 const runCountLeaves = (
-  controller: ReadonlyArray<ControllerLine>,
+  controller: ReadonlyArray<MachineStatement<Value>>,
   registers: ReadonlyArray<string>,
   answerReg: string,
   tree: Tree,
 ): CountRun => {
   const memory = makeMemory(64);
-  const machine: Machine = expectOk(
-    makeMachine(registers, { ...arithmeticOperations, ...listOperations(memory) }, controller),
-  );
-  expectOk(setRegisterContents(machine, "tree", plantTree(memory, tree)));
-  expectOk(machine.start());
-  const answer = expectOk(getRegisterContents(machine, answerReg));
-  return { answer: renderWord(answer), statistics: machine.stack.statisticsLine() };
+  const machine: Machine<Value> = makeMachine<Value>({
+    registers,
+    operations: listOperations(memory),
+    controller,
+  });
+  machine.writeRegister("tree", plantTree(memory, tree));
+  const run = machine.run();
+  expectOk(run);
+  const answer = machine.readRegister(answerReg);
+  if (answer === undefined) throw new Error("the count-leaves machine left no answer");
+  return {
+    answer: renderWord(answer),
+    statistics: `(total-pushes = ${run.stackStats.pushes} maximum-depth = ${run.stackStats.maxDepth})`,
+  };
 };
 
 /** The statement's trees, drawn as the book writes them. */

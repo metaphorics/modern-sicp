@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.90: a polynomial system efficient for both sparse and dense
  * polynomials. The two term-list representations sit behind one interface
@@ -14,4 +12,4 @@ import sicp.runtime.PendingSolution
  * coefficients and derives each order from the position, exactly the two
  * representations the section contrasts.
  */
-public fun ex_2_90(): Boolean = throw PendingSolution()
+public fun ex_2_90(): Boolean = throw PendingExercise()

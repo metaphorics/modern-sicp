@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.32: We can represent a set as a list of distinct elements, and the set of
  * all subsets as a list of lists. Complete the definition of `subsets`,
@@ -16,4 +14,4 @@ import sicp.runtime.PendingSolution
  *
  * The scaffold returns `subsets` applied to `[1, 2, 3]`.
  */
-public fun ex_2_32(): List<List<Long>> = throw PendingSolution()
+public fun ex_2_32(): List<List<Long>> = throw PendingExercise()

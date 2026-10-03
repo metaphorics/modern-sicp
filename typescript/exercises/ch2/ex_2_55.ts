@@ -2,8 +2,9 @@
 // Original exercise
 
 /**
- * Exercise 2.55: the double-quote value built by hand. Pending scaffold; the solution and its
- * rationale live in solutions/ch2/ex_2_55.ts and .md.
+ * Exercise 2.55: build the datum that names the quotation operation and
+ * apply it to the symbol abracadabra. Pending scaffold; the solution and
+ * its rationale live in solutions/ch2/ex_2_55.ts and .md.
  */
 export class PendingSolution extends Error {
   constructor() {

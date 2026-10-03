@@ -1,0 +1,34 @@
+{
+ "iteration": 3,
+ "changedFiles": [
+  "kotlin/ch4/src/main/kotlin/sicp/ch4/Analyzed.kt",
+  "kotlin/ch4/src/main/kotlin/sicp/ch4/Direct.kt",
+  "kotlin/ch4/src/main/kotlin/sicp/ch4/SearchModule.kt",
+  "kotlin/ch5/src/main/kotlin/sicp/ch5/Compiler.kt",
+  "kotlin/ch5/src/main/kotlin/sicp/ch5/ExplicitControl.kt",
+  "kotlin/runtime/src/main/kotlin/sicp/guest/Primitives.kt",
+  "rust/crates/ch04/src/sec_4_3.rs",
+  "rust/crates/ch05/src/sec_5_4.rs",
+  "rust/crates/sicp-runtime/src/host/check/mod.rs",
+  "rust/crates/sicp-runtime/src/host/hir.rs",
+  "typescript/packages/ch4/src/01-metacircular.ts",
+  "typescript/packages/ch4/src/runtime/value.ts",
+  "typescript/packages/ch4/src/syntax/check.ts",
+  "typescript/packages/ch4/src/syntax/check.test.ts",
+  "typescript/packages/ch5/src/02-simulator.ts"
+ ],
+ "batches": [
+  {
+   "name": "kotlin+rust+typescript high batch",
+   "commit": "a0c0a67",
+   "verification": "cargo/vitest/tsc green; kotlin frontend green"
+  },
+  {
+   "name": "g8 merge",
+   "commit": "b7f8cab",
+   "verification": "cargo test -p ch04 green post-merge"
+  }
+ ],
+ "rereviewHash": "e3b0c44298fc1c14",
+ "regressed": false
+}

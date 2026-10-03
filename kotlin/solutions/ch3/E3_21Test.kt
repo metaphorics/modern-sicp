@@ -7,51 +7,57 @@ import arrow.core.Either
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
-import sicp.runtime.VSym
+import sicp.runtime.Datum
+import sicp.runtime.PairCell
+import sicp.runtime.Symbol
 
 public class E3_21Test :
     FunSpec({
-        test("Ben's session: printQueue agrees with the front cell, the rear cell holds the last item") {
-            val q1 = Queue()
-            q1.insert(VSym("a"))
-            q1.insert(VSym("b"))
-            q1.insert(VSym("c"))
-            q1.insert(VSym("d"))
-            q1.printQueue() shouldBe "(a b c d)"
-            q1.frontCell()?.toString() shouldBe "(a b c d)"
-            q1.rearCell()?.toString() shouldBe "(d)"
-            benView(q1) shouldBe "((a b c d) d)"
+        test("the host-data view reports front items and the rear datum") {
+            val queue = Queue()
+            queue.insert(Symbol("a"))
+            queue.insert(Symbol("b"))
+            queue.insert(Symbol("c"))
+            queue.insert(Symbol("d"))
+
+            queue.items() shouldBe listOf(Symbol("a"), Symbol("b"), Symbol("c"), Symbol("d"))
+            benView(queue) shouldBe (listOf(Symbol("a"), Symbol("b"), Symbol("c"), Symbol("d")) to Symbol("d"))
+            queue.rearCell()?.first shouldBe Symbol("d")
+            val first = queue.frontCell()
+            val second = first?.second as? PairCell
+            val third = second?.second as? PairCell
+            (third?.second === queue.rearCell()) shouldBe true
         }
 
-        test("the book's printed pairs: ((a) a), then ((a b) b), then ((b) b)") {
-            val q1 = Queue()
-            q1.insert(VSym("a"))
-            benView(q1) shouldBe "((a) a)"
-            q1.insert(VSym("b"))
-            benView(q1) shouldBe "((a b) b)"
-            q1.delete() shouldBe Either.Right(VSym("a"))
-            benView(q1) shouldBe "((b) b)"
+        test("the rear datum follows mutations to the queue state") {
+            val queue = Queue()
+            queue.insert(Symbol("a"))
+            benView(queue) shouldBe (listOf(Symbol("a")) to Symbol("a"))
+            queue.insert(Symbol("b"))
+            benView(queue) shouldBe (listOf(Symbol("a"), Symbol("b")) to Symbol("b"))
+            queue.delete() shouldBe Either.Right(Symbol("a"))
+            benView(queue) shouldBe (listOf(Symbol("b")) to Symbol("b"))
         }
 
-        test("after the second delete this edition's cells are clean and the queue prints ()") {
-            val q1 = Queue()
-            q1.insert(VSym("a"))
-            q1.insert(VSym("b"))
-            q1.delete() shouldBe Either.Right(VSym("a"))
-            q1.delete() shouldBe Either.Right(VSym("b"))
-            q1.printQueue() shouldBe "()"
-            q1.frontCell().shouldBeNull()
-            q1.rearCell().shouldBeNull()
-            benView(q1) shouldBe "(() ())"
+        test("after deleting the last item both pointer cells are absent") {
+            val queue = Queue()
+            queue.insert(Symbol("a"))
+            queue.insert(Symbol("b"))
+            queue.delete() shouldBe Either.Right(Symbol("a"))
+            queue.delete() shouldBe Either.Right(Symbol("b"))
+
+            queue.items() shouldBe emptyList<Datum>()
+            queue.frontCell().shouldBeNull()
+            queue.rearCell().shouldBeNull()
+            benView(queue) shouldBe (emptyList<Datum>() to null)
         }
 
-        test("the rear cell never holds a copy: it is the last cell of the front chain") {
-            val q1 = Queue()
-            q1.insert(VSym("a"))
-            q1.insert(VSym("b"))
-            (q1.rearCell() === q1.frontCell()?.cdr) shouldBe true
-            q1.delete()
-            q1.frontCell()?.toString() shouldBe "(b)"
-            q1.rearCell()?.car shouldBe VSym("b")
+        test("items visit each reachable cell once through a mutable cycle") {
+            val queue = Queue()
+            queue.insert(Symbol("a"))
+            val head = queue.frontCell() ?: error("single-item queue lost its front cell")
+            head.second = head
+
+            queue.items() shouldBe listOf(Symbol("a"))
         }
     })

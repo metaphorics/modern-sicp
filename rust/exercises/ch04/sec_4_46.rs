@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The pending scaffold of exercise 4.46: left-to-right operands in amb.
+//! The pending scaffold of exercise 4.46: left-to-right operands under choice.
 
 /// The typed pending report of an unsolved scaffold: the body returns
 /// this instead of panicking, so the failure names its origin.
@@ -12,7 +12,7 @@ pub struct Pending {
 }
 
 mod ex_4_46 {
-    //! Exercise 4.46: left-to-right operands in amb.
+    //! Exercise 4.46: left-to-right operands under choice.
 
     use super::Pending;
 

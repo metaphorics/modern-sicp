@@ -6,16 +6,13 @@ package sicp.ch4.exercises
 import sicp.runtime.PendingSolution
 
 /**
- * Exercise 4.1: the metacircular evaluator's operand evaluation order.
- * Kotlin's own application order is fixed -- operands evaluate left to
- * right -- so the base evaluator already answers the order question the
- * Scheme text leaves open. The exercise still matters: writing the
- * operand list explicitly makes the order a property of the evaluator's
- * code rather than of the host, and the right-to-left version shows just
- * what the host had been deciding. The probe is
- * `(cons (note 1) (note 2))` with `note` pushing onto a list: the two
- * transcript pins are `"(1 . 2)\n(2 1)\n"` left to right and
- * `"(1 . 2)\n(1 2)\n"` right to left -- same values, opposite order.
+ * Exercise 4.1: operand evaluation order. The host fixes its order --
+ * operands evaluate left to right -- so the premise moves to the kernel's
+ * own code: `listOfValues` is the explicit-recursion vehicle this exercise
+ * rebuilds in both directions over an operand-recording program. The two
+ * transcripts pin the same operand values in opposite orders: the probe's
+ * two operands are 1 and 2, and the recorded order reads `[1, 2]` left to
+ * right and `[2, 1]` right to left.
  */
 public fun leftToRightTranscript(): String = throw PendingSolution()
 

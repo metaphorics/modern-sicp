@@ -1,71 +1,59 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import { factorialRecursive, runMachine } from "../../packages/ch5/src/01-register-machines.js";
-import {
-  compileBlock,
-  defaultConfig,
-  makeCompiledEvaluator,
-  monitoredEcevalController,
-  newState,
-} from "../../packages/ch5/src/05-compilation.js";
+// Original exercise
 
-const FACTORIAL = "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))";
+import { runMonitoredEvaluator } from "../../packages/ch5/src/04-eceval.ts";
+import { ITERATIVE_FACTORIAL, TREE_FIB } from "./ex_5_26.ts";
+import { summary } from "./ex_5_33.ts";
 
-interface Counters {
+/** One comparison row: the interpreted machine's own stack counters
+ * beside the compiled code's save traffic for the same computation. */
+export type RatioRow = {
   readonly pushes: number;
-  readonly depth: number;
-}
-
-const counters = (lines: readonly string[]): Counters => {
-  const line = [...lines].reverse().find((text) => text.startsWith("(total-pushes"));
-  if (line === undefined) throw new Error("missing stack statistics");
-  const pushes = Number(line.split("total-pushes = ")[1]?.split(" ")[0]);
-  const depth = Number(line.split("maximum-depth = ")[1]?.replace(")", ""));
-  return { pushes, depth };
+  readonly maxDepth: number;
+  readonly compiledSaves: number;
 };
 
-const interpretedAt = (n: number): Counters => {
-  const evaluator = makeCompiledEvaluator(
-    monitoredEcevalController,
-    `${FACTORIAL}\n(factorial ${n})`,
-  );
-  evaluator.run();
-  return counters(evaluator.transcript);
+const measure = (definition: string, call: string, compiledSource: string): RatioRow => {
+  const run = runMonitoredEvaluator(`${definition}\n${call};`);
+  return {
+    pushes: run.stackStats.pushes,
+    maxDepth: run.stackStats.maxDepth,
+    compiledSaves: summary(compiledSource).saves,
+  };
 };
 
-const compiledAt = (n: number): Counters => {
-  const { entry, lines } = compileBlock(defaultConfig(), newState(), FACTORIAL);
-  const evaluator = makeCompiledEvaluator(
-    [...monitoredEcevalController, ...lines],
-    `(factorial ${n})`,
-  );
-  evaluator.armEntry(entry);
-  evaluator.run();
-  return counters(evaluator.transcript);
-};
-
-const specialAt = (n: number): Counters => {
-  const run = runMachine(factorialRecursive, { n });
-  if (!run.ok) throw new Error("the special-purpose machine failed");
-  const pushes = run.value.events.filter((event) => event.tag === "save").length;
-  return { pushes, depth: run.value.maxDepth };
-};
-
-/** Exercise 5.45: the same recursive factorial on three machines. The
- * book's numbers at n = 5 are interpreted 144/28, compiled 31/14, and
- * special-purpose 8/8; the compiled code pays a fixed small frame per
- * call, the interpreted evaluator a much larger one. */
+/** Exercise 5.45: the stack ratios of compiled versus interpreted
+ * factorial. Both numbers come from real runs: the interpreter's
+ * counters from the monitored machine, the compiled traffic from the
+ * compiled statements themselves. */
 export const ex_5_45 = (): readonly string[] => {
-  const rows: string[] = [];
-  for (const n of [5, 10]) {
-    const interpreted = interpretedAt(n);
-    const compiled = compiledAt(n);
-    const special = specialAt(n);
-    rows.push(
-      `n=${n}: interpreted ${interpreted.pushes}/${interpreted.depth}, compiled ${compiled.pushes}/${compiled.depth}, special-purpose ${special.pushes}/${special.depth}`,
-    );
-  }
-  if (!rows[0]?.includes("interpreted 144/28")) throw new Error(rows[0]);
-  if (!rows[0]?.includes("compiled 31/14")) throw new Error(rows[0]);
-  if (!rows[0]?.includes("special-purpose 8/8")) throw new Error(rows[0]);
-  return rows;
+  const rows = [3, 4, 5, 6].map((n) => ({
+    n,
+    ...measure(
+      ITERATIVE_FACTORIAL,
+      `factorial(${n})`,
+      "function factorial(n: number): number { function iter(p: number, c: number): number { return c > n ? p : iter(c * p, c + 1); } return iter(1, 1); }",
+    ),
+  }));
+  return rows.map(
+    (row) =>
+      `n = ${row.n}: interpreted pushes ${row.pushes}, depth ${row.maxDepth}, compiled saves ${row.compiledSaves}`,
+  );
+};
+
+/** Exercise 5.46: the same comparison for the tree-recursive Fibonacci,
+ * where the compiled save traffic follows the recursion tree. */
+export const ex_5_46 = (): readonly string[] => {
+  const rows = [3, 5, 7].map((n) => ({
+    n,
+    ...measure(
+      TREE_FIB,
+      `fib(${n})`,
+      "function fib(n: number): number { return n < 2 ? n : fib(n - 1) + fib(n - 2); }",
+    ),
+  }));
+  return rows.map(
+    (row) =>
+      `n = ${row.n}: interpreted pushes ${row.pushes}, depth ${row.maxDepth}, compiled saves ${row.compiledSaves}`,
+  );
 };

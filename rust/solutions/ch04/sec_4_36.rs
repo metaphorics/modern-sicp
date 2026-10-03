@@ -1,61 +1,69 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Original exercise
 
-//! The reference solution of exercise 4.36: unbounded Pythagorean
-//! triples. Simply replacing `an-integer-between` with
-//! `an-integer-starting-from` in the upper-bound positions fails to
-//! terminate: the `j` choice would wander upward forever before the
-//! first triple could complete. The edition's fair enumeration rule
-//! grows one bound -- the hypotenuse `k` -- through
-//! `an-integer-starting-from`, and searches each finite `k` completely
-//! with the bounded generator of exercise 4.35, so every triple is
-//! reached after finitely many `try-again`s and each `try-again` makes
-//! progress.
+//! The reference solution of exercise 4.36: integer search answers a
+//! prefix of Pythagorean triples. The `search-depth-first/1` experiment
+//! explores depth-first in written order, so an unbounded `k` would
+//! diverge after the first answer (the exercise's lesson); `k` ranges
+//! over the finite prefix 1..=40 of the unbounded generator, and
+//! `run_prefix` observes the first two answers.
 
-use ch04::eval_support::{AMB_SEED, Amb, first_amb_answers, with_eval_stack};
+/// Shared typed support for this exercise.
+pub mod support;
 
-mod ex_4_36 {
-    use super::*;
+use ch04::sec_4_3::{AnswerTerm, AnswerValue, Predicate, Search, SearchEngine};
+use sicp_runtime::host::query::Term;
 
-    /// The unbounded program: the hypotenuse grows, the legs stay
-    /// bounded by the hypotenuse being drawn.
-    const PROGRAM: &str = r"
-(define (require p) (if (not p) (amb)))
-(define (an-integer-starting-from n)
-  (amb n (an-integer-starting-from (+ n 1))))
-(define (an-integer-between low high)
-  (require (<= low high))
-  (amb low (an-integer-between (+ low 1) high)))
-(define (a-pythagorean-triple)
-  (let ((k (an-integer-starting-from 1)))
-    (let ((i (an-integer-between 1 k)))
-      (let ((j (an-integer-between i k)))
-        (require (= (+ (* i i) (* j j)) (* k k)))
-        (list i j k)))))
-(a-pythagorean-triple)";
+fn variable(name: &str) -> Term {
+    Term::Variable(name.to_owned())
+}
 
-    /// The first six triples the unbounded search produces.
-    #[must_use]
-    pub fn first_triples() -> Vec<String> {
-        with_eval_stack(move || {
-            let amb = Amb::new(AMB_SEED).expect("the seed is nonzero");
-            first_amb_answers(&amb, PROGRAM, 6)
-        })
+fn unbounded_triples() -> Search {
+    let success = Search::Success(vec![
+        AnswerTerm::Var("i".to_owned()),
+        AnswerTerm::Var("j".to_owned()),
+        AnswerTerm::Var("k".to_owned()),
+    ]);
+    let body = Search::Guard(
+        Predicate::Le(variable("i"), variable("j")),
+        Box::new(Search::ChooseRange {
+            var: "k".to_owned(),
+            lo: 1,
+            hi: 40,
+            body: Box::new(Search::Guard(
+                Predicate::Pythagorean("i".to_owned(), "j".to_owned(), "k".to_owned()),
+                Box::new(success),
+            )),
+        }),
+    );
+    Search::ChooseRange {
+        var: "i".to_owned(),
+        lo: 1,
+        hi: 20,
+        body: Box::new(Search::ChooseRange {
+            var: "j".to_owned(),
+            lo: 1,
+            hi: 40,
+            body: Box::new(body),
+        }),
     }
 }
 
 #[test]
 fn ex_4_36() {
-    // Ordered by the growing hypotenuse: 5, 10, 13, 15, 17, 20.
+    let outcome = SearchEngine::new().run_prefix(&unbounded_triples(), 2);
     assert_eq!(
-        ex_4_36::first_triples(),
+        outcome.answers,
         vec![
-            "(3 4 5)",
-            "(6 8 10)",
-            "(5 12 13)",
-            "(9 12 15)",
-            "(8 15 17)",
-            "(12 16 20)"
+            vec![
+                AnswerValue::Int(3),
+                AnswerValue::Int(4),
+                AnswerValue::Int(5)
+            ],
+            vec![
+                AnswerValue::Int(5),
+                AnswerValue::Int(12),
+                AnswerValue::Int(13)
+            ],
         ]
     );
 }

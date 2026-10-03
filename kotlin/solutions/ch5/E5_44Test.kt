@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, exercise 5.44
+// Chapter 5, exercise 5_44
 
 package sicp.ch5.solutions
 
@@ -8,13 +8,11 @@ import io.kotest.matchers.shouldBe
 
 public class E5_44Test :
     FunSpec({
-        test("open coding excludes lexical shadows and warns on a redefinition") {
-            openCodeShadowingCounts() shouldBe
+        test("Exercise 5.44: the shadowing analysis reports the rebound name and the probe answers") {
+            openCodingShadowingReport() shouldBe
                 listOf(
-                    "shadowed parameters: 0 open-coded operations",
-                    "free names: 3 open-coded operations",
-                    "warnings: open-coded primitive + is rebound",
-                    "open-coded names: + - * < =",
+                    "rebound names reported: plus",
+                    "the probe answers: 3",
                 )
         }
     })

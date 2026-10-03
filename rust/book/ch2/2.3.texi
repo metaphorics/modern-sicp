@@ -43,8 +43,14 @@ language:
 
 @example rust
 Expr::Product(
-    Box::new(Expr::Sum(Box::new(Expr::Num(23)), Box::new(Expr::Num(45)))),
-    Box::new(Expr::Sum(Box::new(Expr::Var(sym("x"))), Box::new(Expr::Num(9)))),
+    Box::new(Expr::Sum(
+        Box::new(Expr::Num(23)),
+        Box::new(Expr::Num(45)),
+    )),
+    Box::new(Expr::Sum(
+        Box::new(Expr::Var(sym("x"))),
+        Box::new(Expr::Num(9)),
+    )),
 );
 @end example
 
@@ -52,17 +58,17 @@ Expr::Product(
 Except that here they cannot: @code{Expr::Product(...)} is a value being
 constructed by an ordinary function call, and no sequence of tokens that
 builds it could also be read by @code{rustc} as executable code computing
-something else.  Lisp lists and Lisp expressions share one surface syntax, so
-the interpreter has to be told, token by token, which meaning is intended.
+something else.  Languages that share one surface syntax for lists and for
+calls have to tell the two meanings apart token by token.
 Rust's syntax for building a value and its syntax for computing one are
 different from the start, which is exactly why the language we build in this
 section never needs a @newterm{quote} operator to tell them apart.
 
 @noindent
-In Scheme, quoting is what makes @code{(a b)} available as a list of symbols
-rather than a call to a function named @code{a} on a value named @code{b}.
-@code{(list a b)} builds a list of the @newterm{values} of @code{a} and
-@code{b}, not the symbols themselves.  This issue is well known in the
+In a language where a list of symbols would otherwise read as a call of
+@code{a} on the value of @code{b}, quoting is what makes that list available
+as data: building a list there evaluates each element first and so produces
+values rather than names.  This issue is well known in the
 context of natural languages, where words and sentences may be regarded either
 as semantic entities or as character strings (syntactic entities).  The common
 practice in natural languages is to use quotation marks to indicate that a word
@@ -85,13 +91,13 @@ from the statement ``the evening star is Venus'' we can deduce ``the morning
 star is Venus.''  However, given that ``John knows that the evening star is
 Venus'' we cannot infer that ``John knows that the morning star is Venus.''}
 
-Rust never needs the marker that natural language, and Scheme, reach for here,
+Rust never needs the marker that natural language reaches for here,
 because a Rust value is never ambiguous between ``the thing itself'' and ``a
 name that stands for the thing.''  @code{List::from_iter([sym("a"),
 sym("b")])} is the list @code{(a b)}: there is no reading of this call under
 which @code{sym("a")} could instead denote the value of some variable named
 @code{a}, because @code{sym} always takes a string literal and always returns
-a fresh @code{Symbol}.  The confusion the book's @code{'} solves does not
+a fresh @code{Symbol}.  The confusion the original's quote marker solves does not
 arise, so there is nothing here for a marker to disambiguate.@footnote{A Rust
 string literal such as @code{"a"} is a further, unrelated distinction the book
 does not need to draw at this point: @code{"a"} is a @code{&str}, a sequence
@@ -121,7 +127,7 @@ to; the second builds a list of the two-character symbols @code{a} and
 @code{b}, which share nothing with the variables above but their spelling.
 Because @code{List<T>} is homogeneous, there is no third call mixing a
 variable's value with a symbol of the same name in one list the way the
-book's @code{(list 'a b)} does; the type checker would refuse to compile a
+book's mixed list construction does; the type checker would refuse to compile a
 @code{List<i128>} literal containing a @code{Symbol}, which is the same
 distinction the book is illustrating, enforced one level earlier.
 
@@ -166,8 +172,10 @@ returns @code{None}.  Otherwise, it returns the sublist of the list beginning wi
 the first occurrence of the item:
 
 @example rust
-/// Finds `item` in `xs` by `eq?`-style comparison: the book's `memq`.
-pub fn memq<T: PartialEq + Clone>(item: &T, xs: &List<T>) -> Option<List<T>> @{
+/// Finds `item` in `xs` by equality: the book's `memq`.
+pub fn memq<T: PartialEq + Clone>(
+    item: &T, xs: &List<T>,
+) -> Option<List<T>> @{
     let mut cursor = xs;
     loop @{
         match cursor @{
@@ -186,12 +194,15 @@ pub fn memq<T: PartialEq + Clone>(item: &T, xs: &List<T>) -> Option<List<T>> @{
 @noindent
 Because @code{memq} is generic over any @code{T: PartialEq + Clone}, it works
 unchanged whether the list holds flat symbols or the nested @code{Nest<Symbol>}
-trees @ref{2.2} built; the book's Scheme version gets this generality for
+trees @ref{2.2} built; the original version gets this generality for
 free from being untyped, while here the compiler proves it once at the
 function's own definition.  For example, the value of
 
 @example rust
-memq(&sym("apple"), &List::from_iter([sym("pear"), sym("banana"), sym("prune")]))
+memq(
+    &sym("apple"),
+    &List::from_iter([sym("pear"), sym("banana"), sym("prune")]),
+)
     .map_or_else(|| "false".to_string(), |l| l.to_string());
 @end example
 
@@ -214,12 +225,14 @@ memq(&Nest::Leaf(sym("apple")), &xs)
 is @code{"(apple pear)"}: the first @code{apple} is buried inside a
 @code{Nest::Sub}, a different variant from the bare @code{Nest::Leaf(sym("apple"))}
 being searched for, so it is skipped exactly as the book's untagged sublist
-is skipped by @code{eq?}.
+is skipped by the book's @code{eq?}.
 
 @quotation
-@emph{SICP exercise 2.53 is about Scheme itself, so this edition replaces it; the exercise below keeps the number and teaches the same section material.}
-
-@strong{@anchor{Exercise 2.53}Exercise 2.53:} What value, or what printed
+@strong{@anchor{Exercise 2.53}Exercise 2.53:} @emph{This edition replaces
+SICP exercise 2.53 with a host-language exercise that keeps its number and
+teaching objective.}  The original depends on the old language's own
+printed forms, so the exercise below teaches the same section material.
+What value, or what printed
 form, does each of the following produce?  Answer from the types alone where
 you can, without running anything.
 
@@ -234,9 +247,12 @@ let pairs: List<Nest<Symbol>> = List::from_iter([
 pairs.cdr()
 pairs.cdr().and_then(List::car)
 
-let short_list: List<Symbol> = List::from_iter([sym("a"), sym("short"), sym("list")]);
-// Could short_list.car() ever be a value that is itself a compound list?
-// Answer in terms of List<Symbol>'s type, not by tracing the call.
+let short_list: List<Symbol> =
+    List::from_iter([sym("a"), sym("short"), sym("list")]);
+// Could short_list.car() ever be a value that is itself
+// a compound list?
+// Answer in terms of List<Symbol>'s type,
+// not by tracing the call.
 
 let outer = sub(&[
     sub(&[leaf(sym("red")), leaf(sym("shoes"))]),
@@ -245,7 +261,9 @@ let outer = sub(&[
 // as a List<Nest<Symbol>>:
 memq(&Nest::Leaf(sym("red")), &outer_as_list)
 
-let flat: List<Symbol> = List::from_iter([sym("red"), sym("shoes"), sym("blue"), sym("socks")]);
+let flat: List<Symbol> = List::from_iter([
+    sym("red"), sym("shoes"), sym("blue"), sym("socks"),
+]);
 memq(&sym("red"), &flat)
 @end example
 @end quotation
@@ -257,8 +275,14 @@ example,
 
 @example rust
 my_equal(
-    &sub(&[leaf(sym("this")), leaf(sym("is")), leaf(sym("a")), leaf(sym("list"))]),
-    &sub(&[leaf(sym("this")), leaf(sym("is")), leaf(sym("a")), leaf(sym("list"))]),
+    &sub(&[
+        leaf(sym("this")), leaf(sym("is")),
+        leaf(sym("a")), leaf(sym("list")),
+    ]),
+    &sub(&[
+        leaf(sym("this")), leaf(sym("is")),
+        leaf(sym("a")), leaf(sym("list")),
+    ]),
 );
 @end example
 
@@ -267,8 +291,15 @@ is @code{true}, but
 
 @example rust
 my_equal(
-    &sub(&[leaf(sym("this")), leaf(sym("is")), leaf(sym("a")), leaf(sym("list"))]),
-    &sub(&[leaf(sym("this")), sub(&[leaf(sym("is")), leaf(sym("a"))]), leaf(sym("list"))]),
+    &sub(&[
+        leaf(sym("this")), leaf(sym("is")),
+        leaf(sym("a")), leaf(sym("list")),
+    ]),
+    &sub(&[
+        leaf(sym("this")),
+        sub(&[leaf(sym("is")), leaf(sym("a"))]),
+        leaf(sym("list")),
+    ]),
 );
 @end example
 
@@ -290,12 +321,11 @@ numbers, then @code{a} and @code{b} are equal if they are numerically equal.}
 @end quotation
 
 @quotation
-@emph{SICP exercise 2.55 is about Scheme itself, so this edition replaces it; the exercise below keeps the number and teaches the same section material.}
-
-@strong{@anchor{Exercise 2.55}Exercise 2.55:} This edition has no reader, so
-``@code{''abracadabra}'' is not something a program ever types at a prompt.
-But we can still ask what nested quotation @emph{would} build, by
-representing exactly what a reader constructs, as data, and nothing more:
+@strong{@anchor{Exercise 2.55}Exercise 2.55:} @emph{This edition replaces
+SICP exercise 2.55 with a host-language exercise that keeps its number and
+teaching objective.}  The exercise below keeps the same material in typed
+data.  Quotation here is explicit Rust data, built
+and read back through the same constructors:
 
 @example rust
 enum Quoted @{
@@ -306,17 +336,20 @@ enum Quoted @{
 @end example
 
 @noindent
-A single quote @code{'x} is reader sugar for the two-element list
-@code{(quote x)}; a doubled quote @code{''abracadabra} is sugar for
-@code{(quote (quote abracadabra))}.  Build the value that @code{''abracadabra}
-would read as, using only @code{Quoted::Sym}, @code{Quoted::Pair}, and
+The nested value at issue is a node whose first element is the symbol
+@code{quote} and whose second element hides this exercise's value one level
+of extraction away: a quotation hands back its own second element
+unchanged, so extracting that element yields the two-element value.
+Build that yielded value, using only
+@code{Quoted::Sym}, @code{Quoted::Pair}, and
 @code{Quoted::Nil} (an interior helper such as @code{list2(a, b)} for the
-two-element case is fair game).  Write a @code{Display} impl that prints a
-@code{Quoted} list the way the book prints Scheme lists, then predict what
+two-element case is fair game).  Write a @code{Display} impl that prints
+each node as explicit Rust data (@code{Sym("s")}, @code{Nil},
+@code{Pair(car, cdr)}), then predict what
 your @code{Display} impl prints for the value you built, and what its
-@code{car} is.  Explain your answer without appealing to a reader at all: say
-directly, in terms of the @code{Quoted} value's shape, why the outer
-@code{Pair}'s first element is the symbol @code{quote} rather than
+@code{car} is.  Explain your answer from the value alone: say
+directly, in terms of the @code{Quoted} value's shape, why its
+first element is the symbol @code{quote} rather than
 @code{abracadabra}.
 @end quotation
 
@@ -342,7 +375,8 @@ strategy of data abstraction that we followed in developing the rational-number
 system of @ref{2.1.1}.  That is, we will first define a differentiation
 algorithm that operates on abstract objects such as ``sums,'' ``products,'' and
 ``variables'' without worrying about how these are to be represented.  Only
-afterward will we address the representation problem.  In Scheme, that
+afterward will we address the representation problem.  In a language with
+untyped data, that
 separation is total, because a list-based representation can stay hidden
 behind procedures indefinitely.  In Rust, it is smaller: naming the abstract
 objects at all means giving them a type, and a closed @code{enum} is both the
@@ -457,9 +491,9 @@ constructors it is handed.
 pub fn deriv_via(
     exp: &Expr,
     var: &Symbol,
-    make_sum: &impl Fn(Expr, Expr) -> Result<Expr, SchemeError>,
-    make_product: &impl Fn(Expr, Expr) -> Result<Expr, SchemeError>,
-) -> Result<Expr, SchemeError> @{
+    make_sum: &impl Fn(Expr, Expr) -> Result<Expr, SicpError>,
+    make_product: &impl Fn(Expr, Expr) -> Result<Expr, SicpError>,
+) -> Result<Expr, SicpError> @{
     match exp @{
         Expr::Num(_) => Ok(Expr::Num(0)),
         Expr::Var(x) => Ok(Expr::Num(i128::from(x == var))),
@@ -468,8 +502,14 @@ pub fn deriv_via(
             deriv_via(a2, var, make_sum, make_product)?,
         ),
         Expr::Product(m1, m2) => @{
-            let left = make_product((**m1).clone(), deriv_via(m2, var, make_sum, make_product)?)?;
-            let right = make_product(deriv_via(m1, var, make_sum, make_product)?, (**m2).clone())?;
+            let dm2 = deriv_via(
+                m2, var, make_sum, make_product,
+            )?;
+            let left = make_product((**m1).clone(), dm2)?;
+            let dm1 = deriv_via(
+                m1, var, make_sum, make_product,
+            )?;
+            let right = make_product(dm1, (**m2).clone())?;
             make_sum(left, right)
         @}
     @}
@@ -480,7 +520,8 @@ pub fn deriv_via(
 This function incorporates the complete differentiation algorithm.  Since the
 @code{Expr::Num}/@code{Expr::Var}/@code{Expr::Sum}/@code{Expr::Product} match
 is exhaustive, the compiler proves every case is handled; the book's final
-@code{(else (error "unknown expression type: DERIV" exp))} clause has no
+@code{else} clause, which reports the error
+@code{"unknown expression type: DERIV"}, has no
 counterpart here, because there is no fifth variant left for it to catch.
 
 @subsubheading Representing algebraic expressions
@@ -515,7 +556,9 @@ pub fn make_product_unsimplified(m1: Expr, m2: Expr) -> Expr @{
     Expr::Product(Box::new(m1), Box::new(m2))
 @}
 
-pub fn deriv_unsimplified(exp: &Expr, var: &Symbol) -> Result<Expr, SchemeError> @{
+pub fn deriv_unsimplified(
+    exp: &Expr, var: &Symbol,
+) -> Result<Expr, SicpError> @{
     deriv_via(
         exp,
         var,
@@ -531,17 +574,29 @@ Thus, we need only combine these with the algorithm as embodied by
 Let us look at some examples of its behavior:
 
 @example rust
-let sum = Expr::Sum(Box::new(Expr::Var(sym("x"))), Box::new(Expr::Num(3)));
+let sum = Expr::Sum(
+    Box::new(Expr::Var(sym("x"))),
+    Box::new(Expr::Num(3)),
+);
 deriv_unsimplified(&sum, &sym("x"))?;
 // => (+ 1 0)
 
-let product = Expr::Product(Box::new(Expr::Var(sym("x"))), Box::new(Expr::Var(sym("y"))));
+let product = Expr::Product(
+    Box::new(Expr::Var(sym("x"))),
+    Box::new(Expr::Var(sym("y"))),
+);
 deriv_unsimplified(&product, &sym("x"))?;
 // => (+ (* x 0) (* 1 y))
 
 let nested = Expr::Product(
-    Box::new(Expr::Product(Box::new(Expr::Var(sym("x"))), Box::new(Expr::Var(sym("y"))))),
-    Box::new(Expr::Sum(Box::new(Expr::Var(sym("x"))), Box::new(Expr::Num(3)))),
+    Box::new(Expr::Product(
+        Box::new(Expr::Var(sym("x"))),
+        Box::new(Expr::Var(sym("y"))),
+    )),
+    Box::new(Expr::Sum(
+        Box::new(Expr::Var(sym("x"))),
+        Box::new(Expr::Num(3)),
+    )),
 );
 deriv_unsimplified(&nested, &sym("x"))?;
 // => (+ (* (* x y) (+ 1 0)) (* (+ (* x 0) (* 1 y)) (+ x 3)))
@@ -579,9 +634,9 @@ the other summand:
 
 @example rust
 /// # Errors
-/// [`SchemeError::Overflow`] when both summands are numbers whose sum
+/// [`SicpError::Overflow`] when both summands are numbers whose sum
 /// leaves the `i128` range.
-pub fn make_sum(a1: Expr, a2: Expr) -> Result<Expr, SchemeError> @{
+pub fn make_sum(a1: Expr, a2: Expr) -> Result<Expr, SicpError> @{
     if is_number(&a1, 0) @{
         return Ok(a2);
     @}
@@ -589,7 +644,8 @@ pub fn make_sum(a1: Expr, a2: Expr) -> Result<Expr, SchemeError> @{
         return Ok(a1);
     @}
     if let (Expr::Num(x), Expr::Num(y)) = (&a1, &a2) @{
-        return Ok(Expr::Num(x.checked_add(*y).ok_or(SchemeError::Overflow)?));
+        let sum = x.checked_add(*y).ok_or(SicpError::Overflow)?;
+        return Ok(Expr::Num(sum));
     @}
     Ok(Expr::Sum(Box::new(a1), Box::new(a2)))
 @}
@@ -603,9 +659,9 @@ thing itself:
 
 @example rust
 /// # Errors
-/// [`SchemeError::Overflow`] when both factors are numbers whose
+/// [`SicpError::Overflow`] when both factors are numbers whose
 /// product leaves the `i128` range.
-pub fn make_product(m1: Expr, m2: Expr) -> Result<Expr, SchemeError> @{
+pub fn make_product(m1: Expr, m2: Expr) -> Result<Expr, SicpError> @{
     if is_number(&m1, 0) || is_number(&m2, 0) @{
         return Ok(Expr::Num(0));
     @}
@@ -616,12 +672,17 @@ pub fn make_product(m1: Expr, m2: Expr) -> Result<Expr, SchemeError> @{
         return Ok(m1);
     @}
     if let (Expr::Num(x), Expr::Num(y)) = (&m1, &m2) @{
-        return Ok(Expr::Num(x.checked_mul(*y).ok_or(SchemeError::Overflow)?));
+        let product = x.checked_mul(*y)
+            .ok_or(SicpError::Overflow)?;
+        return Ok(Expr::Num(product));
     @}
     Ok(Expr::Product(Box::new(m1), Box::new(m2)))
 @}
 
-pub fn deriv(exp: &Expr, var: &Symbol) -> Result<Expr, SchemeError> @{
+pub fn deriv(
+    exp: &Expr,
+    var: &Symbol,
+) -> Result<Expr, SicpError> @{
     deriv_via(exp, var, &make_sum, &make_product)
 @}
 @end example
@@ -629,8 +690,9 @@ pub fn deriv(exp: &Expr, var: &Symbol) -> Result<Expr, SchemeError> @{
 @noindent
 Both refined constructors fold their numeric case with @code{checked_add}
 and @code{checked_mul}: this edition's numbers are fixed-width @code{i128},
-not Scheme's unbounded integers, so a differentiation that overflows returns
-@code{SchemeError::Overflow} instead of silently wrapping.  Here is how this
+not the unbounded integers of the original text, so a differentiation that
+overflows returns
+@code{SicpError::Overflow} instead of silently wrapping.  Here is how this
 version works on our three examples:
 
 @example rust
@@ -686,7 +748,11 @@ Then the last example above could be expressed as
 
 @example rust
 deriv(
-    &Expr::Product(vec![Expr::Var(sym("x")), Expr::Var(sym("y")), Expr::Sum(vec![Expr::Var(sym("x")), Expr::Num(3)])]),
+    &Expr::Product(vec![
+        Expr::Var(sym("x")),
+        Expr::Var(sym("y")),
+        Expr::Sum(vec![Expr::Var(sym("x")), Expr::Num(3)]),
+    ]),
     &sym("x"),
 )?;
 @end example
@@ -919,14 +985,17 @@ because we performed a complete scan of @code{set2} for each element of
 @code{set1}.  But with the ordered representation, we can use a more clever
 method: walk both slices in step with two indices, taking the smaller head (or
 the shared head once, advancing both) at each step.  The book writes this
-recursively, which shares list structure for free in Scheme; this edition
+recursively, which shares list structure for free in its linked
+representation; this edition
 writes the walk as a loop instead, so the @code{Vec} result is still built
 just once rather than being copied at every recursive return, keeping the
 @math{{\Theta(n)}} cost genuine and not an artifact of a persistent list this
 host type does not have:
 
 @example rust
-pub fn intersection_set_ordered(set1: &[i128], set2: &[i128]) -> Vec<i128> @{
+pub fn intersection_set_ordered(
+    set1: &[i128], set2: &[i128],
+) -> Vec<i128> @{
     let mut out = Vec::new();
     let mut i = 0;
     let mut j = 0;
@@ -1001,7 +1070,7 @@ elements in the right subtree be larger.
 @image{../../text/original/figures/chap2/Fig2.16c,,120mm,Figure 2.16: Various binary trees that represent the set @{1@comma{} 3@comma{} 5@comma{} 7@comma{} 9@comma{} 11@}.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.16c.std,,120mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.16c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.16:} Various binary trees that represent the set @math{{\{1, 3, 5, 7, 9, 11\}}}.}
@@ -1035,9 +1104,10 @@ book draws between a tree and the list structure that encodes it, one layer
 shorter since Rust's enum already is the representation.}
 
 @example rust
-/// Branches are `Rc`, not `Box`: adjoining an element rebuilds the spine
-/// from the insertion point to the root and shares every untouched
-/// sibling subtree by pointer, so the `Θ(log n)` claims below are
+/// Branches are `Rc`, not `Box`: adjoining an element rebuilds
+/// the spine from the insertion point to the root and shares
+/// every untouched sibling subtree by pointer, so the
+/// `Θ(log n)` claims below are
 /// genuine rather than hidden behind an `O(n)` deep clone.
 pub enum Tree @{
     /// No elements.
@@ -1060,7 +1130,8 @@ impl Tree @{
         @}
     @}
 
-    /// The left subtree, or `None` on `Empty`: the book's `left-branch`.
+    /// The left subtree, or `None` on `Empty`:
+    /// the book's `left-branch`.
     pub fn left_branch(&self) -> Option<&Tree> @{
         match self @{
             Tree::Node(_, l, _) => Some(l),
@@ -1114,9 +1185,16 @@ pub fn adjoin_set_tree(x: i128, tree: &Tree) -> Tree @{
         Tree::Empty => Tree::make_tree(x, Tree::Empty, Tree::Empty),
         Tree::Node(entry, left, right) => match x.cmp(entry) @{
             Ordering::Equal => tree.clone(),
-            Ordering::Less => Tree::make_tree(*entry, adjoin_set_tree(x, left), (**right).clone()),
+            Ordering::Less => Tree::make_tree(
+                *entry,
+                adjoin_set_tree(x, left),
+                (**right).clone(),
+            ),
             Ordering::Greater => @{
-                Tree::make_tree(*entry, (**left).clone(), adjoin_set_tree(x, right))
+                Tree::make_tree(
+                    *entry, (**left).clone(),
+                    adjoin_set_tree(x, right),
+                )
             @}
         @},
     @}
@@ -1187,22 +1265,33 @@ fn tree_to_list_1(tree: &Tree) -> Vec<i128> @{
     match tree @{
         Tree::Empty => Vec::new(),
         Tree::Node(..) => @{
-            let mut out = tree_to_list_1(tree.left_branch().expect("node"));
+            let left = tree.left_branch().expect("node");
+            let mut out = tree_to_list_1(left);
             out.push(tree.entry().expect("node"));
-            out.extend(tree_to_list_1(tree.right_branch().expect("node")));
+            let right = tree.right_branch().expect("node");
+            out.extend(tree_to_list_1(right));
             out
         @}
     @}
 @}
 
 fn tree_to_list_2(tree: &Tree) -> Vec<i128> @{
-    fn copy_to_list(tree: &Tree, mut result: VecDeque<i128>) -> VecDeque<i128> @{
+    fn copy_to_list(
+        tree: &Tree, mut result: VecDeque<i128>,
+    ) -> VecDeque<i128> @{
         match tree @{
             Tree::Empty => result,
             Tree::Node(..) => @{
-                result = copy_to_list(tree.right_branch().expect("node"), result);
-                result.push_front(tree.entry().expect("node"));
-                copy_to_list(tree.left_branch().expect("node"), result)
+                let right =
+                    tree.right_branch().expect("node");
+                result = copy_to_list(right, result);
+                result.push_front(
+                    tree.entry().expect("node"),
+                );
+                copy_to_list(
+                    tree.left_branch().expect("node"),
+                    result,
+                )
             @}
         @}
     @}
@@ -1246,12 +1335,14 @@ fn partial_tree(elts: &[i128], n: usize) -> (Tree, &[i128]) @{
         return (Tree::Empty, elts);
     @}
     let left_size = (n - 1) / 2;
-    let (left_tree, non_left_elts) = partial_tree(elts, left_size);
+    let (left_tree, non_left_elts) =
+        partial_tree(elts, left_size);
     let right_size = n - (left_size + 1);
     let (this_entry, after_entry) = non_left_elts
         .split_first()
         .expect("n elements remain after the left subtree");
-    let (right_tree, remaining_elts) = partial_tree(after_entry, right_size);
+    let (right_tree, remaining_elts) =
+        partial_tree(after_entry, right_size);
     (
         Tree::make_tree(*this_entry, left_tree, right_tree),
         remaining_elts,
@@ -1310,7 +1401,9 @@ there is no such record.  @code{lookup} is implemented in almost the same way as
 an unordered slice, we could use
 
 @example rust
-fn lookup<'a>(given_key: i128, set_of_records: &'a [Record]) -> Option<&'a Record> @{
+fn lookup<'a>(
+    given_key: i128, set_of_records: &'a [Record],
+) -> Option<&'a Record> @{
     set_of_records.iter().find(|record| record.key == given_key)
 @}
 @end example
@@ -1450,7 +1543,7 @@ other letters each with relative frequency 1.
 @image{../../text/original/figures/chap2/Fig2.18a,,135mm,Figure 2.18: A Huffman encoding tree.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.18a.std,,135mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.18a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.18:} A Huffman encoding tree.}
@@ -1584,11 +1677,15 @@ impl HuffmanTree @{
     /// set and weight: the book's `make-code-tree`.  Since our symbol
     /// sets are represented as `Vec`s, we can form the union by
     /// extending a clone of the left set with the right.
-    pub fn make_code_tree(left: HuffmanTree, right: HuffmanTree) -> HuffmanTree @{
+    pub fn make_code_tree(
+        left: HuffmanTree, right: HuffmanTree,
+    ) -> HuffmanTree @{
         let mut symbols = left.symbols();
         symbols.extend(right.symbols());
         let weight = left.weight() + right.weight();
-        HuffmanTree::Node(Box::new(left), Box::new(right), symbols, weight)
+        HuffmanTree::Node(
+            Box::new(left), Box::new(right), symbols, weight,
+        )
     @}
 
     /// The left branch, or `None` on a leaf: the book's `left-branch`.
@@ -1620,15 +1717,16 @@ impl HuffmanTree @{
     /// The total weight below this tree: the book's `weight`.
     pub fn weight(&self) -> u32 @{
         match self @{
-            HuffmanTree::Leaf(_, w) | HuffmanTree::Node(_, _, _, w) => *w,
+            HuffmanTree::Leaf(_, w)
+            | HuffmanTree::Node(_, _, _, w) => *w,
         @}
     @}
 @}
 @end example
 
 @noindent
-The book's @code{symbols} and @code{weight} procedures dispatch on
-@code{leaf?} and then read @code{cadr}/@code{caddr}/@code{cadddr} by hand.
+The book's @code{symbols} and @code{weight} procedures dispatch on a leaf
+test and then read fixed list positions by hand.
 Here that dispatch is the @code{match} itself, and @code{HuffmanTree}'s own
 fields replace the fixed list positions; these are simple examples of
 @newterm{generic procedures} (procedures that can handle more than one kind of
@@ -1638,8 +1736,9 @@ data), which we will have much more to say about in @ref{2.4} and @ref{2.5}.
 
 The following procedure implements the decoding algorithm.  It takes as
 arguments a slice of bits, together with a Huffman tree.  The book's
-@code{decode-1} is a second, inner recursive procedure only because Scheme
-has no loop construct of its own; this edition writes the same
+@code{decode-1} is a second, inner recursive procedure only because the
+original text takes recursion as its only control structure; this edition
+writes the same
 restart-at-the-root behavior as a single loop:
 
 @example rust
@@ -1647,7 +1746,9 @@ restart-at-the-root behavior as a single loop:
 /// `0`) takes the left branch, `true` (the book's `1`) takes the
 /// right.  A `bool` has no third value, so the book's
 /// `(error "bad bit..." bit)` case is structurally unreachable here.
-pub fn choose_branch(bit: bool, branch: &HuffmanTree) -> Option<&HuffmanTree> @{
+pub fn choose_branch(
+    bit: bool, branch: &HuffmanTree,
+) -> Option<&HuffmanTree> @{
     if bit @{
         branch.right_branch()
     @} else @{
@@ -1656,15 +1757,19 @@ pub fn choose_branch(bit: bool, branch: &HuffmanTree) -> Option<&HuffmanTree> @{
 @}
 
 /// # Errors
-/// [`SchemeError::Parse`] if a bit is consumed at a leaf, which means
+/// [`SicpError::Parse`] if a bit is consumed at a leaf, which means
 /// `bits` and `tree` are inconsistent (more bits than the encoding
 /// produced).
-pub fn decode(bits: &[bool], tree: &HuffmanTree) -> Result<Vec<Symbol>, SchemeError> @{
+pub fn decode(
+    bits: &[bool], tree: &HuffmanTree,
+) -> Result<Vec<Symbol>, SicpError> @{
     let mut result = Vec::new();
     let mut current = tree;
     for &bit in bits @{
         let next = choose_branch(bit, current)
-            .ok_or_else(|| SchemeError::Parse("decode: bit consumed at a leaf".to_string()))?;
+            .ok_or_else(|| SicpError::Parse(
+                "decode: bit consumed at a leaf".to_string(),
+            ))?;
         if let HuffmanTree::Leaf(symbol, _) = next @{
             result.push(symbol.clone());
             current = tree;
@@ -1706,7 +1811,9 @@ the set is never already in it:
 @example rust
 /// Adjoins a tree to a set of trees ordered by increasing weight: the
 /// book's `adjoin-set`, re-defined here for Huffman trees.
-pub fn adjoin_huffman_set(x: HuffmanTree, set: &[HuffmanTree]) -> Vec<HuffmanTree> @{
+pub fn adjoin_huffman_set(
+    x: HuffmanTree, set: &[HuffmanTree],
+) -> Vec<HuffmanTree> @{
     match set.split_first() @{
         None => vec![x],
         Some((first, rest)) if x.weight() < first.weight() => @{
@@ -1732,7 +1839,10 @@ leaves, ready to be merged according to the Huffman algorithm:
 pub fn make_leaf_set(pairs: &[(Symbol, u32)]) -> Vec<HuffmanTree> @{
     let mut set = Vec::new();
     for (symbol, weight) in pairs @{
-        set = adjoin_huffman_set(HuffmanTree::make_leaf(Rc::clone(symbol), *weight), &set);
+        let leaf = HuffmanTree::make_leaf(
+            Rc::clone(symbol), *weight,
+        );
+        set = adjoin_huffman_set(leaf, &set);
     @}
     set
 @}
@@ -1755,8 +1865,10 @@ let sample_tree = HuffmanTree::make_code_tree(
 );
 
 let sample_message = bits_from_str("011001010111")?;
-// (This edition drops the SICP text's trailing redundant `0`, which
-// would only begin an unfinished eighth symbol with no bits left to
+// (This edition drops the SICP text's
+// trailing redundant `0`, which would only
+// begin an unfinished eighth symbol with
+// no bits left to
 // complete it.)
 @end example
 
@@ -1769,7 +1881,9 @@ as arguments a message and a tree and produces the list of bits that gives the
 encoded message.
 
 @example rust
-pub fn encode(message: &[Symbol], tree: &HuffmanTree) -> Result<Vec<bool>, SchemeError> @{
+pub fn encode(
+    message: &[Symbol], tree: &HuffmanTree,
+) -> Result<Vec<bool>, SicpError> @{
     let mut bits = Vec::new();
     for symbol in message @{
         bits.extend(encode_symbol(symbol, tree)?);
@@ -1780,7 +1894,7 @@ pub fn encode(message: &[Symbol], tree: &HuffmanTree) -> Result<Vec<bool>, Schem
 
 Write your own @code{encode_symbol}, a function that returns the
 bits that encode a given symbol according to a given tree.  You should
-design @code{encode_symbol} so that it returns a @code{SchemeError} if the symbol is not in
+design @code{encode_symbol} so that it returns a @code{SicpError} if the symbol is not in
 the tree at all.  Test your procedure by encoding the result you obtained in
 @ref{Exercise 2.67} with @code{sample_tree} and seeing whether it is the same as
 the original @code{sample_message}.
@@ -1793,7 +1907,9 @@ than one pair) and generates a Huffman encoding tree according to the Huffman
 algorithm.
 
 @example rust
-fn generate_huffman_tree(pairs: &[(Symbol, u32)]) -> Option<HuffmanTree> @{
+fn generate_huffman_tree(
+    pairs: &[(Symbol, u32)],
+) -> Option<HuffmanTree> @{
     successive_merge(make_leaf_set(pairs))
 @}
 @end example

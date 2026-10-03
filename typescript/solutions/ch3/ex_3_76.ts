@@ -15,18 +15,15 @@ import {
  * differently. The fix is to write `smooth` as a component and build
  * the detector from it:
  *
- *   (define (smooth s)
- *     (stream-map (lambda (x y) (/ (+ x y) 2)) s (stream-cdr s)))
+ *   const smooth = (s) => streamMap2((x, y) => (x + y) / 2, s, streamCdr(s));
  *
- *   (define (zero-crossings s)
- *     (stream-map sign-change-detector
- *                 (smooth s)
- *                 (smooth (stream-cdr s))))
+ *   const zeroCrossings = (s) =>
+ *     streamMap2(signChangeDetector, smooth(s), smooth(streamCdr(s)));
  *
  * with the map pairing each smoothed point with its successor.
  */
 
-/** The book's `smooth`: each element is the average of two successive
+/** The statement's `smooth`: each element is the average of two successive
  * elements of `s`, so a finite input answers one element fewer and an
  * infinite input answers a stream of the same length. */
 export const smooth = (s: Stream<number>): Stream<number> =>

@@ -1,270 +1,202 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(** Exercise 4.78: the query language as a nondeterministic program on
-    the evaluator of 4.3. The matcher, the unifier, and the data base
-    stay the section's ([Sec_4_4]); what changes is the control
-    strategy: every enumeration point is a choice point of the amb
-    engine, so a query produces one answer and [try_again] produces
-    the next by chronological backtracking -- no frame streams, no
-    flatmap, no interleave. A simple query is [choice] over its
-    matching assertions and, after them, its rule applications, in the
-    stream system's order; [and] chains through the frame
-    continuation; [or] is [choice] over its disjuncts; [not] and
-    [lisp-value] are require-style filters, where the [not] test runs
-    its sub-search behind a [Fail] boundary so an exhausted inner
-    search reports "no match" instead of backtracking the outer one.
-    Rule bodies evaluate as nested searches inside their candidate's
-    continuation, so backtracking out of a body falls to the enclosing
-    candidate loop with no extra machinery -- much of 4.4.4 is
-    subsumed, as the exercise predicts. The behavioral difference the
-    exercise asks for is pinned: [or] answers come out in depth-first
-    order (all of the first disjunct, then the second), where the
-    stream system interleaves the disjuncts, and the recursive
-    [married] rule yields its duplicate answers one demandable
-    [try-again] at a time. *)
+(* Exercise 4.78: the query language as a nondeterministic program in the
+   style of the amb evaluator of 4.3.  Deliberate deviation: the
+   exercise wants the 4.3 evaluator, but [Sec_4_3] exports only [run]
+   over guest programs, so this is a host-side driver with the same
+   search order, not the 4.3 evaluator itself.  The matcher, the
+   unifier, and the data base stay the section's; what changes is the
+   control strategy.  Every enumeration point is a choice point
+   threaded through two continuations -- [succeed] receives a frame and
+   the failure continuation that resumes the search, [fail] backtracks
+  to the most recent choice point -- so a query produces one answer and
+  [try_again] produces the next by chronological backtracking: no frame
+  streams, no flatmap, no interleave.  A simple query is a choice over
+  its matching assertions and, after them, its rule applications, in
+  the stream system's order; [And] chains through the success
+   continuation; [Or] is a choice over its disjuncts; [Not] and [Holds]
+   are require-style filters, where the [Not] test runs its sub-search
+   with its own continuations so an exhausted inner search reports "no
+   match" instead of backtracking the outer one.  Rule bodies evaluate
+   as nested searches inside their candidate's continuation, so
+   backtracking out of a body falls to the enclosing candidate loop with
+   no extra machinery -- much of 4.4.4 is subsumed, as the exercise
+   predicts.  The behavioral difference the exercise asks for is pinned:
+   [Or] answers come out in depth-first order (all of the first
+   disjunct, then the second), where the stream system interleaves the
+   disjuncts, and the recursive [married] rule yields its duplicate
+   answers one demandable [try_again] at a time. *)
 
-module Amb = Sicp_ch4.Sec_4_3
-module Eval = Sicp_ch4.Sec_4_4
-module Eval_error = Sicp_common.Eval_error
-module Streams = Eval.Streams
-module Value = Sicp_common.Value
+open Sec_4_55.Kit
 
-(* Raised by the [not] test's sub-search when it finds a match. *)
-exception Found_match
+(* The driver's view of a search: an answer with the failure
+   continuation that resumes the search behind it, or exhaustion. *)
+type outcome =
+  | Answer of Q.query * (unit -> outcome)
+  | Exhausted
 
-(* The Microshaft assertions and the famous-marriage rule this demo
-   needs, in the book's order. *)
-let assertions =
-  [ "(assert! (job (Bitdiddle Ben) (computer wizard)))"
-  ; "(assert! (job (Hacker Alyssa P) (computer programmer)))"
-  ; "(assert! (supervisor (Hacker Alyssa P) (Bitdiddle Ben)))"
-  ; "(assert! (job (Fect Cy D) (computer programmer)))"
-  ; "(assert! (supervisor (Fect Cy D) (Bitdiddle Ben)))"
-  ; "(assert! (job (Tweakit Lem E) (computer technician)))"
-  ; "(assert! (supervisor (Tweakit Lem E) (Bitdiddle Ben)))"
-  ; "(assert! (job (Reasoner Louis) (computer programmer trainee)))"
-  ; "(assert! (supervisor (Reasoner Louis) (Hacker Alyssa P)))"
-  ; "(assert! (supervisor (Bitdiddle Ben) (Warbucks Oliver)))"
-  ; "(assert! (supervisor (Scrooge Eben) (Warbucks Oliver)))"
-  ; "(assert! (supervisor (Cratchet Robert) (Scrooge Eben)))"
-  ; "(assert! (supervisor (Aull DeWitt) (Warbucks Oliver)))"
-  ; "(assert! (married Minnie Mickey))"
-  ; "(assert! (rule (married ?x ?y)\n(married ?y ?x)))"
-  ]
+(* The choice point: try each alternative in order, each receiving the
+   failure continuation that moves on to the next. *)
+let rec amb alternatives fail =
+  match alternatives with
+  | [] -> fail ()
+  | first :: rest -> first (fun () -> amb rest fail)
 ;;
 
-let stream_to_list s =
-  let rec go s acc =
-    if Streams.stream_null s
-    then List.rev acc
-    else go (Streams.stream_cdr s) (Streams.stream_car s :: acc)
-  in
-  go s []
-;;
+let rec nqeval s ids q frame succeed fail =
+  match q with
+  | Q.Pattern pattern -> nsimple s ids pattern frame succeed fail
+  | Q.And conjuncts -> nconjoin s ids conjuncts frame succeed fail
+  | Q.Or disjuncts ->
+    amb
+      (List.map (fun disjunct fail -> nqeval s ids disjunct frame succeed fail) disjuncts)
+      fail
+  | Q.Not inner ->
+    (match
+       nqeval s ids inner frame (fun _ _ -> Answer (inner, fail)) (fun () -> Exhausted)
+     with
+     | Answer _ -> fail ()
+     | Exhausted -> succeed frame fail)
+  | Q.Holds _ | Q.Form _ ->
+    let rec each = function
+      | Streams.Empty -> fail ()
+      | Streams.Cons (extended, rest) ->
+        succeed extended (fun () -> each (Lazy.force rest))
+    in
+    each (Q.qeval s q (Q.singleton_stream frame))
+  | Q.Always_true -> succeed frame fail
 
-let head_symbol query =
-  match Value.view query with
-  | Value.Pair (head, _) ->
-    (match Value.view head with
-     | Value.Symbol name -> Some name
-     | _ -> None)
-  | _ -> None
-;;
-
-let contents query =
-  match Value.view query with
-  | Value.Pair (_, body) ->
-    (match Eval.value_list body with
-     | Ok items -> items
-     | Error e -> raise (Amb.Raised e))
-  | _ -> raise (Amb.Raised (Eval_error.Invalid_form (Value.to_string query)))
-;;
-
-(* [swallow_fail thunk] runs [thunk] to completion, absorbing the [Fail]
-   that an exhausted inner search performs so it is not mistaken for a
-   dead end of the enclosing search. *)
-let swallow_fail (thunk : unit -> unit) : unit =
-  Effect.Deep.match_with
-    thunk
-    ()
-    { retc = (fun () -> ())
-    ; exnc = raise
-    ; effc =
-        (fun (type a) (eff : a Effect.t) ->
-          match eff with
-          | Amb.Fail -> Some (fun (_dead : (a, unit) continuation) -> ())
-          | _ -> None)
-    }
-;;
-
-(* The nondeterministic evaluator: [succeed] is the frame continuation
-   the book threads as the success procedure; failure is the [Fail]
-   effect unwinding to the innermost choice point. *)
-let rec nqeval env query frame succeed =
-  match head_symbol query with
-  | Some "and" -> nconjoin env (contents query) frame succeed
-  | Some "or" -> ndisjoin env (contents query) frame succeed
-  | Some "not" -> nnot env (contents query) frame succeed
-  | Some "lisp-value" -> nlisp env (contents query) frame succeed
-  | Some "always-true" -> succeed frame
-  | _ -> nsimple env query frame succeed
-
-and nconjoin env conjuncts frame succeed =
+and nconjoin s ids conjuncts frame succeed fail =
   match conjuncts with
-  | [] -> succeed frame
+  | [] -> succeed frame fail
   | first :: rest ->
-    nqeval env first frame (fun extended -> nconjoin env rest extended succeed)
+    nqeval
+      s
+      ids
+      first
+      frame
+      (fun extended fail -> nconjoin s ids rest extended succeed fail)
+      fail
 
-and ndisjoin env disjuncts frame succeed =
-  (* Depth-first: each disjunct is one alternative that enumerates all
-     of its answers before the next disjunct is tried. *)
-  let alternatives =
-    List.map (fun disjunct _env _value -> nqeval env disjunct frame succeed) disjuncts
+and nsimple s ids pattern frame succeed fail =
+  let from_assertions =
+    List.map
+      (fun datum fail ->
+         match Q.pattern_match pattern datum frame with
+         | Some extended -> succeed extended fail
+         | None -> fail ())
+      (take max_int (Q.fetch_assertions s pattern))
   in
-  Amb.choice alternatives env (fun _ -> ())
-
-and nnot env operands frame succeed =
-  let query = Eval.first_operand operands in
-  if inner_has_match env query frame then Effect.perform Amb.Fail else succeed frame
-
-and nlisp env operands frame succeed =
-  let call = Eval.first_operand operands in
-  let instantiated =
-    Eval.instantiate call frame (fun v _ ->
-      raise
-        (Amb.Raised
-           (Eval_error.User_error ("Unknown pat var LISP-VALUE: " ^ Value.to_string v))))
+  let from_rules =
+    List.map
+      (fun rule fail ->
+         decr ids;
+         let conclusion, body = Q.rename_variables_in rule !ids in
+         match Q.unify_match pattern conclusion frame with
+         | Some unified -> nqeval s ids body unified succeed fail
+         | None -> fail ())
+      (take max_int (Q.fetch_rules s pattern))
   in
-  match Eval.execute env instantiated with
-  | Ok true -> succeed frame
-  | Ok false -> Effect.perform Amb.Fail
-  | Error e -> raise (Amb.Raised e)
-
-and nsimple env pattern frame succeed =
-  let assertion_alternatives =
-    List.filter_map
-      (fun assertion ->
-         match Eval.pattern_match pattern assertion frame with
-         | Some extended -> Some (fun _env _value -> succeed extended)
-         | None -> None)
-      (stream_to_list (Eval.fetch_assertions pattern frame))
-  in
-  let rule_alternatives =
-    List.filter_map
-      (fun rule ->
-         let clean_rule = Eval.rename_variables_in rule in
-         match Eval.unify_match pattern (Eval.rule_conclusion clean_rule) frame with
-         | Some unified ->
-           Some
-             (fun _env _value -> nqeval env (Eval.rule_body clean_rule) unified succeed)
-         | None -> None)
-      (stream_to_list (Eval.fetch_rules pattern frame))
-  in
-  Amb.choice (assertion_alternatives @ rule_alternatives) env (fun _ -> ())
-
-(* [inner_has_match env query frame] decides the [not] filter
-   deterministically: the first extension of the frame raises
-   [Found_match]; exhaustion without a match is absorbed at the
-   boundary instead of backtracking the enclosing search. *)
-and inner_has_match env query frame =
-  let found = ref false in
-  (try
-     swallow_fail (fun () ->
-       nqeval env query frame (fun _ ->
-         found := true;
-         raise Found_match))
-   with
-   | Found_match -> ());
-  !found
+  amb (from_assertions @ from_rules) fail
 ;;
 
-(** [ask env text] is one driver interaction: the first answer of the
-    query, or the typed error. The search stays suspended behind the
-    answer for [try_again]. *)
-let ask env text =
-  match Eval.read_query text with
-  | Error message -> Error (Eval_error.Invalid_form message)
-  | Ok raw ->
-    let query = Eval.query_syntax_process raw in
-    Amb.drive (fun () ->
-      nqeval env query Eval.the_empty_frame (fun frame ->
-        Amb.report
-          (Eval.instantiate query frame (fun v _ -> Eval.contract_question_mark v))))
+(* The driver loop's state: the failure continuation of the problem in
+   progress, if any. *)
+type driver =
+  { session : Q.session
+  ; ids : int ref
+  ; mutable problem : (unit -> outcome) option
+  }
+
+let report driver outcome =
+  match outcome with
+  | Answer (answer, resume) ->
+    driver.problem <- Some resume;
+    Q.render_query answer
+  | Exhausted ->
+    driver.problem <- None;
+    "error: there are no more values"
+  | exception Q.Query_error e ->
+    driver.problem <- None;
+    "error: " ^ Sicp_common.Eval_error.to_string e
 ;;
 
-let show = function
-  | Ok value -> Value.to_string value
-  | Error e -> "Error: " ^ Eval_error.to_string e
+let ask driver q =
+  report
+    driver
+    (nqeval
+       driver.session
+       driver.ids
+       q
+       []
+       (fun frame fail -> Answer (Q.instantiate_query q frame, fail))
+       (fun () -> Exhausted))
 ;;
 
-let load_microshaft env =
-  List.iter
-    (fun text ->
-       match Eval.run env text with
-       | Ok Eval.Asserted -> ()
-       | Ok (Eval.Answers _) -> failwith "an assertion answered as a query"
-       | Error e -> failwith ("assertion failed: " ^ Eval_error.to_string e))
-    assertions
+let try_again driver =
+  match driver.problem with
+  | None -> "error: there is no current problem"
+  | Some resume -> report driver (resume ())
 ;;
 
-(* [try_agains n] is the protocol's next [n] answers, one line each;
-   the calls run left to right, in protocol order. *)
-let try_agains n =
-  let rec go k acc =
-    if k = 0 then List.rev acc else go (k - 1) (show (Amb.try_again ()) :: acc)
-  in
-  go n []
+(* [try_agains driver k] is the protocol's next [k] answers, in order. *)
+let try_agains driver k = List.init k (fun _ -> try_again driver)
+
+let demo_data =
+  List.filter
+    (function
+      | Q.Pair (Q.Atom ("job" | "supervisor"), _) -> true
+      | _ -> false)
+    microshaft
+  @ [ atoms [ "married"; "Minnie"; "Mickey" ] ]
 ;;
 
-(* The stream engine's rendering of the same query, first [n] answers. *)
-let stream_answers n env text =
-  match Eval.query_upto n env text with
-  | Ok answers -> List.map Value.to_string answers
-  | Error e -> [ "Error: " ^ Eval_error.to_string e ]
-;;
+let rules = [ l [ at "married"; v "x"; v "y" ], p [ at "married"; v "y"; v "x" ] ]
 
 let ex_4_78 () =
-  let env = Eval.the_query_system () in
-  load_microshaft env;
+  let s = session ~rules demo_data in
+  (* Rule applications are numbered below zero, where the session
+   counter can never collide with them. *)
+  let driver = { session = s; ids = ref 0; problem = None } in
+  let header q = "? " ^ Q.render_query q in
   (* Every protocol step is bound in order: list literals assemble
-     already-computed strings, never interleaving effects. *)
-  (* 1: a simple query; the protocol walks Alyssa, Fect, exhaustion,
-     and then reports that no problem is in progress. *)
-  let one_text = "(job ?x (computer programmer))" in
-  let one_first = show (ask env one_text) in
-  let one_more = try_agains 3 in
-  let one_after = show (Amb.try_again ()) in
-  let one = [ one_text; one_first ] @ one_more @ [ "after exhaustion:"; one_after ] in
-  (* 2: [or] is depth-first here; the stream system interleaves. *)
-  let or_text =
-    "(or (supervisor ?x (Bitdiddle Ben)) (supervisor ?x (Hacker Alyssa P)))"
+     already-computed strings. *)
+  let one_q = p [ at "job"; v "x"; atoms [ "computer"; "programmer" ] ] in
+  let one_first = ask driver one_q in
+  let one_more = try_agains driver 3 in
+  let one_after = try_again driver in
+  let or_q =
+    Q.Or
+      [ p [ at "supervisor"; v "x"; person "Bitdiddle Ben" ]
+      ; p [ at "supervisor"; v "x"; person "Hacker Alyssa P" ]
+      ]
   in
-  let two_stream = stream_answers 4 env or_text in
-  let two_first = show (ask env or_text) in
-  let two_more = try_agains 4 in
-  let two =
-    [ or_text; "stream (interleaved):" ]
-    @ two_stream
-    @ [ "amb (depth-first):"; two_first ]
-    @ two_more
+  let two_stream = answers_upto 4 s or_q in
+  let two_first = ask driver or_q in
+  let two_more = try_agains driver 4 in
+  let married_q = p [ at "married"; at "Mickey"; v "who" ] in
+  let three_stream = answers_upto 3 s married_q in
+  let three_first = ask driver married_q in
+  let three_more = try_agains driver 2 in
+  let not_q =
+    Q.And
+      [ p [ at "supervisor"; v "x"; v "y" ]
+      ; Q.Not (p [ at "job"; v "x"; atoms [ "computer"; "programmer" ] ])
+      ]
   in
-  (* 3: the recursive married rule: every answer is the same
-     duplicate, one rule application deeper each demand. *)
-  let married_text = "(married Mickey ?who)" in
-  let three_stream = stream_answers 3 env married_text in
-  let three_first = show (ask env married_text) in
-  let three_more = try_agains 2 in
-  let three =
-    [ married_text; "stream (first 3):" ]
-    @ three_stream
-    @ [ "amb (first 3):"; three_first ]
-    @ three_more
-  in
-  (* 4: [not] as a require filter over bound frames. *)
-  let not_text = "(and (supervisor ?x ?y) (not (job ?x (computer programmer))))" in
-  let four_first = show (ask env not_text) in
-  let four_more = try_agains 6 in
-  let four = not_text :: four_first :: four_more in
-  one @ two @ three @ four
+  let four_first = ask driver not_q in
+  let four_more = try_agains driver 6 in
+  [ header one_q; one_first ]
+  @ one_more
+  @ [ "after exhaustion:"; one_after; header or_q; "stream (interleaved):" ]
+  @ two_stream
+  @ [ "amb (depth-first):"; two_first ]
+  @ two_more
+  @ [ header married_q; "stream (first 3):" ]
+  @ three_stream
+  @ [ "amb (first 3):"; three_first ]
+  @ three_more
+  @ [ header not_q; four_first ]
+  @ four_more
 ;;

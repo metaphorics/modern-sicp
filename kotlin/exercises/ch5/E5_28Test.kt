@@ -12,6 +12,6 @@ public class E5_28Test :
         test("Exercise 5.28: both factorials' stack tables on the non-tail-recursive evaluator").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            nonTailRecursiveMeasurements() shouldBe emptyList()
+            nonTailRecursiveMeasurements().last() shouldBe "iterative maximum depth now grows with n: true"
         }
     })

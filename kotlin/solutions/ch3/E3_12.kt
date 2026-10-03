@@ -3,37 +3,33 @@
 
 package sicp.ch3.exercises
 
-import sicp.runtime.VNil
-import sicp.runtime.VPair
-import sicp.runtime.Value
-import sicp.runtime.cons
-import sicp.runtime.setCdr
+import sicp.runtime.Datum
+import sicp.runtime.Empty
+import sicp.runtime.PairCell
+import sicp.runtime.pair
 
 /**
  * The book's `append` of 2.2.1: a fresh list built by consing each
  * element of `x` onto `y`; no pair of `x` is touched.
  */
 public fun append(
-    x: Value,
-    y: Value,
-): Value =
-    if (x !is VPair) {
+    x: Datum,
+    y: Datum,
+): Datum =
+    if (x !is PairCell) {
         y
     } else {
-        cons(x.car, append(x.cdr, y))
+        pair(x.first, append(x.second, y))
     }
 
-/** The book's `last-pair`: the final pair of a nonempty chain. */
-public fun lastPair(x: VPair): VPair = if (x.cdr is VNil) x else lastPair(x.cdr as VPair)
+/** The last pair of a nonempty proper list. */
+public fun lastPair(x: PairCell): PairCell = if (x.second === Empty) x else lastPair(x.second as PairCell)
 
-/**
- * The book's `append!`: point the last pair of `x` at `y`, splicing the
- * two chains together and returning `x` itself.
- */
+/** Splice [y] onto the end of [x], returning [x] itself. */
 public fun appendBang(
-    x: VPair,
-    y: VPair,
-): VPair {
-    lastPair(x).setCdr(y)
+    x: PairCell,
+    y: Datum,
+): PairCell {
+    lastPair(x).second = y
     return x
 }

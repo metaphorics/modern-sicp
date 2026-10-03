@@ -1,110 +1,87 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 4, exercise 4.76: and as a merge of compatible frames.
+// Chapter 4, exercise 4.76: conjunction as a merge of compatible frames.
 
 package sicp.ch4.solutions
 
-import sicp.ch4.Frame
-import sicp.ch4.QuerySystem
-import sicp.ch4.bindingInFrame
-import sicp.ch4.firstConjunct
-import sicp.ch4.isEmptyConjunction
-import sicp.ch4.listStream
-import sicp.ch4.restConjuncts
-import sicp.ch4.singletonStream
-import sicp.ch4.unifyMatch
-import sicp.runtime.LStream
-import sicp.runtime.Value
-import sicp.runtime.take
+import sicp.ch4.QAnd
+import sicp.ch4.QFrame
+import sicp.ch4.QPattern
+import sicp.ch4.QueryDriver
+import sicp.ch4.renderAnswer
 
-/** The merging procedure the exercise asks for: each binding of the
- * second frame joins the first. A variable unbound in the first simply
- * extends it; a bound variable must unify with the proposed value, and
- * a dead unify rejects the pair. Every binding examination counts one
- * compatibility check. */
-private fun MergeAndSystem.mergeFrames(
-    first: Frame,
-    second: Frame,
-): Frame? {
-    var result = first
+// Exercise 4.76: `and` as a merge of compatible frames. Each conjunct
+// runs separately over its own stream; then every pair merges, one
+// compatibility check per shared variable. Unshared bindings join;
+// a variable bound twice to different terms rejects the pair. The
+// probe merges the programmer frames with the supervision frames,
+// counts the sixteen examinations, keeps the two compatible pairs,
+// and checks the merged listing agrees with the engine's own
+// conjunction as sets.
+
+// Exercise 4.76: merge compatible frames; count the examinations.
+
+/** One pairwise merge: shared bindings must agree, or nothing merges. */
+internal fun mergeFrames(
+    first: QFrame,
+    second: QFrame,
+): QFrame? {
+    val merged = first.bindings.toMutableMap()
     for ((variable, value) in second.bindings) {
-        compatibilityChecks += 1
-        val current = bindingInFrame(variable, result)
-        result =
-            if (current == null) {
-                result.extended(variable, value)
-            } else {
-                unifyMatch(current, value, result) ?: return null
-            }
+        val current = merged[variable]
+        if (current == null) {
+            merged[variable] = value
+        } else if (current != value) {
+            return null
+        }
     }
-    return result
+    return QFrame(merged)
 }
 
-/** The merge-and special form: both conjuncts run separately over the
- * input, then compatible frame pairs merge. */
-public class MergeAndSystem : QuerySystem() {
-    public var compatibilityChecks: Long = 0L
-
-    public override fun installDispatch() {
-        super.installDispatch()
-        putQuery("merge-and", ::mergeConjoin)
-    }
-
-    private fun mergeConjoin(
-        conjuncts: Value,
-        frameStream: LStream<Frame>,
-    ): LStream<Frame> {
-        if (isEmptyConjunction(conjuncts)) return frameStream
-        val first = qeval(firstConjunct(conjuncts), frameStream)
-        val rest = mergeConjoin(restConjuncts(conjuncts), singletonStream(Frame.Empty))
-        return flatmapFrames(
-            { left ->
-                // The merge side is consumed only up to 1000 frames. The
-                // largest second-conjunct stream the pinned comparisons
-                // produce is the full job scan (9 frames), so the cap never
-                // binds there; it only bounds a runaway second stream from a
-                // hand-written query in the demo driver instead of merging
-                // forever.
-                listStream(rest.take(1000).mapNotNull { right -> mergeFrames(left, right) })
-            },
-            first,
-        )
-    }
-}
-
-public fun mergeAndSystem(): MergeAndSystem {
-    val system = MergeAndSystem()
-    system.load(microshaftDatabase)
-    system.load(proseRules)
-    return system
-}
-
-/** Merge-and matches the series and on two shared queries; the check
- * counts are the price comparison the exercise sketches. */
+/** The merge procedure against the engine conjunction. */
 public fun mergeAndDemos(): List<String> {
-    val out = mutableListOf<String>()
-    val series = microshaftSystem()
-    val merge = mergeAndSystem()
-    for (
-    pair in
-    listOf(
-        "(merge-and (job ?x (computer programmer)) (supervisor ?x ?boss))" to
-            "(and (job ?x (computer programmer)) (supervisor ?x ?boss))",
-        "(merge-and (supervisor ?x ?y) (job ?x ?job))" to
-            "(and (supervisor ?x ?y) (job ?x ?job))",
-    )
-    ) {
-        val (mergeQuery, seriesQuery) = pair
-        // the merge answers name their head merge-and; rename it back so
-        // the two listings compare
-        val mergeAnswers =
-            answersOf(merge, mergeQuery).map { it.replaceFirst("(merge-and ", "(and ") }
-        val seriesAnswers = answersOf(series, seriesQuery)
-        out.add("query: $mergeQuery")
-        out.add(
-            "answers=${mergeAnswers.size} same_answers_as_series: " +
-                "${mergeAnswers.sorted() == seriesAnswers.sorted()} compatibility checks: ${merge.compatibilityChecks}",
-        )
-        merge.compatibilityChecks = 0
+    val db = microshaftSystem()
+    val driver = QueryDriver.streaming(db)
+    val programmers =
+        driver
+            .run(
+                QPattern(list(sym("job"), v("x"), list(sym("computer"), sym("programmer")))),
+                listOf(v("x")),
+            ).toList()
+    val supervised =
+        driver
+            .run(
+                QPattern(list(sym("supervisor"), v("x"), v("boss"))),
+                listOf(v("x"), v("boss")),
+            ).toList()
+    var checks = 0L
+    val merged = mutableListOf<QFrame>()
+    for (left in programmers) {
+        for (right in supervised) {
+            checks +=
+                left.bindings.keys
+                    .intersect(right.bindings.keys)
+                    .size
+                    .toLong()
+            val both = mergeFrames(left, right)
+            if (both != null) {
+                merged.add(both)
+            }
+        }
     }
-    return out
+    val xb = listOf(v("x"), v("boss"))
+    val mergedLines = merged.flatMap { frame -> renderAnswer(frame, xb) }.toList()
+    val andLines =
+        answerLines(
+            driver,
+            QAnd(
+                listOf(
+                    QPattern(list(sym("job"), v("x"), list(sym("computer"), sym("programmer")))),
+                    QPattern(list(sym("supervisor"), v("x"), v("boss"))),
+                ),
+            ),
+            xb,
+        )
+    return mergedLines +
+        listOf("merge agrees with and: ${mergedLines.toSet() == andLines.toSet()}") +
+        listOf("compatibility checks: $checks")
 }

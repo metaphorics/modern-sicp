@@ -7,7 +7,7 @@ mod ex_2_75 {
     use std::rc::Rc;
 
     use ch02::sec_2_4::{MessageObject, apply_generic_message_passing};
-    use sicp_runtime::{SchemeError, Value};
+    use sicp_runtime::{SicpError, Value};
 
     /// Exercise 2.75: `make-from-mag-ang` in message-passing style,
     /// analogous to the section's `make_from_real_imag_message_passing`.
@@ -18,7 +18,7 @@ mod ex_2_75 {
             "angle" => Ok(Value::real(a)),
             "real-part" => Ok(Value::real(r * a.cos())),
             "imag-part" => Ok(Value::real(r * a.sin())),
-            other => Err(SchemeError::UserRaised {
+            other => Err(SicpError::UserRaised {
                 message: "Unknown op: MAKE-FROM-MAG-ANG".into(),
                 irritants: vec![Value::sym(other)],
             }),
@@ -28,7 +28,7 @@ mod ex_2_75 {
     /// Builds the polar number with magnitude 5 and the angle of
     /// `(3 . 4)`, then reads its magnitude and angle back through
     /// `apply_generic_message_passing`.
-    pub fn ex_2_75() -> Result<(String, String), SchemeError> {
+    pub fn ex_2_75() -> Result<(String, String), SicpError> {
         let z = make_from_mag_ang_message_passing(5.0, 4.0f64.atan2(3.0));
         let magnitude = apply_generic_message_passing("magnitude", &z)?.to_string();
         let angle = apply_generic_message_passing("angle", &z)?.to_string();

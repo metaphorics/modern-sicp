@@ -23,7 +23,7 @@ import {
  * entry runs.
  */
 
-/** The polynomial =zero? entry: all coefficients zero, through the
+/** The polynomial zero-test entry: all coefficients zero, through the
  * generic predicate. */
 export const isZeroTerms87 = (l: TermList): Result<boolean, GenError> => {
   if (isEmptyTermListQ(l)) {

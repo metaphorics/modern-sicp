@@ -12,6 +12,15 @@ public class E4_65Test :
         test("Exercise 4.65: the wheel listing").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            wheelQuery() shouldBe listOf("MEASURE")
+            wheelQuery() shouldBe
+                listOf(
+                    "?who = [Bitdiddle, Ben]",
+                    "?who = [Warbucks, Oliver]",
+                    "?who = [Warbucks, Oliver]",
+                    "?who = [Warbucks, Oliver]",
+                    "?who = [Warbucks, Oliver]",
+                    "Warbucks appears 4 times",
+                    "Ben appears 1 times",
+                )
         }
     })

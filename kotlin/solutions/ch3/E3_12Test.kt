@@ -5,49 +5,54 @@ package sicp.ch3.exercises
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.runtime.VPair
-import sicp.runtime.VSym
-import sicp.runtime.vlist
+import sicp.runtime.Empty
+import sicp.runtime.PairCell
+import sicp.runtime.Symbol
+import sicp.runtime.datumList
+import sicp.runtime.structurallyEqual
 
 public class E3_12Test :
     FunSpec({
-        test("append's z prints (a b c d) and x keeps its own two cells") {
-            val x = vlist(VSym("a"), VSym("b")) as VPair
-            val y = vlist(VSym("c"), VSym("d")) as VPair
+        test("append copies the first spine and shares the second list") {
+            val x = datumList(Symbol("a"), Symbol("b")) as PairCell
+            val y = datumList(Symbol("c"), Symbol("d")) as PairCell
+            val originalTail = x.second
 
             val z = append(x, y)
 
-            z.toString() shouldBe "(a b c d)"
-            x.cdr.toString() shouldBe "(b)"
+            structurallyEqual(z, datumList(Symbol("a"), Symbol("b"), Symbol("c"), Symbol("d"))) shouldBe true
+            (x.second === originalTail) shouldBe true
+            (lastPair(z as PairCell) === lastPair(y)) shouldBe true
         }
 
-        test("appendBang mutates the shared tail, so x.cdr is now (b c d)") {
-            val x = vlist(VSym("a"), VSym("b")) as VPair
-            val y = vlist(VSym("c"), VSym("d")) as VPair
-            append(x, y)
+        test("appendBang splices the second chain in place and returns x") {
+            val x = datumList(Symbol("a"), Symbol("b")) as PairCell
+            val y = datumList(Symbol("c"), Symbol("d")) as PairCell
+            val bCell = x.second as PairCell
 
-            val w = appendBang(x, y)
+            val result = appendBang(x, y)
 
-            w.toString() shouldBe "(a b c d)"
-            x.cdr.toString() shouldBe "(b c d)"
+            (result === x) shouldBe true
+            structurallyEqual(x.second, datumList(Symbol("b"), Symbol("c"), Symbol("d"))) shouldBe true
+            (bCell.second === y) shouldBe true
         }
 
-        test("appendBang splices rather than copies: w is x and ends at y's last pair") {
-            val x = vlist(VSym("a"), VSym("b")) as VPair
-            val y = vlist(VSym("c"), VSym("d")) as VPair
+        test("lastPair returns the final pair, itself for a one-pair list") {
+            val x = datumList(Symbol("a"), Symbol("b"), Symbol("c")) as PairCell
+            val second = x.second as PairCell
+            val single = datumList(Symbol("a")) as PairCell
 
-            val w = appendBang(x, y)
-
-            (w === x) shouldBe true
-            (lastPair(w) === lastPair(y)) shouldBe true
-        }
-
-        test("lastPair returns the final pair, itself for a one-pair chain") {
-            val x = vlist(VSym("a"), VSym("b"), VSym("c")) as VPair
-            val second = x.cdr as VPair
-            val single = vlist(VSym("a")) as VPair
-
-            (lastPair(x) === second.cdr) shouldBe true
+            (lastPair(x) === second.second) shouldBe true
             (lastPair(single) === single) shouldBe true
+        }
+
+        test("appendBang accepts an empty-list tail") {
+            val x = datumList(Symbol("a"), Symbol("b")) as PairCell
+            val originalTail = x.second
+
+            appendBang(x, Empty)
+
+            (x.second === originalTail) shouldBe true
+            structurallyEqual(x, datumList(Symbol("a"), Symbol("b"))) shouldBe true
         }
     })

@@ -1,0 +1,9 @@
+{
+  "build": [
+    ["cargo", "+1.98.1", "build", "--locked", "-p", "ch04", "--bin", "sicp-eval"],
+    ["cargo", "+1.98.1", "build", "--locked", "-p", "ch05", "--bin", "sicp-machine"]
+  ],
+  "run": ["python3", "../spec/host-subsets/rust/driver.py", "--engine", "{engine}", "--case", "{case}", "--source", "{source}", "--work", "{work}"],
+  "native_compile": ["rustc", "+1.98.1", "--edition", "2024", "-C", "overflow-checks=on", "--out-dir", "{work}", "{source}"],
+  "native_run": ["{work}/program"]
+}

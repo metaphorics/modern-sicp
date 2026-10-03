@@ -5,19 +5,23 @@ package sicp.ch2.exercises
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.runtime.VInt
-import sicp.runtime.vlist
+import sicp.runtime.Whole
+import sicp.runtime.datumList
+import sicp.runtime.renderDatum
+import sicp.runtime.structurallyEqual
 
 public class E2_18Test :
     FunSpec({
-        test("reverseList of (1 4 9 16 25) is (25 16 9 4 1)") {
-            reverseList(vlist(VInt(1L), VInt(4L), VInt(9L), VInt(16L), VInt(25L))).toString() shouldBe "(25 16 9 4 1)"
+        test("reverseList preserves every element in reverse order") {
+            val input = datumList(Whole(1L), Whole(4L), Whole(9L), Whole(16L), Whole(25L))
+            val expected = datumList(Whole(25L), Whole(16L), Whole(9L), Whole(4L), Whole(1L))
+            structurallyEqual(reverseList(input), expected) shouldBe true
         }
-        test("reversing twice returns the original") {
-            val items = vlist(VInt(1L), VInt(4L), VInt(9L), VInt(16L), VInt(25L))
-            reverseList(reverseList(items)).toString() shouldBe items.toString()
+        test("reversing twice restores the original structure") {
+            val input = datumList(Whole(1L), Whole(4L), Whole(9L), Whole(16L), Whole(25L))
+            structurallyEqual(reverseList(reverseList(input)), input) shouldBe true
         }
-        test("ex_2_18 prints (25 16 9 4 1)") {
-            ex_2_18() shouldBe "(25 16 9 4 1)"
+        test("ex_2_18 returns the canonical native rendering") {
+            ex_2_18() shouldBe renderDatum(datumList(Whole(25L), Whole(16L), Whole(9L), Whole(4L), Whole(1L)))
         }
     })

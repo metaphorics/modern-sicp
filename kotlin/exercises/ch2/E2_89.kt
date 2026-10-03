@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.89: implement the dense term-list representation -- a list
  * of coefficients, the order of a term being the length of the sublist
@@ -13,4 +11,4 @@ import sicp.runtime.PendingSolution
  * dense package performs addition and multiplication coefficient-wise
  * through the generic operations.
  */
-public fun ex_2_89(): Boolean = throw PendingSolution()
+public fun ex_2_89(): Boolean = throw PendingExercise()

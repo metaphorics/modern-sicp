@@ -1,11 +1,15 @@
 @node	4.3, 4.4, 4.2, Chapter 4
-@section Variations on a Scheme --- Nondeterministic Computing
+@section Variations on the Guest Language --- Nondeterministic Computing
 
-In this section, we extend the Scheme evaluator to support a programming
+In this section, we extend the guest evaluator to support a programming
 paradigm called @newterm{nondeterministic computing} by building into the
 evaluator a facility to support automatic search.  This is a much more profound
 change to the language than the introduction of lazy evaluation in 
-@ref{4.2}.
+@ref{4.2}.  Like the lazy variants, the search variant is a
+@newterm{named experiment}---the mode @code{amb-depth-firstExperiment},
+which admits the extension nodes @code{choose}, @code{require}, and
+@code{ramb} and rejects everything else outside the core grammar---and never a
+property of native TypeScript.
 
 Nondeterministic computing, like stream processing, is useful for ``generate
 and test'' applications.  Consider the task of starting with two lists of
@@ -24,12 +28,16 @@ list and require (using some mechanism) that their sum be prime.  This is
 expressed by following procedure:
 
 @example typescript
-read(`
-  (define (prime-sum-pair list1 list2)
-    (let ((a (an-element-of list1))
-          (b (an-element-of list2)))
-      (require (prime? (+ a b)))
-      (list a b)))
+readAll(`
+  const primeSumPair = (
+    list1: number[],
+    list2: number[]
+  ): number[] => @{
+    const a = anElementOf(list1);
+    const b = anElementOf(list2);
+    require(isPrime(a + b));
+    return [a, b];
+  @};
 `)
 @end example
 
@@ -37,9 +45,9 @@ read(`
 It might seem as if this procedure merely restates the problem, rather than
 specifying a way to solve it.  Nevertheless, this is a legitimate
 nondeterministic program.@footnote{We assume that we have previously defined a
-procedure @code{prime?} that tests whether numbers are prime.  Even with
-@code{prime?} defined, the @code{prime-sum-pair} procedure may look
-suspiciously like the unhelpful ``pseudo-Lisp'' attempt to define the
+procedure @code{isPrime} that tests whether numbers are prime.  Even with
+@code{isPrime} defined, the @code{primeSumPair} procedure may look
+suspiciously like the unhelpful ``pseudo-code'' attempt to define the
 square-root function, which we described at the beginning of 
 @ref{1.1.7}.  In fact, a square-root procedure along those lines can actually
 be formulated as a nondeterministic program.  By incorporating a search
@@ -48,7 +56,7 @@ declarative descriptions and imperative specifications of how to compute
 answers.  We'll go even farther in this direction in @ref{4.4}.}
 
 The key idea here is that expressions in a nondeterministic language can have
-more than one possible value.  For instance, @code{an-element-of} might return
+more than one possible value.  For instance, @code{anElementOf} might return
 any element of the given list.  Our nondeterministic program evaluator will
 work by automatically choosing a possible value and keeping track of the
 choice.  If a subsequent requirement is not met, the evaluator will try a
@@ -72,33 +80,31 @@ possible execution histories.  When we reach a dead end, we can revisit a
 previous choice point and proceed along a different branch.
 
 The nondeterministic program evaluator implemented below is called the
-@code{amb} evaluator because it is based on a new special form called
-@code{amb}.  We can type the above definition of @code{prime-sum-pair} at the
-@code{amb} evaluator driver loop (along with definitions of @code{prime?},
-@code{an-element-of}, and @code{require}) and run the procedure as follows:
+@code{amb} evaluator after the book's choice form---the @code{choose} node of
+the search experiment---which alternates among its alternatives left to right.
+We can type the above definition of @code{primeSumPair} at the
+@code{amb} evaluator driver loop (along with definitions of @code{isPrime},
+@code{anElementOf}, and the @code{require} node) and run the procedure as
+follows:
 
 @example typescript
-const transcript = Effect.runSync(
-  ambDriverLoop(ambEvaluator, env, [
-    "// ... require, an-element-of, prime-sum-pair, prime? defined here ...",
-    "(prime-sum-pair '(1 3 5 8) '(20 35 110))",
-  ]),
-);
-// ;;; Amb-Eval input:
-// ;;; Starting a new problem
-// ;;; Amb-Eval value:
-// (3 20)
+const session = runAmbSource(`
+  // ... require, anElementOf, primeSumPair, isPrime defined here ...
+  primeSumPair([1, 3, 5, 8], [20, 35, 110]);
+`, "amb-depth-firstExperiment");
+// session.transcript begins with ";;; Starting a new problem"
+// session.outcome is ok with the value [3, 20]
 @end example
 
 @noindent
 The value returned was obtained after the evaluator repeatedly chose elements
 from each of the lists, until a successful choice was made.
 
-Section @ref{4.3.1} introduces @code{amb} and explains how it supports
+Section @ref{4.3.1} introduces the choice form and explains how it supports
 nondeterminism through the evaluator's automatic search mechanism.  
 @ref{4.3.2} presents examples of nondeterministic programs, and 
 @ref{4.3.3} gives the details of how to implement the @code{amb} evaluator by
-modifying the ordinary Scheme evaluator.
+modifying the ordinary core evaluator.
 
 @menu
 * 4.3.1::            Amb and Search
@@ -107,25 +113,30 @@ modifying the ordinary Scheme evaluator.
 @end menu
 
 The amb evaluator of this section lives beside the metacircular one, in
-@code{03-nondeterministic.ts}: it reuses the 4.1 syntax predicates,
+@code{03-nondeterministic.ts}, and is reached through
+@code{runAmbSource(text, mode, seed?)} for mode
+@code{amb-depth-firstExperiment} or the seeded @code{amb-ramb-experiment}:
+it reuses the 4.1 syntax layer,
 environment operations, and primitive table wholesale, and changes only the
 execution procedures, which now take the environment plus the two
-continuation procedures.  The evaluator is built once by
-@code{makeAmbEvaluator} over an @code{AmbTuning} record, and the exercise
+continuation procedures.  The evaluator is configured by a tuning record,
+and the exercise
 variants of 4.50 to 4.54 differ from the section's evaluator by a named knob
-rather than by a forked dispatch.
+rather than by a forked dispatch.  Backtracking restores only the state the
+program has declared backtrackable; permanent writes are explicit.
 
 @node	4.3.1, 4.3.2, 4.3, 4.3
 @subsection Amb and Search
 
-To extend Scheme to support nondeterminism, we introduce a new special form
-called @code{amb}.@footnote{The idea of @code{amb} for nondeterministic
-programming was first described in 1961 by John McCarthy (see @ref{McCarthy 1963}).}
+To extend the guest language to support nondeterminism, we introduce a new
+special form, the choice form @code{choose} (the book calls it
+@code{amb}).@footnote{The idea of a nondeterministic choice form
+was first described in 1961 by John McCarthy (see @ref{McCarthy 1963}).}
 The expression
 
 @example typescript
-read(`
-  (amb <e1> <e2> ... <en>)
+readAll(`
+  choose(⟨@var{e1}⟩, ⟨@var{e2}⟩, @r{…}, ⟨@var{en}⟩);
 `)
 @end example
 
@@ -134,8 +145,8 @@ returns the value of one of the @math{n} expressions @math{{⟨\kern0.03em e_i�
 ``ambiguously.''  For example, the expression
 
 @example typescript
-read(`
-  (list (amb 1 2 3) (amb 'a 'b))
+readAll(`
+  [choose(1, 2, 3), choose("a", "b")];
 `)
 @end example
 
@@ -143,41 +154,43 @@ read(`
 can have six possible values:
 
 @example
-@code{(1 a)} @code{(1 b)} @code{(2 a)} @code{(2 b)} @code{(3 a)} @code{(3 b)}
+@code{[1, "a"]} @code{[1, "b"]} @code{[2, "a"]}
+@code{[2, "b"]} @code{[3, "a"]} @code{[3, "b"]}
 @end example
 
 @noindent
-@code{Amb} with a single choice produces an ordinary (single) value.
+@code{Choose} with a single alternative produces an ordinary (single) value.
 
-@code{Amb} with no choices---the expression @code{(amb)}---is an expression
-with no acceptable values.  Operationally, we can think of @code{(amb)} as an
+@code{Choose} with no alternatives---the expression @code{choose()}---is an
+expression
+with no acceptable values.  Operationally, we can think of @code{choose()} as
+an
 expression that when evaluated causes the computation to ``fail'': The
 computation aborts and no value is produced.  Using this idea, we can express
-the requirement that a particular predicate expression @code{p} must be true as
-follows:
-
-@example typescript
-read(`
-  (define (require p)
-    (if (not p) (amb)))
-`)
-@end example
+the requirement that a particular predicate expression @code{p} must be true.
+The search experiment makes this explicit with the @code{require} node, whose
+condition must hold for the computation to continue; the book defines
+@code{require} as a procedure whose body fails when its predicate is false.
+Both spellings mean the same rule: a false condition is a dead end.
 
 @noindent
-With @code{amb} and @code{require}, we can implement the @code{an-element-of}
+With @code{choose} and @code{require}, we can implement the @code{anElementOf}
 procedure used above:
 
 @example typescript
-read(`
-  (define (an-element-of items)
-    (require (not (null? items)))
-    (amb (car items)
-         (an-element-of (cdr items))))
+readAll(`
+  const anElementOf = (items: number[]): number => @{
+    const first = items[0];
+    if (first === undefined) @{
+      return choose();
+    @}
+    return choose(first, anElementOf(items.slice(1)));
+  @};
 `)
 @end example
 
 @noindent
-@code{An-element-of} fails if the list is empty.  Otherwise it ambiguously
+@code{AnElementOf} fails if the list is empty.  Otherwise it ambiguously
 returns either the first element of the list or an element chosen from the rest
 of the list.
 
@@ -185,17 +198,17 @@ We can also express infinite ranges of choices.  The following procedure
 potentially returns any integer greater than or equal to some given @math{n}:
 
 @example typescript
-read(`
-  (define (an-integer-starting-from n)
-    (amb n (an-integer-starting-from (+ n 1))))
+readAll(`
+  const anIntegerStartingFrom = (n: number): number =>
+    choose(n, anIntegerStartingFrom(n + 1));
 `)
 @end example
 
 @noindent
-This is like the stream procedure @code{integers-starting-from} described in
+This is like the stream procedure @code{integers} described in
 @ref{3.5.2}, but with an important difference: The stream procedure
 returns an object that represents the sequence of all integers beginning with
-@math{n}, whereas the @code{amb} procedure returns a single integer.@footnote{In
+@math{n}, whereas the @code{choose} procedure returns a single integer.@footnote{In
 actuality, the distinction between nondeterministically returning a single
 choice and returning all choices depends somewhat on our point of view.  From
 the perspective of the code that uses the value, the nondeterministic choice
@@ -203,13 +216,13 @@ returns a single value.  From the perspective of the programmer designing the
 code, the nondeterministic choice potentially returns all possible values, and
 the computation branches so that each value is investigated separately.}
 
-Abstractly, we can imagine that evaluating an @code{amb} expression causes time
+Abstractly, we can imagine that evaluating a @code{choose} expression causes time
 to split into branches, where the computation continues on each branch with one
-of the possible values of the expression.  We say that @code{amb} represents a
+of the possible values of the expression.  We say that @code{choose} represents a
 @newterm{nondeterministic choice point}.  If we had a machine with a sufficient
 number of processors that could be dynamically allocated, we could implement
 the search in a straightforward way.  Execution would proceed as in a
-sequential machine, until an @code{amb} expression is encountered.  At this
+sequential machine, until a @code{choose} expression is encountered.  At this
 point, more processors would be allocated and initialized to continue all of
 the parallel executions implied by the choice.  Each processor would proceed
 sequentially as if it were the only choice, until it either terminates by
@@ -232,7 +245,7 @@ random choices and hoping to find a non-failing value, but it is better to
 @newterm{systematically search} all possible execution paths.  The @code{amb}
 evaluator that we will develop and work with in this section implements a
 systematic search as follows: When the evaluator encounters an application of
-@code{amb}, it initially selects the first alternative.  This selection may
+@code{choose}, it initially selects the first alternative.  This selection may
 itself lead to a further choice.  The evaluator will always initially choose
 the first alternative at each choice point.  If a choice results in a failure,
 then the evaluator automagically@footnote{@anchor{Footnote 250}Automagically: ``Automatically, but
@@ -270,7 +283,7 @@ search that is now called @newterm{truth maintenance}.  Modern problem-solving
 systems all use some form of truth-maintenance system as a substrate.  See
 @ref{Forbus and deKleer 1993} for a discussion of elegant ways to build
 truth-maintenance systems and applications using truth maintenance.  
-@ref{Zabih et al. 1987} describes a nondeterministic extension to Scheme
+@ref{Zabih et al. 1987} describes a nondeterministic extension
 that is based on @code{amb}; it is similar to the interpreter described in this
 section, but more sophisticated, because it uses dependency-directed
 backtracking rather than chronological backtracking.  @ref{Winston 1992} gives an
@@ -280,7 +293,7 @@ introduction to both kinds of backtracking.}
 
 The driver loop for the @code{amb} evaluator has some unusual properties.  It
 reads an expression and prints the value of the first non-failing execution, as
-in the @code{prime-sum-pair} example shown above.  If we want to see the value
+in the @code{primeSumPair} example shown above.  If we want to see the value
 of the next successful execution, we can ask the interpreter to backtrack and
 attempt to generate a second non-failing execution.  This is signaled by typing
 the symbol @code{try-again}.  If any expression except @code{try-again} is
@@ -288,55 +301,50 @@ given, the interpreter will start a new problem, discarding the unexplored
 alternatives in the previous problem.  Here is a sample interaction:
 
 @example typescript
-const transcript = Effect.runSync(
-  ambDriverLoop(ambEvaluator, env, [
-    "(define (require p) (if (not p) (amb)))",
-    // ... an-element-of, prime-sum-pair, prime? defined here ...
-    "(prime-sum-pair '(1 3 5 8) '(20 35 110))",
-  ]),
-);
+const session = runAmbSource(`
+  // ... require, anElementOf, primeSumPair, isPrime defined here ...
+  primeSumPair([1, 3, 5, 8], [20, 35, 110]);
+`, "amb-depth-firstExperiment");
 // ;;; Amb-Eval input:
 // ;;; Starting a new problem
 // ;;; Amb-Eval value:
-// (3 20)
+// [3, 20]
 //
 // ;;; Amb-Eval input:
 // try-again
 // ;;; Amb-Eval value:
-// (3 110)
+// [3, 110]
 //
 // ;;; Amb-Eval input:
 // try-again
 // ;;; Amb-Eval value:
-// (8 35)
+// [8, 35]
 //
 // ;;; Amb-Eval input:
 // try-again
 // ;;; There are no more values of
-// (prime-sum-pair '(1 3 5 8) '(20 35 110))
-//
-// ;;; Amb-Eval input:
-// ;;; Starting a new problem
-// ;;; Amb-Eval value:
-// (30 11)
+// primeSumPair([1, 3, 5, 8], [20, 35, 110]);
 @end example
 
 @quotation
 @strong{@anchor{Exercise 4.35}Exercise 4.35:} Write a procedure
-@code{an-integer-between} that returns an integer between two given bounds.
+@code{anIntegerBetween} that returns an integer between two given bounds.
 This can be used to implement a procedure that finds Pythagorean triples, i.e.,
 triples of integers @math{{(i, j, k)}} between the given bounds such that
 @math{{i \le j}} and @math{{i^2 + j^2 = k^2}}, as follows:
 
 @example typescript
-read(`
-  (define (a-pythagorean-triple-between low high)
-    (let ((i (an-integer-between low high)))
-      (let ((j (an-integer-between i high)))
-        (let ((k (an-integer-between j high)))
-          (require (= (+ (* i i) (* j j))
-                      (* k k)))
-          (list i j k)))))
+readAll(`
+  const aPythagoreanTripleBetween = (
+    low: number,
+    high: number
+  ): number[] => @{
+    const i = anIntegerBetween(low, high);
+    const j = anIntegerBetween(i, high);
+    const k = anIntegerBetween(j, high);
+    require(i * i + j * j === k * k);
+    return [i, j, k];
+  @};
 `)
 @end example
 @end quotation
@@ -345,7 +353,7 @@ read(`
 @strong{@anchor{Exercise 4.36}Exercise 4.36:} @ref{Exercise 3.69} discussed how
 to generate the stream of @emph{all} Pythagorean triples, with no upper bound
 on the size of the integers to be searched.  Explain why simply replacing
-@code{an-integer-between} by @code{an-integer-starting-from} in the procedure
+@code{anIntegerBetween} by @code{anIntegerStartingFrom} in the procedure
 in @ref{Exercise 4.35} is not an adequate way to generate arbit@-rary Py@-tha@-go@-rean
 triples.  Write a procedure that actually will accomplish this.  (That is,
 write a procedure for which repeatedly typing @code{try-again} would in
@@ -359,16 +367,20 @@ one in @ref{Exercise 4.35}.  Is he correct?  (Hint: Consider the number of
 possibilities that must be explored.)
 
 @example typescript
-read(`
-  (define (a-pythagorean-triple-between low high)
-    (let ((i (an-integer-between low high))
-          (hsq (* high high)))
-      (let ((j (an-integer-between i high)))
-        (let ((ksq (+ (* i i) (* j j))))
-          (require (>= hsq ksq))
-          (let ((k (sqrt ksq)))
-            (require (integer? k))
-            (list i j k))))))
+readAll(`
+  const aPythagoreanTripleBetween = (
+    low: number,
+    high: number
+  ): number[] => @{
+    const i = anIntegerBetween(low, high);
+    const hsq = high * high;
+    const j = anIntegerBetween(i, high);
+    const ksq = i * i + j * j;
+    require(hsq >= ksq);
+    const k = Math.sqrt(ksq);
+    require(Number.isInteger(k));
+    return [i, j, k];
+  @};
 `)
 @end example
 @end quotation
@@ -403,53 +415,54 @@ restrictions:@footnote{Our program uses the following procedure to determine if
 the elements of a list are distinct:
 
 @example typescript
-read(`
-  (define (distinct? items)
-    (cond ((null? items) true)
-          ((null? (cdr items)) true)
-          ((member (car items) (cdr items)) false)
-          (else (distinct? (cdr items)))))
+readAll(`
+  const distinct = (items: number[]): boolean => @{
+    const first = items[0];
+    if (first === undefined || items.length <= 1) @{
+      return true;
+    @}
+    return !items.slice(1).includes(first) && distinct(items.slice(1));
+  @};
 `)
 @end example
 
-@code{Member} is like @code{memq} except that it uses @code{equal?} instead
-of @code{eq?} to test for equality.}
+The book's membership test uses structural equality; our version uses the
+array's @code{includes} method, which compares numbers by value.}
 
 @example typescript
-read(`
-  (define (multiple-dwelling)
-    (let ((baker (amb 1 2 3 4 5))
-          (cooper (amb 1 2 3 4 5))
-          (fletcher (amb 1 2 3 4 5))
-          (miller (amb 1 2 3 4 5))
-          (smith (amb 1 2 3 4 5)))
-      (require
-       (distinct? (list baker cooper fletcher
-                        miller smith)))
-      (require (not (= baker 5)))
-      (require (not (= cooper 1)))
-      (require (not (= fletcher 5)))
-      (require (not (= fletcher 1)))
-      (require (> miller cooper))
-      (require
-       (not (= (abs (- smith fletcher)) 1)))
-      (require
-       (not (= (abs (- fletcher cooper)) 1)))
-      (list (list 'baker baker)
-            (list 'cooper cooper)
-            (list 'fletcher fletcher)
-            (list 'miller miller)
-            (list 'smith smith))))
+readAll(`
+  const multipleDwelling = (): Array<[string, number]> => @{
+    const baker = choose(1, 2, 3, 4, 5);
+    const cooper = choose(1, 2, 3, 4, 5);
+    const fletcher = choose(1, 2, 3, 4, 5);
+    const miller = choose(1, 2, 3, 4, 5);
+    const smith = choose(1, 2, 3, 4, 5);
+    require(distinct([baker, cooper, fletcher, miller, smith]));
+    require(baker !== 5);
+    require(cooper !== 1);
+    require(fletcher !== 5);
+    require(fletcher !== 1);
+    require(miller > cooper);
+    require(Math.abs(smith - fletcher) !== 1);
+    require(Math.abs(fletcher - cooper) !== 1);
+    return [
+      ["baker", baker],
+      ["cooper", cooper],
+      ["fletcher", fletcher],
+      ["miller", miller],
+      ["smith", smith],
+    ];
+  @};
 `)
 @end example
 
 @noindent
-Evaluating the expression @code{(multiple-dwelling)} produces the result
+Calling @code{multipleDwelling()} produces the result
 
 @example typescript
 // ;;; Amb-Eval value:
-// ((baker 3) (cooper 2) (fletcher 4)
-//  (miller 5) (smith 1))
+// [["baker", 3], ["cooper", 2], ["fletcher", 4],
+//  ["miller", 5], ["smith", 1]]
 @end example
 
 @noindent
@@ -457,14 +470,14 @@ Although this simple procedure works, it is very slow.  @ref{Exercise 4.39} and
 @ref{Exercise 4.40} discuss some possible improvements.
 
 @quotation
-@strong{@anchor{Exercise 4.38}Exercise 4.38:} Modify the multiple-dwelling
+@strong{@anchor{Exercise 4.38}Exercise 4.38:} Modify the multipleDwelling
 procedure to omit the requirement that Smith and Fletcher do not live on
 adjacent floors.  How many solutions are there to this modified puzzle?
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.39}Exercise 4.39:} Does the order of the
-restrictions in the multiple-dwelling procedure affect the answer? Does it
+restrictions in the multipleDwelling procedure affect the answer? Does it
 affect the time to find an answer?  If you think it matters, demonstrate a
 faster program obtained from the given one by reordering the restrictions.  If
 you think it does not matter, argue your case.
@@ -481,11 +494,12 @@ thus be imposed before floors have been selected for all the people.  Write and
 demonstrate a much more efficient nondeterministic procedure that solves this
 problem based upon generating only those possibilities that are not already
 ruled out by previous restrictions.  (Hint: This will require a nest of
-@code{let} expressions.)
+grouped bindings.)
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.41}Exercise 4.41:} Write an ordinary Scheme program
+@strong{@anchor{Exercise 4.41}Exercise 4.41:} Write an ordinary core-mode
+program
 to solve the multiple dwelling puzzle.
 @end quotation
 
@@ -522,7 +536,8 @@ What in fact was the order in which the five girls were placed?
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.43}Exercise 4.43:} Use the @code{amb} evaluator to
+@strong{@anchor{Exercise 4.43}Exercise 4.43:} Use the @code{amb} evaluator
+(the @code{amb-depth-firstExperiment} mode) to
 solve the following puzzle:@footnote{This is taken from a booklet called
 ``Problematical Recreations,'' published in the 1960s by Litton Industries,
 where it is attributed to the @cite{Kansas State Engineer}.}
@@ -561,14 +576,12 @@ first element of each list designates the part of speech for the rest of the
 words in the list.}
 
 @example typescript
-read(`
-  (define nouns
-    '(noun student professor cat class))
+readAll(`
+  const nouns = ["student", "professor", "cat", "class"];
 
-  (define verbs
-    '(verb studies lectures eats sleeps))
+  const verbs = ["studies", "lectures", "eats", "sleeps"];
 
-  (define articles '(article the a))
+  const articles = ["the", "a"];
 `)
 @end example
 
@@ -580,9 +593,11 @@ followed by a verb---and that a noun phrase consists of an article followed by
 a noun.  With this grammar, the sentence ``The cat eats'' is parsed as follows:
 
 @example typescript
-// (sentence
-//  (noun-phrase (article the) (noun cat))
-//  (verb eats))
+// @{ kind: "sentence", parts: [
+//   @{ kind: "noun-phrase", parts: [
+//     @{ kind: "article", text: "the" @},
+//     @{ kind: "noun", text: "cat" @}] @},
+//   @{ kind: "verb", text: "eats" @}] @}
 @end example
 
 @noindent
@@ -592,11 +607,12 @@ constituent pieces and return a list of these two elements, tagged with the
 symbol @code{sentence}:
 
 @example typescript
-read(`
-  (define (parse-sentence)
-    (list 'sentence
-           (parse-noun-phrase)
-           (parse-word verbs)))
+readAll(`
+  const parseSentence = (): ParseNode => @{
+    const subject = parseNounPhrase();
+    const predicate = parseWord(verbs, "verb");
+    return @{ kind: "sentence", parts: [subject, predicate] @};
+  @};
 `)
 @end example
 
@@ -605,11 +621,12 @@ A noun phrase, similarly, is parsed by finding an article followed by a
 noun:
 
 @example typescript
-read(`
-  (define (parse-noun-phrase)
-    (list 'noun-phrase
-          (parse-word articles)
-          (parse-word nouns)))
+readAll(`
+  const parseNounPhrase = (): ParseNode => @{
+    const article = parseWord(articles, "article");
+    const noun = parseWord(nouns, "noun");
+    return @{ kind: "noun-phrase", parts: [article, noun] @};
+  @};
 `)
 @end example
 
@@ -621,19 +638,24 @@ the input that has not yet been parsed.  Each time we check a word, we require
 that @code{*unparsed*} must be non-empty and that it should begin with a word
 from the designated list.  If so, we remove that word from @code{*unparsed*}
 and return the word together with its part of speech (which is found at the
-head of the list):@footnote{Notice that @code{parse-word} uses @code{set!} to
-modify the unparsed input list.  For this to work, our @code{amb} evaluator
-must undo the effects of @code{set!} operations when it backtracks.}
+head of the list):@footnote{Notice that @code{parseWord} assigns
+the unparsed input list.  For this to work, our @code{amb} evaluator
+must undo the effects of assignment when it backtracks.}
 
 @example typescript
-read(`
-  (define (parse-word word-list)
-    (require (not (null? *unparsed*)))
-    (require (memq (car *unparsed*)
-                   (cdr word-list)))
-    (let ((found-word (car *unparsed*)))
-      (set! *unparsed* (cdr *unparsed*))
-      (list (car word-list) found-word)))
+readAll(`
+  let unparsed: string[] = [];
+
+  const parseWord = (words: string[], speech: string): Word => @{
+    require(unparsed.length > 0);
+    const next = unparsed[0];
+    if (next === undefined) @{
+      return choose();
+    @}
+    require(words.includes(next));
+    unparsed = unparsed.slice(1);
+    return @{ kind: speech, text: next @};
+  @};
 `)
 @end example
 
@@ -642,13 +664,13 @@ To start the parsing, all we need to do is set @code{*unparsed*} to be the
 entire input, try to parse a sentence, and check that nothing is left over:
 
 @example typescript
-read(`
-  (define *unparsed* '())
-  (define (parse input)
-    (set! *unparsed* input)
-    (let ((sent (parse-sentence)))
-      (require (null? *unparsed*))
-      sent))
+readAll(`
+  const parse = (input: string[]): ParseNode => @{
+    unparsed = input;
+    const sent = parseSentence();
+    require(unparsed.length === 0);
+    return sent;
+  @};
 `)
 @end example
 
@@ -657,18 +679,18 @@ We can now try the parser and verify that it works for our simple test
 sentence:
 
 @example typescript
-const transcript = Effect.runSync(
-  ambDriverLoop(ambEvaluator, env, [
-    "// ... the parse procedures defined above ...",
-    "(parse '(the cat eats))",
-  ]),
-);
+const session = runAmbSource(`
+  // ... the parse procedures defined above ...
+  parse(["the", "cat", "eats"]);
+`, "amb-depth-firstExperiment");
 // ;;; Amb-Eval input:
 // ;;; Starting a new problem
 // ;;; Amb-Eval value:
-// (sentence
-//  (noun-phrase (article the) (noun cat))
-//  (verb eats))
+// @{ kind: "sentence", parts: [
+//   @{ kind: "noun-phrase", parts: [
+//     @{ kind: "article", text: "the" @},
+//     @{ kind: "noun", text: "cat" @}] @},
+//   @{ kind: "verb", text: "eats" @}] @}
 @end example
 
 @noindent
@@ -680,9 +702,8 @@ where there are choices for how the units can be decomposed.
 Let's add to our grammar a list of prepositions:
 
 @example typescript
-read(`
-  (define prepositions
-    '(prep for to in by with))
+readAll(`
+  const prepositions = ["for", "to", "in", "by", "with"];
 `)
 @end example
 
@@ -691,11 +712,12 @@ and define a prepositional phrase (e.g., ``for the cat'') to be a preposition
 followed by a noun phrase:
 
 @example typescript
-read(`
-  (define (parse-prepositional-phrase)
-    (list 'prep-phrase
-          (parse-word prepositions)
-          (parse-noun-phrase)))
+readAll(`
+  const parsePrepositionalPhrase = (): ParseNode => @{
+    const preposition = parseWord(prepositions, "prep");
+    const object = parseNounPhrase();
+    return @{ kind: "prep-phrase", parts: [preposition, object] @};
+  @};
 `)
 @end example
 
@@ -706,21 +728,23 @@ prepositional phrase:@footnote{Observe that this definition is recursive---a
 verb may be followed by any number of prepositional phrases.}
 
 @example typescript
-read(`
-  (define (parse-sentence)
-    (list 'sentence
-           (parse-noun-phrase)
-           (parse-verb-phrase)))
+readAll(`
+  const parseSentence = (): ParseNode => @{
+    const subject = parseNounPhrase();
+    const predicate = parseVerbPhrase();
+    return @{ kind: "sentence", parts: [subject, predicate] @};
+  @};
 
-  (define (parse-verb-phrase)
-    (define (maybe-extend verb-phrase)
-      (amb
-       verb-phrase
-       (maybe-extend
-        (list 'verb-phrase
-              verb-phrase
-              (parse-prepositional-phrase)))))
-    (maybe-extend (parse-word verbs)))
+  const parseVerbPhrase = (): ParseNode => @{
+    const maybeExtend = (verbPhrase: ParseNode): ParseNode =>
+      choose(
+        verbPhrase,
+        maybeExtend(
+          @{ kind: "verb-phrase",
+            parts: [verbPhrase, parsePrepositionalPhrase()] @},
+        ),
+      );
+    return maybeExtend(parseWord(verbs, "verb"));
 `)
 @end example
 
@@ -732,21 +756,24 @@ either a simple noun phrase or a noun phrase extended by a prepositional
 phrase:
 
 @example typescript
-read(`
-  (define (parse-simple-noun-phrase)
-    (list 'simple-noun-phrase
-          (parse-word articles)
-          (parse-word nouns)))
+readAll(`
+  const parseSimpleNounPhrase = (): ParseNode => @{
+    const article = parseWord(articles, "article");
+    const noun = parseWord(nouns, "noun");
+    return @{ kind: "simple-noun-phrase", parts: [article, noun] @};
+  @};
 
-  (define (parse-noun-phrase)
-    (define (maybe-extend noun-phrase)
-      (amb
-       noun-phrase
-       (maybe-extend
-        (list 'noun-phrase
-              noun-phrase
-              (parse-prepositional-phrase)))))
-    (maybe-extend (parse-simple-noun-phrase)))
+  const parseNounPhrase = (): ParseNode => @{
+    const maybeExtend = (nounPhrase: ParseNode): ParseNode =>
+      choose(
+        nounPhrase,
+        maybeExtend(
+          @{ kind: "noun-phrase",
+            parts: [nounPhrase, parsePrepositionalPhrase()] @},
+        ),
+      );
+    return maybeExtend(parseSimpleNounPhrase());
+  @};
 `)
 @end example
 
@@ -754,28 +781,24 @@ read(`
 Our new grammar lets us parse more complex sentences.  For example
 
 @example typescript
-// (parse '(the student with the cat
-//          sleeps in the class))
+// parse(["the", "student", "with", "the", "cat", "sleeps", "in", "the",
+// "class"]);
 @end example
 
 @noindent
 produces
 
 @example typescript
-// (sentence
-//  (noun-phrase
-//   (simple-noun-phrase (article the)
-//                       (noun student))
-//   (prep-phrase (prep with)
-//                (simple-noun-phrase
-//                 (article the)
-//                 (noun cat))))
-//  (verb-phrase
-//   (verb sleeps)
-//   (prep-phrase (prep in)
-//                (simple-noun-phrase
-//                 (article the)
-//                 (noun class)))))
+// rendered by the transcript printer as nested constructor calls:
+// sentence(
+//   noun-phrase(
+//     simple-noun-phrase(article(the), noun(student)),
+//     prep-phrase(prep(with),
+//                 simple-noun-phrase(article(the), noun(cat)))),
+//   verb-phrase(
+//     verb(sleeps),
+//     prep-phrase(prep(in),
+//                 simple-noun-phrase(article(the), noun(class)))))
 @end example
 
 @noindent
@@ -785,28 +808,23 @@ professor is lecturing with the cat, or that the student has the cat.  Our
 nondeterministic program finds both possibilities:
 
 @example typescript
-// (parse '(the professor lectures to
-//          the student with the cat))
+// parse(["the", "professor", "lectures", "to",
+//        "the", "student", "with", "the", "cat"]);
 @end example
 
 @noindent
 produces
 
 @example typescript
-// (sentence
-//  (simple-noun-phrase (article the)
-//                      (noun professor))
-//  (verb-phrase
-//   (verb-phrase
-//    (verb lectures)
-//    (prep-phrase (prep to)
-//                 (simple-noun-phrase
-//                  (article the)
-//                  (noun student))))
-//   (prep-phrase (prep with)
-//                (simple-noun-phrase
-//                 (article the)
-//                 (noun cat)))))
+// sentence(
+//   simple-noun-phrase(article(the), noun(professor)),
+//   verb-phrase(
+//     verb-phrase(
+//       verb(lectures),
+//       prep-phrase(prep(to),
+//                   simple-noun-phrase(article(the), noun(student)))),
+//     prep-phrase(prep(with),
+//                 simple-noun-phrase(article(the), noun(cat)))))
 @end example
 
 @noindent
@@ -814,21 +832,16 @@ Asking the evaluator to try again yields
 
 @example typescript
 // ;;; Amb-Eval value:
-// (sentence
-//  (simple-noun-phrase (article the)
-//                      (noun professor))
-//  (verb-phrase (verb lectures)
-//               (prep-phrase
-//                (prep to)
-//                (noun-phrase
-//                 (simple-noun-phrase
-//                  (article the)
-//                  (noun student))
-//                 (prep-phrase
-//                  (prep with)
-//                  (simple-noun-phrase
-//                   (article the)
-//                   (noun cat)))))))
+// sentence(
+//   simple-noun-phrase(article(the), noun(professor)),
+//   verb-phrase(
+//     verb(lectures),
+//     prep-phrase(
+//       prep(to),
+//       noun-phrase(
+//         simple-noun-phrase(article(the), noun(student)),
+//         prep-phrase(prep(with),
+//                     simple-noun-phrase(article(the), noun(cat)))))))
 @end example
 
 @quotation
@@ -850,21 +863,24 @@ some other order.
 @strong{@anchor{Exercise 4.47}Exercise 4.47:} Louis Reasoner suggests that,
 since a verb phrase is either a verb or a verb phrase followed by a
 prepositional phrase, it would be much more straightforward to define the
-procedure @code{parse-verb-phrase} as follows (and similarly for noun phrases):
+procedure @code{parseVerbPhrase} as follows (and similarly for noun phrases):
 
 @example typescript
-read(`
-  (define (parse-verb-phrase)
-    (amb (parse-word verbs)
-         (list
-          'verb-phrase
-          (parse-verb-phrase)
-          (parse-prepositional-phrase))))
+readAll(`
+  const parseVerbPhrase = (): ParseNode =>
+    choose(
+      parseWord(verbs, "verb"),
+      @{ kind: "verb-phrase",
+        parts: [
+          parseVerbPhrase(),
+          parsePrepositionalPhrase(),
+        ] @},
+    );
 `)
 @end example
 
 Does this work?  Does the program's behavior change if we interchange the order
-of expressions in the @code{amb}?
+of expressions in the @code{choose}?
 @end quotation
 
 @quotation
@@ -884,7 +900,7 @@ grammars to command languages.}
 @quotation
 @strong{@anchor{Exercise 4.49}Exercise 4.49:} Alyssa P. Hacker is more
 interested in generating interesting sentences than in parsing them.  She
-reasons that by simply changing the procedure @code{parse-word} so that it
+reasons that by simply changing the procedure @code{parseWord} so that it
 ignores the ``input sentence'' and instead always succeeds and generates an
 appropriate word, we can use the programs we had built for parsing to do
 generation instead.  Implement Alyssa's idea, and show the first half-dozen or
@@ -899,13 +915,13 @@ for a way to deal with this.}
 @node	4.3.3, 4.4, 4.2, 4.3
 @subsection Implementing the @code{Amb} Evaluator
 
-The evaluation of an ordinary Scheme expression may return a value, may never
-terminate, or may signal an error.  In nondeterministic Scheme the evaluation
+The evaluation of an ordinary core-mode expression may return a value, may never
+terminate, or may signal an error.  In a nondeterministic program the evaluation
 of an expression may in addition result in the discovery of a dead end, in
 which case evaluation must backtrack to a previous choice point.  The
-interpretation of nondeterministic Scheme is complicated by this extra case.
+interpretation of nondeterministic search is complicated by this extra case.
 
-We will construct the @code{amb} evaluator for nondeterministic Scheme by
+We will construct the @code{amb} evaluator for nondeterministic search by
 modifying the analyzing evaluator of @ref{4.1.7}.@footnote{We chose to
 implement the lazy evaluator in @ref{4.2} as a modification of the
 ordinary metacircular evaluator of @ref{4.1.1}.  In contrast, we will
@@ -914,8 +930,8 @@ base the @code{amb} evaluator on the analyzing evaluator of
 convenient framework for implementing backtracking.}  As in the analyzing
 evaluator, evaluation of an expression is accomplished by calling an execution
 procedure produced by analysis of that expression.  The difference between the
-interpretation of ordinary Scheme and the interpretation of nondeterministic
-Scheme will be entirely in the execution procedures.
+interpretation of ordinary core mode and the interpretation of nondeterministic
+search will be entirely in the execution procedures.
 
 @subsubheading Execution procedures and continuations
 
@@ -947,7 +963,7 @@ that can be called later to choose a different alternative.
 
 A failure is triggered during evaluation (that is, a failure continuation is
 called) when a user program explicitly rejects the current line of attack (for
-example, a call to @code{require} may result in execution of @code{(amb)}, an
+example, a call to @code{require} may result in execution of @code{choose}, an
 expression that always fails---see @ref{4.3.1}).  The failure
 continuation in hand at that point will cause the most recent choice point to
 choose another alternative.  If there are no more alternatives to be considered
@@ -966,8 +982,8 @@ In summary, failure continuations are constructed by
 @itemize @bullet
 
 @item
-@code{amb} expressions---to provide a mechanism to make alternative choices if
-the current choice made by the @code{amb} expression leads to a dead end;
+@code{choose} expressions---to provide a mechanism to make alternative choices if
+the current choice made by the @code{choose} expression leads to a dead end;
 
 @item
 the top-level driver---to provide a mechanism to report failure when the
@@ -984,7 +1000,7 @@ Failures are initiated only when a dead end is encountered.  This occurs
 @itemize @bullet
 
 @item
-if the user program executes @code{(amb)};
+if the user program executes @code{choose};
 
 @item
 if the user types @code{try-again} at the top-level driver.
@@ -1003,8 +1019,8 @@ the failure back to the choice point that led to this assignment or to the top
 level.
 
 @item
-When the failure continuation for an @code{amb} runs out of choices, it calls
-the failure continuation that was originally given to the @code{amb}, in order
+When the failure continuation for a @code{choose} runs out of choices, it calls
+the failure continuation that was originally given to the @code{choose}, in order
 to propagate the failure back to the previous choice point or to the top level.
 
 @end itemize
@@ -1014,16 +1030,17 @@ to propagate the failure back to the previous choice point or to the top level.
 The syntax- and data-representation procedures for the @code{amb} evaluator,
 and also the basic @code{analyze} procedure, are identical to those in the
 evaluator of @ref{4.1.7}, except for the fact that we need additional
-syntax procedures to recognize the @code{amb} special form:@footnote{We assume
+syntax procedures to recognize the @code{choose} special form:@footnote{We assume
 that the evaluator supports @code{let} (see @ref{Exercise 4.22}), which we have
 used in our nondeterministic programs.}
 
 @example typescript
-/** The book's `amb?`: the tagged `amb` form. */
-export const isAmb = (exp: Value): exp is Cons<Value> => taggedList("amb", exp);
+/** The book's `amb?`: the tagged `choose` form. */
+export const isChoose = (expr: Expr): boolean => expr.tag === "choose";
 
 /** The book's `amb-choices`: the alternatives, unevaluated. */
-export const ambChoices = (exp: Cons<Value>): List<Value> => exp.tail;
+export const chooseAlternatives = (expr: Expr): ReadonlyArray<Expr> =>
+  expr.tag === "choose" ? expr.alternatives : [];
 @end example
 
 @noindent
@@ -1031,9 +1048,8 @@ We must also add to the dispatch in @code{analyze} a clause that will recognize
 this special form and generate an appropriate execution procedure:
 
 @example typescript
-    if (isAmb(exp)) @{
-      return analyzeAmb(exp);
-    @}
+    case "choose":
+      return analyzeChoose(expr);
 @end example
 
 @noindent
@@ -1044,9 +1060,10 @@ continuations:
 
 @example typescript
 /** The book's `ambeval` of the section. */
-export const ambeval = ambEvaluator.ambeval;
+export const ambeval = searchEvaluator.ambeval;
 // where the evaluator's own definition is
-//   ambeval: (exp, env, succeed, fail) => analyze(exp)(env, succeed, fail)
+// ambeval: (expr, env, succeed, fail) => analyze(expr)(env, succeed,
+// fail)
 @end example
 
 @noindent
@@ -1056,21 +1073,23 @@ failure. A failure continuation is a procedure of no arguments.  So the general
 form of an execution procedure is
 
 @example typescript
+export type Fail = () => Outcome;
+
+export type Succeed = (value: Value, fail: Fail) => Outcome;
+
 export type AmbExecute = (
   env: Env,
-  // `succeed` is `(value, fail) => Effect<Value, EvaluationError>`
   succeed: Succeed,
-  // `fail` is `() => Effect<Value, EvaluationError>`
   fail: Fail,
-) => Effect.Effect<Value, EvaluationError>;
+) => Outcome;
 @end example
 
 @noindent
 For example, executing
 
 @example typescript
-ambeval(exp, theGlobalEnvironment, (value, fail) => Effect.succeed(value), () =>
-  Effect.succeed(symbol("failed")),
+ambeval(exp, theGlobalEnvironment, (value, fail) => ok(value), () =>
+  ok(@{ tag: "error-value", message: "failed" @}),
 );
 @end example
 
@@ -1095,24 +1114,34 @@ continuations.  The execution procedures simply succeed with the value of the
 expression, passing along the failure continuation that was passed to them.
 
 @example typescript
-const analyzeSelfEvaluating = (exp: Value): AmbExecute => (_env, succeed, fail) =>
-  succeed(exp, fail);
+const analyzeSelfEvaluating = (
+  expr: Expr
+): AmbExecute => (_env, succeed, fail) =>
+  succeed(literalValue(expr), fail);
 
-const analyzeQuoted = (exp: Cons<Value>): AmbExecute => @{
-  const qval = textOfQuotation(exp);
-  return (_env, succeed, fail) => succeed(qval, fail);
+// The data-literal case is the one of
+// @ref{4.1.7} with the two continuations
+// threaded through its element loop.
+
+const analyzeVariable = (
+  name: string
+): AmbExecute => (env, succeed, fail) => @{
+  const value = lookupVariableValue(name, env);
+  return value.tag === "ok" ? succeed(value.value, fail) : value;
 @};
 
-const analyzeVariable = (exp: SymbolValue): AmbExecute => (env, succeed, fail) =>
-  Effect.flatMap(lookupVariableValue(exp, env), (value) => succeed(value, fail));
-
-const analyzeLambda = (exp: Cons<Value>): AmbExecute => (env, succeed, fail) =>
-  succeed(makeProcedure(lambdaParameters(exp), lambdaBody(exp), env), fail);
+const analyzeLambda = (
+  params: ReadonlyArray<Param>,
+  body: Block
+): AmbExecute =>
+  (env, succeed, fail) => succeed(
+    makeProcedure(params, body, env),
+    fail);
 @end example
 
 @noindent
 Notice that looking up a variable always `succeeds.'  If
-@code{lookup-variable-value} fails to find the variable, it signals an error,
+@code{lookupVariableValue} fails to find the variable, it answers an error,
 as usual.  Such a ``failure'' indicates a program bug---a reference to an
 unbound variable; it is not an indication that we should try another
 nondeterministic choice instead of the one that is currently being tried.
@@ -1120,26 +1149,32 @@ nondeterministic choice instead of the one that is currently being tried.
 @subsubheading Conditionals and sequences
 
 Conditionals are also handled in a similar way as in the ordinary evaluator.
-The execution procedure generated by @code{analyze-if} invokes the predicate
+The execution procedure generated by @code{analyzeConditional} invokes the test
 execution procedure @code{pproc} with a success continuation that checks
 whether the predicate value is true and goes on to execute either the
 consequent or the alternative.  If the execution of @code{pproc} fails, the
 original failure continuation for the @code{if} expression is called.
 
 @example typescript
-const analyzeIf = (exp: Cons<Value>): AmbExecute => @{
-  const pproc = analyze(ifPredicate(exp));
-  const cproc = analyze(ifConsequent(exp));
-  const aproc = analyze(ifAlternative(exp));
+const analyzeConditional = (
+  test: Expr,
+  consequent: Expr,
+  alternative: Expr,
+): AmbExecute => @{
+  const pproc = analyze(test);
+  const cproc = analyze(consequent);
+  const aproc = analyze(alternative);
   return (env, succeed, fail) =>
     pproc(
       env,
       // success continuation for evaluating
-      // the predicate to obtain `predValue`
+      // the test to obtain `predValue`
       (predValue, fail2) =>
-        isTrue(predValue) ? cproc(env, succeed, fail2) : aproc(env, succeed, fail2),
+        predValue === true
+          ? cproc(env, succeed, fail2)
+          : aproc(env, succeed, fail2),
       // failure continuation for
-      // evaluating the predicate
+      // evaluating the test
       fail,
     );
 @};
@@ -1153,16 +1188,19 @@ then @code{b}, we call @code{a} with a success continuation that calls
 @code{b}.
 
 @example typescript
-const analyzeSequence = (exps: List<Value>): AmbExecute => @{
-  if (exps._tag === "Nil") @{
-    return () => Effect.fail(new RuntimeError(@{ message: "Empty sequence: AMB-EVAL", detail: "" @}));
-  @}
-  const procs = toArray(exps).map(analyze);
-  const sequentially = (a: AmbExecute, b: AmbExecute): AmbExecute => (env, succeed, fail) =>
+const analyzeSequence = (exprs: ReadonlyArray<Expr>): AmbExecute => @{
+  const procs = exprs.map(analyze);
+  const sequentially = (
+    a: AmbExecute,
+    b: AmbExecute
+  ): AmbExecute => (env, succeed, fail) =>
     // success continuation for calling `a`
     a(env, (_value, fail2) => b(env, succeed, fail2),
       // failure continuation for calling `a`
       fail);
+  if (procs.length === 0) @{
+    return (_env, succeed, fail) => succeed(undefined, fail);
+  @}
   return procs.reduce(sequentially);
 @};
 @end example
@@ -1170,22 +1208,28 @@ const analyzeSequence = (exps: List<Value>): AmbExecute => @{
 @subsubheading Definitions and assignments
 
 Definitions are another case where we must go to some trouble to manage the
-continuations, because it is necessary to evaluate the definition-value
+continuations, because it is necessary to evaluate the declarationValue
 expression before actually defining the new variable.  To accomplish this, the
-definition-value execution procedure @code{vproc} is called with the
+declarationValue execution procedure @code{vproc} is called with the
 environment, a success continuation, and the failure continuation.  If the
 execution of @code{vproc} succeeds, obtaining a value @code{val} for the
 defined variable, the variable is defined and the success is propagated:
 
 @example typescript
-const analyzeDefinition = (exp: Cons<Value>): AmbExecute => @{
-  const variable = definitionVariable(exp);
-  const vproc = analyze(definitionValue(exp));
+const analyzeDeclaration = (
+  name: string,
+  initializer: Expr
+): AmbExecute => @{
+  const vproc = analyze(initializer);
   return (env, succeed, fail) =>
     vproc(
       env,
-      (value, fail2) =>
-        Effect.flatMap(defineVariableValue(variable, value, env), () => succeed(ok, fail2)),
+      (value, fail2) => @{
+        const installed = defineVariableValue(name, value, env);
+        return installed.tag === "ok"
+          ? succeed(undefined, fail2)
+          : installed;
+      @},
       fail,
     );
 @};
@@ -1216,53 +1260,86 @@ would otherwise have called @code{fail2} calls this procedure instead, to undo
 the assignment before actually calling @code{fail2}.
 
 @example typescript
-const analyzeAssignment = (exp: Cons<Value>): AmbExecute => @{
-  const variable = assignmentVariable(exp);
-  const vproc = analyze(assignmentValue(exp));
+const analyzeAssignment = (
+  target: Expr,
+  valueExpr: Expr
+): AmbExecute => @{
+  const vproc = analyze(valueExpr);
   return (env, succeed, fail) =>
-    vproc(env, (value, fail2) => assignWithUndo(variable, value, env, succeed, fail2), fail);
+    vproc(
+      env,
+      (value, fail2) => assignWithUndo(
+        target,
+        value,
+        env,
+        succeed,
+        fail2),
+      fail);
 @};
 
-// The write of `analyzeAssignment` plus its undo record: the old value is
-// read before the write, and the success is handed a failure continuation
+// The write of `analyzeAssignment` plus its undo record: the old value
+// is
+// read before the write, and the success is handed a failure
+// continuation
 // that restores the old value before propagating (*2*), so a backtrack
 // unwrites the branch's assignments, newest first.
 const assignWithUndo = (
-  variable: SymbolValue,
+  target: Expr,
   value: Value,
   env: Env,
   succeed: Succeed,
   fail2: Fail,
-): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(lookupVariableValue(variable, env), (oldValue) =>
-    Effect.flatMap(setVariableValue(variable, value, env), () =>
-      succeed(ok, () =>
-        Effect.flatMap(setVariableValue(variable, oldValue, env), () => fail2()),
-      ),
-    ),
-  );
+): Outcome => @{
+  const oldValue =
+    target.tag === "variable"
+      ? lookupVariableValue(target.name, env)
+      : readAccess(target, env);
+  const installed =
+    target.tag === "variable"
+      ? setVariableValue(target.name, value, env)
+      : memberSet(target, value, env);
+  if (installed.tag !== "ok") @{
+    return installed;
+  @}
+  return succeed(value, () => @{
+    const restored =
+      target.tag === "variable" && oldValue.tag === "ok"
+        ? setVariableValue(target.name, oldValue.value, env)
+        : oldValue.tag === "ok"
+          ? memberSet(target, oldValue.value, env)
+          : installed;
+    return restored.tag === "ok" ? fail2() : restored;
+  @});
+@};
 @end example
 
 @subsubheading Procedure applications
 
 The execution procedure for applications contains no new ideas except for the
 technical complexity of managing the continuations.  This complexity arises in
-@code{analyze-application}, due to the need to keep track of the success and
-failure continuations as we evaluate the operands.  We use a procedure
-@code{get-args} to evaluate the list of operands, rather than a simple
+@code{analyzeApplication}, due to the need to keep track of the success and
+failure continuations as we evaluate the arguments.  We use a procedure
+@code{getArgs} to evaluate the array of arguments, rather than a simple
 @code{map} as in the ordinary evaluator.
 
 @example typescript
-const analyzeApplication = (exp: Cons<Value>): AmbExecute => @{
-  const fproc = analyze(exp.head);
-  const aprocs = toArray(exp.tail).map(analyze);
+const analyzeApplication = (
+  callee: Expr,
+  args: ReadonlyArray<Arg>
+): AmbExecute => @{
+  const fproc = analyze(callee);
+  const aprocs = args.map((arg) => analyze(arg.expr));
   return (env, succeed, fail) =>
     fproc(
       env,
       (proc, fail2) =>
         getArgs(aprocs)(
           env,
-          (args, fail3) => executeApplication(proc, listValue(args), succeed, fail3),
+          (values, fail3) => executeApplication(
+            proc,
+            values,
+            succeed,
+            fail3),
           fail2,
         ),
       fail,
@@ -1271,12 +1348,12 @@ const analyzeApplication = (exp: Cons<Value>): AmbExecute => @{
 @end example
 
 @noindent
-In @code{get-args}, notice how @code{cdr}-ing down the list of @code{aproc}
-execution procedures and @code{cons}ing up the resulting list of @code{args} is
-accomplished by calling each @code{aproc} in the list with a success
-continuation that recursively calls @code{get-args}.  Each of these recursive
-calls to @code{get-args} has a success continuation whose value is the
-@code{cons} of the newly obtained argument onto the list of accumulated
+In @code{getArgs}, notice how walking down the array of @code{aproc}
+execution procedures and building up the resulting array of @code{args} is
+accomplished by calling each @code{aproc} in the array with a success
+continuation that recursively calls @code{getArgs}.  Each of these recursive
+calls to @code{getArgs} has a success continuation whose value is the
+newly obtained argument appended to the accumulated
 arguments:
 
 @example typescript
@@ -1285,7 +1362,7 @@ const getArgs =
   (env, succeed, fail) => @{
     const first = aprocs[0];
     if (first === undefined) @{
-      return succeed(nil, fail);
+      return succeed([], fail);
     @}
     return first(
       env,
@@ -1294,7 +1371,7 @@ const getArgs =
         getArgs(aprocs.slice(1))(
           env,
           // success continuation for the recursive call
-          (args, fail3) => succeed(cons(arg, listValue(args)), fail3),
+          (values, fail3) => succeed([arg, ...values], fail3),
           fail2,
         ),
       fail,
@@ -1304,39 +1381,39 @@ const getArgs =
 
 @noindent
 The actual procedure application, which is performed by
-@code{execute-application}, is accomplished in the same way as for the ordinary
+@code{executeApplication}, is accomplished in the same way as for the ordinary
 evaluator, except for the need to manage the continuations.
 
 @example typescript
 const executeApplication = (
   procedure: Value,
-  args: List<Value>,
+  args: Value[],
   succeed: Succeed,
   fail: Fail,
-): Effect.Effect<Value, EvaluationError> => @{
-  if (procedure._tag === "Primitive") @{
-    return Effect.flatMap(applyPrimitiveProcedure(procedure, args), (value) =>
-      succeed(value, fail),
-    );
+): Outcome => @{
+  if (isPrimitive(procedure)) @{
+    const value = applyPrimitiveProcedure(procedure, args);
+    return value.tag === "ok" ? succeed(value.value, fail) : value;
   @}
-  if (procedure._tag === "Compound") @{
-    return Effect.flatMap(extendEnvironment(procedure.params, args, procedure.env), (newEnv) =>
-      analyzeSequence(procedure.body)(newEnv, succeed, fail),
-    );
+  if (isClosure(procedure)) @{
+    const frame = extendEnvironment(procedure, args);
+    return frame.tag === "ok"
+      ? analyzeSequence(procedure.body.body)(frame.value, succeed, fail)
+      : frame;
   @}
-  return Effect.fail(new NotAProcedure(@{ value: format(procedure) @}));
+  return fail(@{ tag: "not-callable", detail: format(procedure) @});
 @};
 @end example
 
-@subsubheading Evaluating @code{amb} expressions
+@subsubheading Evaluating @code{choose} expressions
 
-The @code{amb} special form is the key element in the nondeterministic
+The @code{choose} special form is the key element in the nondeterministic
 language.  Here we see the essence of the interpretation process and the reason
-for keeping track of the continuations.  The execution procedure for @code{amb}
-defines a loop @code{try-next} that cycles through the execution procedures for
-all the possible values of the @code{amb} expression.  Each execution procedure
+for keeping track of the continuations.  The execution procedure for @code{choose}
+defines a loop @code{tryNext} that cycles through the execution procedures for
+all the possible values of the @code{choose} expression.  Each execution procedure
 is called with a failure continuation that will try the next one.  When there
-are no more alternatives to try, the entire @code{amb} expression fails.
+are no more alternatives to try, the entire @code{choose} expression fails.
 
 @example typescript
 const tryChoices = (
@@ -1344,8 +1421,8 @@ const tryChoices = (
   env: Env,
   succeed: Succeed,
   fail: Fail,
-): Effect.Effect<Value, EvaluationError> => @{
-  const tryNext = (rest: ReadonlyArray<AmbExecute>): Effect.Effect<Value, EvaluationError> => @{
+): Outcome => @{
+  const tryNext = (rest: ReadonlyArray<AmbExecute>): Outcome => @{
     const first = rest[0];
     if (first === undefined) @{
       return fail();
@@ -1358,8 +1435,10 @@ const tryChoices = (
   return tryNext(cprocs);
 @};
 
-const analyzeAmb = (exp: Cons<Value>): AmbExecute => @{
-  const cprocs = toArray(ambChoices(exp)).map(analyze);
+const analyzeChoose = (expr: Expr): AmbExecute => @{
+  const cprocs = expr.tag === "choose"
+    ? expr.alternatives.map(analyze)
+    : [];
   return (env, succeed, fail) => tryChoices(cprocs, env, succeed, fail);
 @};
 @end example
@@ -1389,68 +1468,72 @@ invoke the ``failure'' alternative branch in order to search for additional
 successful evaluations.
 
 @example typescript
-// The book's input-prompt and output-prompt are the literal lines the
+// The book's inputPrompt and outputPrompt are the literal lines the
 // transcript reports for every problem: ";;; Amb-Eval input:" and
 // ";;; Amb-Eval value:".
 export const ambDriverLoop = (
   evaluator: AmbEvaluator,
   env: Env,
   inputs: ReadonlyArray<string>,
-): Effect.Effect<ReadonlyArray<string>, EvaluationError> =>
-  Effect.gen(function* () @{
-    const lines: string[] = [];
-    // the failure continuation that asks for the next alternative
-    let next: Fail | undefined;
-    let current: string | undefined;
-    const record: Succeed = (value, fail) => @{
-      next = fail;
-      return Effect.succeed(value);
-    @};
-    const terminalFail: Fail = () => Effect.fail(new AmbExhausted());
-    const runForm = (input: string): Effect.Effect<Value, EvaluationError> =>
-      Effect.flatMap(
-        Effect.try(@{
-          try: () => read(input),
-          catch: (e) =>
-            new RuntimeError(@{
-              message: "read failed",
-              detail: e instanceof ReadError || e instanceof Error ? e.message : String(e),
-            @}),
-        @}),
-        (exp) => evaluator.ambeval(exp, env, record, terminalFail),
-      );
-    const settle = (
-      outcome: Result.Result<Value, EvaluationError>,
-      input: string,
-    ): Effect.Effect<void, EvaluationError> => @{
-      if (outcome._tag === "Success") @{
-        lines.push(";;; Amb-Eval value:", format(outcome.success));
-        return Effect.void;
-      @}
-      if (outcome.failure instanceof AmbExhausted) @{
-        lines.push(";;; There are no more values of", input);
-        next = undefined;
-        return Effect.void;
-      @}
-      return Effect.fail(outcome.failure);
-    @};
-    for (const input of inputs) @{
-      if (input === "try-again") @{
-        lines.push(";;; Amb-Eval input:", input);
-        if (next === undefined) @{
-          lines.push(";;; There is no current problem");
-          continue;
-        @}
-        yield* settle(yield* Effect.result(next()), current ?? input);
+): ReadonlyArray<string> => @{
+  const lines: string[] = [];
+  // the failure continuation that asks for the next alternative
+  let next: Fail | undefined;
+  let current = "";
+  for (const input of inputs) @{
+    if (input === "try-again") @{
+      lines.push(";;; Amb-Eval input:", input);
+      const retry = next;
+      if (retry === undefined) @{
+        lines.push(";;; There is no current problem");
         continue;
       @}
-      current = input;
       next = undefined;
-      lines.push(";;; Amb-Eval input:", input, ";;; Starting a new problem");
-      yield* settle(yield* Effect.result(runForm(input)), input);
+      const more = retry();
+      if (more.tag === "ok") @{
+        lines.push(";;; Amb-Eval value:", format(more.value));
+      @} else @{
+        lines.push(";;; There are no more values of", current);
+      @}
+      continue;
     @}
-    return lines;
-  @});
+    current = input;
+    next = undefined;
+    lines.push(
+      ";;; Amb-Eval input:",
+      input,
+      ";;; Starting a new problem"
+    );
+    const admitted = admitSource(input, "amb-depth-firstExperiment");
+    if (!admitted.ok) @{
+      lines.push(
+        ";;; Amb-Eval value:",
+        formatDiagnostic(admitted.diagnostics)
+      );
+      continue;
+    @}
+    const answer = evaluator.ambeval(
+      read(input),
+      env,
+      (value, fail) => @{
+        next = fail;
+        return ok(value);
+      @},
+      () =>
+        fail(@{
+          tag: "guest-throw",
+          value: @{ tag: "error-value",
+            message: "there are no more values" @},
+        @}),
+    );
+    if (answer.tag === "ok") @{
+      lines.push(";;; Amb-Eval value:", format(answer.value));
+    @} else @{
+      lines.push(";;; There are no more values of", input);
+    @}
+  @}
+  return lines;
+@};
 @end example
 
 @noindent
@@ -1461,66 +1544,77 @@ is no evaluation in progress.
 
 @quotation
 @strong{@anchor{Exercise 4.50}Exercise 4.50:} Implement a new special form
-@code{ramb} that is like @code{amb} except that it searches alternatives in a
+@code{ramb} that is like @code{choose} except that it searches alternatives in a
 random order, rather than from left to right.  Show how this can help with
 Alyssa's problem in @ref{Exercise 4.49}.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.51}Exercise 4.51:} Implement a new kind of
-assignment called @code{permanent-set!} that is not undone upon failure.  For
+assignment called @code{permanentAssign} that is not undone upon failure.  For
 example, we can choose two distinct elements from a list and count the number
 of trials required to make a successful choice as follows:
 
 @example typescript
-const transcript = Effect.runSync(
-  ambDriverLoop(makeAmbEvaluator(@{ permanentSet: true @}), env, [
-    "(define count 0)",
-    `(let ((x (an-element-of '(a b c)))
-      (y (an-element-of '(a b c))))
-  (permanent-set! count (+ count 1))
-  (require (not (eq? x y)))
-  (list x y count))`,
-  ]),
-);
+const transcript = ambDriverLoop(
+  makeAmbEvaluator(@{ permanentSet: true @}),
+  env,
+  [
+  "let count = 0;",
+  `
+  const x = anElementOf(["a", "b", "c"]);
+  const y = anElementOf(["a", "b", "c"]);
+  permanentAssign(count, count + 1);
+  require(x !== y);
+  [x, y, count];
+  `,
+]);
 // ;;; Amb-Eval input:
 // ;;; Starting a new problem
 // ;;; Amb-Eval value:
-// (a b 2)
+// ["a", "b", 2]
 //
 // ;;; Amb-Eval input:
 // try-again
 // ;;; Amb-Eval value:
-// (a c 3)
+// ["a", "c", 3]
 @end example
 
-What values would have been displayed if we had used @code{set!} here
-rather than @code{permanent-set!}?
+What values would have been displayed if we had used ordinary assignment here
+rather than @code{permanentAssign}?
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.52}Exercise 4.52:} Implement a new construct called
-@code{if-fail} that permits the user to catch the failure of an expression.
-@code{If-fail} takes two expressions.  It evaluates the first expression as
+@code{ifFail} that permits the user to catch the failure of an expression.
+@code{IfFail} takes two expressions.  It evaluates the first expression as
 usual and returns as usual if the evaluation succeeds.  If the evaluation
 fails, however, the value of the second expression is returned, as in the
 following example:
 
 @example typescript
-const transcript = Effect.runSync(
-  ambDriverLoop(makeAmbEvaluator(@{ ifFail: true @}), env, [
-    `(if-fail
- (let ((x (an-element-of '(1 3 5))))
-   (require (even? x))
-   x)
- 'all-odd)`,
-    `(if-fail
- (let ((x (an-element-of '(1 3 5 8))))
-   (require (even? x))
-   x)
- 'all-odd)`,
-  ]),
-);
+const transcript = ambDriverLoop(
+  makeAmbEvaluator(@{ ifFail: true @}),
+  env,
+  [
+  `ifFail(
+    (() => @{
+      const x = anElementOf([1, 3, 5]);
+      require(x % 2 === 0);
+      return x;
+    @})(),
+    "all-odd",
+  )`,
+  `ifFail(
+    (() => @{
+      const x = anElementOf([1, 3, 5, 8]);
+      require(x % 2 === 0);
+      return x;
+    @})(),
+    "all-odd",
+  )`,
+]);
+
 // ;;; Amb-Eval input:
 // ;;; Starting a new problem
 // ;;; Amb-Eval value:
@@ -1534,21 +1628,21 @@ const transcript = Effect.runSync(
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.53}Exercise 4.53:} With @code{permanent-set!} as
-described in @ref{Exercise 4.51} and @code{if-fail} as in @ref{Exercise 4.52},
+@strong{@anchor{Exercise 4.53}Exercise 4.53:} With @code{permanentAssign} as
+described in @ref{Exercise 4.51} and @code{ifFail} as in @ref{Exercise 4.52},
 what will be the result of evaluating
 
 @example typescript
-read(`
-  (let ((pairs '()))
-    (if-fail
-     (let ((p (prime-sum-pair
-               '(1 3 5 8)
-               '(20 35 110))))
-       (permanent-set! pairs
-                       (cons p pairs))
-       (amb))
-     pairs))
+readAll(`
+  let pairs: number[][] = [];
+  ifFail(
+    (() => @{
+      const p = primeSumPair([1, 3, 5, 8], [20, 35, 110]);
+      permanentAssign(pairs, [p, ...pairs]);
+      return choose();
+    @})(),
+    pairs,
+  );
 `)
 @end example
 @end quotation
@@ -1562,35 +1656,60 @@ procedures
 
 @example typescript
 /** Exercise 4.54's `require?`: the tagged `require` form. */
-export const isRequire = (exp: Value): exp is Cons<Value> => taggedList("require", exp);
+export const isRequire = (
+  expr: Expr
+): boolean => expr.tag === "require";
 
-/** Exercise 4.54's `require-predicate`. */
-export const requirePredicate = (exp: Cons<Value>): Value => cadrOf(exp.tail);
+/** Exercise 4.54's `requirePredicate`. */
+export const requirePredicate = (
+  expr: Expr,
+): Expr | undefined =>
+  expr.tag === "require" ? expr.condition : undefined;
 @end example
 
 @noindent
 and a new clause in the dispatch in @code{analyze}
 
 @example typescript
-    if (requireForm && isRequire(exp)) @{
-      return analyzeRequire(exp, analyze);
-    @}
+    case "require":
+      return analyzeRequire(expr, analyze);
 @end example
 
 @noindent
-as well the procedure @code{analyze-require} that handles @code{require}
-expressions.  Complete the following definition of @code{analyze-require}.
+as well the procedure @code{analyzeRequire} that handles @code{require}
+expressions.  Complete the following definition of @code{analyzeRequire}.
 
 @example typescript
-export const analyzeRequire = (exp: Cons<Value>, analyze: AmbAnalyze): AmbExecute => @{
-  const pproc = analyze(requirePredicate(exp));
+export const analyzeRequire = (
+  expr: Expr,
+  analyze: AmbAnalyze
+): AmbExecute => @{
+  const condition = requirePredicate(expr);
+  const test: Expr =
+    condition === undefined
+      ? @{ tag: "boolean", value: false, span: expr.span @}
+      : condition;
+  const pproc = analyze(test);
   return (env, succeed, fail) =>
     pproc(
       env,
-      (predValue, fail2) => (isTrue(predValue) ? succeed(ok, fail2) : fail2()),
+      (predValue, fail2) => (predValue === true
+        ? succeed(undefined, fail2)
+        : fail2()),
       fail,
     );
 @};
 @end example
+@end quotation
+
+@quotation
+@strong{In this language: nondeterministic computing.}
+
+The search experiment extends the guest language with the @code{choose},
+@code{require}, and @code{ramb} nodes only, and runs under the named modes
+@code{amb-depth-firstExperiment} and @code{amb-ramb-experiment}.  Execution
+procedures carry a success and a failure continuation; assignment is undone on
+backtracking unless the program asks for a permanent write; the core language
+and the native runtime remain eager and deterministic.
 @end quotation
 

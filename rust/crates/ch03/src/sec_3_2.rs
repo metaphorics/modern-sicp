@@ -12,7 +12,7 @@
 
 use std::rc::Rc;
 
-use sicp_runtime::{Env, SchemeError, Value};
+use sicp_runtime::{Env, SicpError, Value};
 
 /// The book's `square`, the first procedure object of the section: a
 /// plain `fn` item, which captures nothing, so its environment part is
@@ -63,8 +63,8 @@ pub fn define(env: &Rc<Env>, name: &str, value: Value) {
 ///
 /// # Errors
 /// Whatever [`Env::lookup`] returns; the model's unbound-variable error
-/// is [`SchemeError::UnboundVariable`].
-pub fn lookup(env: &Env, name: &str) -> Result<Value, SchemeError> {
+/// is [`SicpError::UnboundVariable`].
+pub fn lookup(env: &Env, name: &str) -> Result<Value, SicpError> {
     env.lookup(name)
 }
 
@@ -72,15 +72,13 @@ pub fn lookup(env: &Env, name: &str) -> Result<Value, SchemeError> {
 /// book's arithmetic on the model's values.
 ///
 /// # Errors
-/// [`SchemeError::UnboundVariable`] when no frame on the chain binds
-/// `name`; [`SchemeError::TypeMismatch`] when the binding is not an
+/// [`SicpError::UnboundVariable`] when no frame on the chain binds
+/// `name`; [`SicpError::TypeMismatch`] when the binding is not an
 /// exact integer.
-pub fn int_of(env: &Env, name: &str) -> Result<i128, SchemeError> {
+pub fn int_of(env: &Env, name: &str) -> Result<i128, SicpError> {
     match env.lookup(name)? {
         Value::Int(n) => Ok(n),
-        other => Err(SchemeError::TypeMismatch(format!(
-            "not an integer: {other}"
-        ))),
+        other => Err(SicpError::TypeMismatch(format!("not an integer: {other}"))),
     }
 }
 
@@ -90,10 +88,10 @@ pub fn int_of(env: &Env, name: &str) -> Result<i128, SchemeError> {
 /// captures. Calls read and write `balance` in exactly that frame, so
 /// two objects built over two frames share the code and none of the
 /// state.
-pub fn make_withdraw_procedure(env: Rc<Env>) -> impl FnMut(i128) -> Result<Value, SchemeError> {
+pub fn make_withdraw_procedure(env: Rc<Env>) -> impl FnMut(i128) -> Result<Value, SicpError> {
     move |amount| {
         let Value::Int(balance) = env.lookup("balance")? else {
-            return Err(SchemeError::TypeMismatch(
+            return Err(SicpError::TypeMismatch(
                 "balance is not an integer".to_owned(),
             ));
         };

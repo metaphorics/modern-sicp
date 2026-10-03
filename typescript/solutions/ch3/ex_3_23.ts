@@ -124,5 +124,5 @@ export const showDeque = <A>(deque: Deque<A>): string => {
     items.push(node.item);
   }
   const render = (value: A): string => (typeof value === "string" ? value : String(value));
-  return `(${items.map(render).join(" ")})`;
+  return `[${items.map(render).join(", ")}]`;
 };

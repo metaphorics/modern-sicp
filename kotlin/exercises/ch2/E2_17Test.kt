@@ -9,9 +9,9 @@ import io.kotest.matchers.shouldBe
 
 public class E2_17Test :
     FunSpec({
-        test("Exercise 2.17: lastPair of (23 72 149 34) is (34)").config(
+        test("Exercise 2.17 renders the final one-element suffix").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            ex_2_17() shouldBe "(34)"
+            ex_2_17() shouldBe "PairCell(first=Whole(value=34), second=Empty)"
         }
     })

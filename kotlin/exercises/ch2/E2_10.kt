@@ -4,7 +4,6 @@
 package sicp.ch2.exercises
 
 import arrow.core.raise.Raise
-import sicp.runtime.PendingSolution
 
 // Interval, makeInterval, lowerBound, upperBound, and mulInterval are exercise 2.7's public declarations, reused here.
 
@@ -29,4 +28,4 @@ context(r: Raise<IntervalError>)
 public fun divIntervalChecked(
     x: Interval,
     y: Interval,
-): Interval = throw PendingSolution()
+): Interval = throw PendingExercise()

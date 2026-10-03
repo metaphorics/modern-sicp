@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The pending scaffold of exercise 4.53: permanent-set! with if-fail.
+//! The pending scaffold of exercise 4.53: persistent assignment with failure fallback.
 
 /// The typed pending report of an unsolved scaffold: the body returns
 /// this instead of panicking, so the failure names its origin.
@@ -12,7 +12,7 @@ pub struct Pending {
 }
 
 mod ex_4_53 {
-    //! Exercise 4.53: permanent-set! with if-fail.
+    //! Exercise 4.53: persistent assignment with failure fallback.
 
     use super::Pending;
 

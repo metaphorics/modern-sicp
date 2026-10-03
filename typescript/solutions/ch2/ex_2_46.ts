@@ -3,14 +3,14 @@
 
 /**
  * Exercise 2.46: the picture language's vectors, with a constructor
- * `make-vect` and selectors `xcor-vect` and `ycor-vect`, plus the
+ * `makeVect` and selectors `xcor-vect` and `ycor-vect`, plus the
  * `add-vect`, `sub-vect` and `scale-vect` operations the frame
  * coordinate map composes. This edition represents a vector as a pair
  * of coordinates: a readonly two-element tuple.
  */
 export type Vect2 = readonly [number, number];
 
-/** The book's `make-vect`: bundles two coordinates into a vector. */
+/** The book's `makeVect`: bundles two coordinates into a vector. */
 export const makeVect = (x: number, y: number): Vect2 => [x, y];
 
 /** The book's `xcor-vect`: the first coordinate. */

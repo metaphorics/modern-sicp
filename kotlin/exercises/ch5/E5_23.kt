@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, exercise 5.23: derived expressions: cond and let enter through transformer operations.
+// Chapter 5, exercise 5.23: derived expressions: `when` and `let` enter through transformer operations.
 
 package sicp.ch5.exercises
 

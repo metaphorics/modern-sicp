@@ -26,6 +26,6 @@ public class E4_40Test :
         test("Exercise 4.40: the pruned program answers the same assignment").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            prunedAnswer() shouldBe "((baker 3) (cooper 2) (fletcher 4) (miller 5) (smith 1))"
+            prunedAnswer() shouldBe "[[baker, 3], [cooper, 2], [fletcher, 4], [miller, 5], [smith, 1]]"
         }
     })

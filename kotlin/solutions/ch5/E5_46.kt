@@ -1,37 +1,36 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, exercise 5.46: compiled Fibonacci stack use.
-
+// Original exercise
+//
+// Chapter 5, exercise 5.46: the same analysis for tree-recursive
+// Fibonacci. The report lists compiled, evaluator, and special-purpose
+// machine counters in that order without claiming a cross-engine ranking.
 package sicp.ch5.solutions
 
-/** Measures the evaluator, compiled program, and Figure 5.12 machine. */
-public fun fibStackRatioTable(): List<String> {
-    val ns = listOf(5, 8, 10)
-    val interpreted = measure(fibSource, ns) { n -> "(fib $n)" }
-    val compiled =
-        ns.map { n ->
-            lastStats(runCompiledMonitored(compiled = fibSource, driver = "(fib $n)"))
-        }
-    val special =
-        ns.map { n ->
-            val result = fibSim.run(mapOf("n" to HNum(n.toLong()), "val" to HNum(0))) as HandHalted
-            Stats(result.saves, result.maxDepth)
-        }
-    return ns.indices.map { i ->
-        val n = ns[i]
-        val interpretedStats = interpreted[i]
-        val compiledStats = compiled[i]
-        val specialStats = special[i]
-        "n=$n: interpreted pushes=${interpretedStats.pushes} depth=${interpretedStats.depth}; " +
-            "compiled pushes=${compiledStats.pushes} depth=${compiledStats.depth}; " +
-            "special pushes=${specialStats.pushes} depth=${specialStats.depth}; " +
-            "compiled/interpreted=${ratio(compiledStats.pushes, interpretedStats.pushes)}/" +
-            "${ratio(compiledStats.depth, interpretedStats.depth)}; " +
-            "special/interpreted=${ratio(specialStats.pushes, interpretedStats.pushes)}/" +
-            ratio(specialStats.depth, interpretedStats.depth)
-    }
+import sicp.guest.GValue
+
+private fun specialFibMeasurements(n: Long): MachineMeasurements {
+    val machine =
+        freshMachine(
+            setOf("n", "continue", "val"),
+            machineArithmetic,
+            fibController,
+            mapOf("n" to GValue.VLong(n), "val" to GValue.VLong(0)),
+        )
+    runToHalt(machine)
+    return MachineMeasurements(machine.instructions, machine.stack.pushes, machine.stack.maxDepth)
 }
 
-private fun ratio(
-    numerator: Int,
-    denominator: Int,
-): String = "%.3f".format(java.util.Locale.ROOT, numerator.toDouble() / denominator)
+/** Chapter 5.5 Exercise 5.46 records machine-specific measurements in
+ *  compiled, evaluator, special-purpose order; it makes no cross-machine
+ *  ordering claim. */
+public fun fibonacciStackReport(): List<String> {
+    val program = measuredCall(fibSource, "fib(5L)")
+    val compiled = compiledMeasurements(program)
+    val evaluator = evaluatorMeasurements(program)
+    val special = specialFibMeasurements(5)
+    return listOf(
+        "compiled fib(5): instructions = ${compiled.instructions}, total-pushes = ${compiled.pushes}, maximum-depth = ${compiled.maximumDepth}",
+        "eceval fib(5): instructions = ${evaluator.instructions}, total-pushes = ${evaluator.pushes}, maximum-depth = ${evaluator.maximumDepth}",
+        "special-purpose fib(5): instructions = ${special.instructions}, total-pushes = ${special.pushes}, maximum-depth = ${special.maximumDepth}",
+    )
+}

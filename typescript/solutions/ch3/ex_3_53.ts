@@ -11,11 +11,11 @@ import {
 /**
  * Exercise 3.53: the statement defines, without running it,
  *
- *   (define s (cons-stream 1 (add-streams s s)))
+ *   const s = consStream(1, () => addStreams(s, s));
  *
  * and asks what the elements of `s` are. The answer is the powers of
  * 2. The head of `s` is 1. Every later element is the sum of the two
- * copies of `s` fed to `add-streams`, which at position n is
+ * copies of `s` fed to `addStreams`, which at position n is
  * s[n-1] + s[n-1], twice the element before. So s[n] = 2^n: 1, 2, 4,
  * 8, 16, ... The tests run the definition and pin that prediction.
  */

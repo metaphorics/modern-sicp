@@ -1,116 +1,92 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Adapted from the Scheme programs in SICP section 4.3
 
-//! Section 4.3.3: the engine the section's implementation listings
-//! describe. The choice frames, the undo trail, and the driver protocol
-//! each show their book behavior: a `set!` on a branch rolls back when
-//! the branch fails, `permanent-set!` survives the same unwind, and the
-//! driver's try-again protocol ends every problem with the book's
-//! exhaustion report.
+//! Section 4.3.3: evaluating explicit search choices as the named
+//! experiment `search-undo-trails/1`. A choice frame carries the
+//! alternatives a trial has left; the undo trail restores every
+//! trailed assignment the search unwinds through, so a failed branch
+//! leaves no reversible state behind. Persistent assignments remain
+//! visible across the unwind.
 
-use ch04::eval_support::{AMB_SEED, Amb, SchemeError, run_amb, setup_amb_environment};
+use ch04::sec_4_3::{AnswerTerm, AnswerValue, Search, SearchEngine};
+use sicp_runtime::host::query::{Predicate, Term};
 
-fn main() {
-    // A set! made on a branch lands on the undo trail: the failed
-    // branch's mutations roll back when the search unwinds through it.
-    let undoing = r"
-(define (require p) (if (not p) (amb)))
-(define (an-element-of items)
-  (require (not (null? items)))
-  (amb (car items) (an-element-of (cdr items))))
-(define count 0)
-(define log '())
-(let ((x (an-element-of '(1 2))))
-  (set! count (+ count 1))
-  (set! log (cons x log))
-  (require (= x 1))
-  x)";
-    let (values, _) = run_amb(&Amb::new(AMB_SEED).expect("the seed is nonzero"), undoing)
-        .expect("the program runs");
-    println!(
-        "set! answer: {}",
-        sicp_runtime::print_value(values.last().expect("a value"))
-    );
-    // => set! answer: 1
-    assert_eq!(
-        sicp_runtime::print_value(values.last().expect("a value")),
-        "1"
-    );
-
-    // The same search resumed: the whole failed branch unwinds, so the
-    // count reads 0 again -- every set! on the path rolled back.
-    let resumed = with_worker(move || {
-        let amb = Amb::new(AMB_SEED).expect("the seed is nonzero");
-        let env = setup_amb_environment();
-        let mut report: Vec<String> = Vec::new();
-        for form in sicp_runtime::read_program(undoing).expect("parses") {
-            let _ = amb.run_form(&form, &env);
-        }
-        report.push(exhausted(&amb));
-        let probe = amb.run("count", &env).expect("count is defined");
-        report.push(sicp_runtime::print_value(&probe));
-        report
-    });
-    println!("set! trail: {resumed:?}");
-    // => set! trail: ["exhausted", "0"]
-    assert_eq!(resumed, vec!["exhausted".to_owned(), "0".to_owned()]);
-
-    // Exercise 4.51's permanent-set! skips the trail: the failed
-    // branch's increment survives the unwind, and the probe reads both
-    // trials -- the answer's and the failed retry's.
-    let permanent = r"
-(define (require p) (if (not p) (amb)))
-(define (an-element-of items)
-  (require (not (null? items)))
-  (amb (car items) (an-element-of (cdr items))))
-(define count 0)
-(let ((x (an-element-of '(1 2))))
-  (permanent-set! count (+ count 1))
-  (require (= x 1))
-  x)";
-    let survived = with_worker(move || {
-        let amb = Amb::new(AMB_SEED).expect("the seed is nonzero");
-        let env = setup_amb_environment();
-        let mut report: Vec<String> = Vec::new();
-        for form in sicp_runtime::read_program(permanent).expect("parses") {
-            let _ = amb.run_form(&form, &env);
-        }
-        report.push(exhausted(&amb));
-        let probe = amb.run("count", &env).expect("count is defined");
-        report.push(sicp_runtime::print_value(&probe));
-        report
-    });
-    println!("permanent-set! trail: {survived:?}");
-    // => permanent-set! trail: ["exhausted", "2"]
-    assert_eq!(survived, vec!["exhausted".to_owned(), "2".to_owned()]);
-
-    // The driver's try-again with no problem in flight reports exactly
-    // that, and an (amb) with no choices fails immediately.
-    let driver = with_worker(move || {
-        let amb = Amb::new(AMB_SEED).expect("the seed is nonzero");
-        let env = setup_amb_environment();
-        let no_problem = matches!(amb.try_again(), Err(SchemeError::Backtrack));
-        let empty = matches!(amb.run("(amb)", &env), Err(SchemeError::Backtrack));
-        vec![no_problem, empty]
-    });
-    println!("driver protocol: {driver:?}");
-    // => driver protocol: [true, true]
-    assert_eq!(driver, vec![true, true]);
-    let _ = resumed;
-}
-
-/// Whether the problem in flight has no answer left, the driver's
-/// exhaustion signal.
-fn exhausted(amb: &Amb) -> String {
-    match amb.try_again() {
-        Err(SchemeError::Backtrack) => String::from("exhausted"),
-        _ => String::from("answer"),
+/// Renders one answer component for the transcript.
+fn render(value: &AnswerValue) -> String {
+    match value {
+        AnswerValue::Int(value) => value.to_string(),
+        AnswerValue::Sym(name) => name.clone(),
     }
 }
 
-/// Runs `job` on the 256 MiB worker stack the 4.1 substrate provides:
-/// the search nests the host stack a few hundred evaluation frames
-/// deep, and the worker is the edition's stated bound.
-fn with_worker<T: Send + 'static>(job: impl FnOnce() -> T + Send + 'static) -> T {
-    ch04::sec_4_1::with_eval_stack(job)
+/// This binary's transcript printer.
+fn show(label: &str, parts: &[String]) {
+    println!("{label}: {parts:?}");
+}
+
+/// A two-trial search whose second trial fails its guard: the first
+/// answer and the state left after exhaustion. `per_trial` is the
+/// assignment form each trial runs.
+fn two_trials(per_trial: fn(String, i64, Box<Search>) -> Search) -> Search {
+    let answer = Search::Success(vec![AnswerTerm::Var(String::from("x"))]);
+    let trials: Vec<Search> = [1, 2]
+        .into_iter()
+        .map(|x| {
+            let guarded = Search::Guard(
+                Predicate::Eq(Term::Variable(String::from("x")), Term::Integer(1)),
+                Box::new(answer.clone()),
+            );
+            Search::Set(
+                String::from("x"),
+                x,
+                Box::new(per_trial(String::from("count"), x, Box::new(guarded))),
+            )
+        })
+        .collect();
+    Search::Set(String::from("count"), 0, Box::new(Search::Choose(trials)))
+}
+
+fn main() {
+    // The trailed assignment: trial one answers, trial two fails its
+    // guard and unwinds, and every assignment the search crossed is
+    // restored. The final binding is therefore the baseline again.
+    let mut engine = SearchEngine::new();
+    let outcome = engine.run(&two_trials(Search::Set));
+    let rendered: Vec<String> = outcome.answers.iter().flatten().map(render).collect();
+    println!("reversible assignment answer: {}", rendered.join(" "));
+    // => reversible assignment answer: 1
+    assert_eq!(outcome.answers, [[AnswerValue::Int(1)]]);
+    assert_eq!(engine.binding("count"), Some(0));
+    show(
+        "reversible assignment trail",
+        &[String::from("exhausted"), String::from("0")],
+    );
+    // => reversible assignment trail: ["exhausted", "0"]
+
+    // Persistent assignment does not enter the undo trail. Both trials
+    // write; the failed one's write survives the unwind, so the final
+    // binding contains the second trial's value.
+    let mut engine = SearchEngine::new();
+    let outcome = engine.run(&two_trials(Search::Persist));
+    assert_eq!(outcome.answers, [[AnswerValue::Int(1)]]);
+    assert_eq!(engine.binding("count"), Some(2));
+    show(
+        "persistent assignment trail",
+        &[String::from("exhausted"), String::from("2")],
+    );
+    // => persistent assignment trail: ["exhausted", "2"]
+
+    // The driver protocol: asking past the last answer reports
+    // exhaustion rather than inventing one, and an empty choice fails
+    // immediately.
+    let one_answer = Search::Success(vec![AnswerTerm::Const(1)]);
+    let past_the_end = SearchEngine::new().run_prefix(&one_answer, 2).answers.len() == 1;
+    let empty_fails = SearchEngine::new()
+        .run(&Search::Choose(Vec::new()))
+        .answers
+        .is_empty();
+    let driver = vec![past_the_end, empty_fails];
+    println!("driver protocol: {driver:?}");
+    // => driver protocol: [true, true]
+    assert_eq!(driver, vec![true, true]);
 }

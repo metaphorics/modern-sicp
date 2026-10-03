@@ -16,7 +16,7 @@ const coordMapOf =
 describe("exercise 2.48", () => {
   const segment = makeSegment2([0, 0], [1, 1]);
 
-  it("make-segment pairs the endpoints and the selectors read them back", () => {
+  it("makeSegment pairs the endpoints and the selectors read them back", () => {
     expect(segment).toStrictEqual([
       [0, 0],
       [1, 1],

@@ -18,12 +18,12 @@ public class E4_25Test :
         test("Exercise 4.25: the strict evaluator raises before unless is called").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            strictArmedUnlessTranscript() shouldBe "Error: division by zero\n"
+            strictArmedUnlessTranscript() shouldBe "DivisionByZero"
         }
 
         test("Exercise 4.25: the strict recursion never reaches the guard, budgeted honestly").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            strictFactorialTranscript() shouldBe "Error: machine fault: step budget exhausted after 200 steps\n"
+            strictFactorialTranscript() shouldBe "BudgetExhausted after 200 steps\n"
         }
     })

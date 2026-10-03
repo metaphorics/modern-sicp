@@ -13,11 +13,20 @@ mod ex_1_01 {
         pub exercise: &'static str,
     }
 
-    /// Exercise 1.1: evaluate a sequence of expressions in order
+    /// One value printed by the exercise's sequence.
+    #[derive(Debug, PartialEq, Eq)]
+    pub enum Printed {
+        /// An integer result.
+        Number(i64),
+        /// A Boolean result.
+        Boolean(bool),
+    }
+
+    /// Exercise 1.1: evaluate a sequence of expressions in order.
     ///
-    /// Yields the ten numeric values the sequence prints, in book order; the
-    /// two `let` lines and the `a == b` comparison carry no number.
-    pub fn ex_1_01() -> Result<Vec<i64>, Pending> {
+    /// Yields the eleven printed values in book order, including the
+    /// Boolean result of the comparison between the sixth and eighth.
+    pub fn ex_1_01() -> Result<Vec<Printed>, Pending> {
         Err(Pending { exercise: "1.1" })
     }
 }
@@ -25,8 +34,22 @@ mod ex_1_01 {
 #[test]
 #[ignore = "pending solution"]
 fn ex_1_01() {
+    use ex_1_01::Printed::{Boolean, Number};
+
     assert_eq!(
         ex_1_01::ex_1_01(),
-        Ok(vec![10, 12, 8, 3, 6, 19, 4, 16, 6, 16])
+        Ok(vec![
+            Number(10),
+            Number(12),
+            Number(8),
+            Number(3),
+            Number(6),
+            Number(19),
+            Boolean(false),
+            Number(4),
+            Number(16),
+            Number(6),
+            Number(16),
+        ])
     );
 }

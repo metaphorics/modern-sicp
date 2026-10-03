@@ -2,15 +2,26 @@
    Original exercise *)
 
 (* Alcotest suite over the section 5.5 compiler and its reference
-   solutions.  Every pin below was computed by running the exercise's
-   own entry point; the brief-named pins (5.33a's 222/125 measurement,
-   5.47's compound-call session answering 12, 5.35's Figure 5.18
-   compilation, 5.41's lexical addresses, 5.50's compiled metacircular
-   answering 120) are all pinned here.  5.51 and 5.52 build their C
-   translations with the system compiler and run them; their outputs
-   are the book's answers. *)
+   solutions.  Every pin below is the exercise's own entry point run to
+   completion: combinations of 5.31 listing which saves [preserving]
+   keeps, the fast path of 5.32 answering with fewer pushes, the two
+   factorials of 5.33 sharing their work but saving different
+   registers, the hand-optimized 5.33a winning in executed steps, the
+   tail-call branches of 5.34 with the constant stack of the iterative
+   factorial, the 5.35 reconstruction matching the figure statement for
+   statement, the two operand orders of 5.36 printing [321] against
+   [123], the blind 5.37 compilation tripling in size, the three
+   open-coded operations of 5.38, the address lookups of 5.39 through
+   5.42 with the nested example answering [180], the grouped
+   definitions of 5.43 answering under lexical addressing, the scoped
+   5.44 compiler fixing the shadowed call, the three machines of 5.45
+   and 5.46 measured under one monitored stack, the mixed session of
+   5.47 answering [12] through the compound branch, the 5.48 session
+   compiling then calling, the 5.49 loop printing its four bindings, the
+   compiled metacircular of 5.50 answering under three engines, and the
+   C evaluator of 5.51 and the C back end of 5.52 answering the book's
+   factorial session. *)
 
-module Eval = Sicp_ch5.Sec_5_5
 module Sec_5_31 = Sicp_ch5_solutions.Sec_5_31
 module Sec_5_32 = Sicp_ch5_solutions.Sec_5_32
 module Sec_5_33 = Sicp_ch5_solutions.Sec_5_33
@@ -37,335 +48,320 @@ module Sec_5_52 = Sicp_ch5_solutions.Sec_5_52
 let strings = Alcotest.(check (list string))
 let the_string = Alcotest.check Alcotest.string
 
-let strings_outcome name expected = function
+let pin name expected = function
   | Ok lines -> strings name expected lines
-  | Error e -> Alcotest.fail (Eval.error_to_string e)
+  | Error e -> Alcotest.fail (Sicp_common.Eval_error.to_string e)
 ;;
 
-(* [has_prefix name index prefix lines] checks lines[index] begins with
-   [prefix]; used where an outcome quotes a wall-clock measurement. *)
-let has_prefix name index prefix lines =
-  match List.nth_opt lines index with
-  | Some line ->
-    let n = String.length prefix in
-    if String.length line >= n && String.sub line 0 n = prefix
-    then ()
-    else Alcotest.failf "%s: %S does not start with %S" name line prefix
-  | None -> Alcotest.failf "%s: no line %d" name index
-;;
-
-(* 5.31: which combinations push which registers around their operand
-   evaluations -- the book's three-case analysis. *)
 let ex_5_31 () =
-  strings_outcome
+  pin
     "5.31"
-    [ "(f 'x 'y): "
-    ; "((f) 'x 'y): (save env); (restore env)"
-    ; "(f (g 'x) y): (save proc); (save argl); (restore argl); (restore proc)"
-    ; "(f (g 'x) 'y): (save proc); (save argl); (restore argl); (restore proc)"
+    [ "f 1 2: "
+    ; "(pick true) 1 2: "
+    ; "f (g 1) y: save proc; save env; save argl; restore argl; restore env; restore proc"
+    ; "f (g 1) 2: save proc; save argl; restore argl; restore proc"
     ]
     (Sec_5_31.ex_5_31 ())
 ;;
 
-(* 5.32: the symbol-operator fast path answers as the base evaluator,
-   and the base monitored factorial at n = 5 costs the book's 144
-   pushes. *)
 let ex_5_32 () =
-  match Sec_5_32.ex_5_32 () with
-  | Ok lines ->
-    has_prefix "5.32 transcript" 0 ";;; EC-Eval input:" lines;
-    has_prefix
-      "5.32 fast-path answers"
-      0
-      ";;; EC-Eval input:\n\
-       ;;; EC-Eval value:\n\
-       ok\n\
-       ;;; EC-Eval input:\n\
-       ;;; EC-Eval value:\n\
-       36"
-      lines;
-    the_string "5.32 base pushes" "base monitored pushes at n = 5: 144" (List.nth lines 1)
-  | Error e -> Alcotest.fail (Eval.error_to_string e)
+  pin
+    "5.32"
+    [ "factorial 5: base answers 120 with 105 pushes, depth 18; fast path answers 120 \
+       with 95 pushes, depth 18"
+    ; "(fun y -> y + 1) 41: base answers 42 with 10 pushes, depth 3; fast path answers \
+       42 with 10 pushes, depth 3"
+    ]
+    (Sec_5_32.ex_5_32 ())
 ;;
 
-(* 5.33: the alternative factorial keeps an extra env save around the
-   recursive argument; both compilations answer 120. *)
 let ex_5_33 () =
-  strings_outcome
+  pin
     "5.33"
-    [ "factorial saves: (save continue); (save env); (restore env); (restore continue); \
-       (save continue); (save proc); (save argl); (save proc); (restore proc); (restore \
-       argl); (restore proc); (restore continue)"
-    ; "factorial-alt saves: (save continue); (save env); (restore env); (restore \
-       continue); (save continue); (save proc); (save env); (save proc); (restore proc); \
-       (restore env); (restore proc); (restore continue)"
-    ; "factorial 5: ;;; EC-Eval value: 120 ;;; EC-Eval input:"
-    ; "factorial-alt 5: ;;; EC-Eval value: 120 ;;; EC-Eval input:"
+    [ "factorial: 40 statements; save continue; save env; restore env; restore continue; \
+       answers 120 in 191 steps"
+    ; "factorial_alt: 40 statements; save continue; save arg1; restore arg1; restore \
+       continue; answers 120 in 191 steps"
     ]
     (Sec_5_33.ex_5_33 ())
 ;;
 
-(* 5.33a: the hand-optimized alternative drops the instruction count
-   from 222 to 125, both answer 120, and the win is 97 of 222. *)
 let ex_5_33a () =
-  strings_outcome
+  pin
     "5.33a"
-    [ "naive steps: 222"
-    ; "optimized steps: 125"
-    ; "naive transcript: ;;; EC-Eval value: 120 ;;; EC-Eval input:"
-    ; "optimized transcript: ;;; EC-Eval value: 120 ;;; EC-Eval input:"
-    ; "instruction win: 97 of 222 (43.7%)"
+    [ "naive steps: 191"
+    ; "optimized steps: 111"
+    ; "naive answer: 120"
+    ; "optimized answer: 120"
+    ; "instruction win: 80 of 191 (41.9%)"
     ]
     (Sec_5_33.ex_5_33a ())
 ;;
 
-(* 5.34: the iterative factorial's call compiles to a compiled-procedure
-   dispatch, and the monitored depth stays 0 at every measured n. *)
-let ex_5_34 () =
-  strings_outcome
-    "5.34"
-    [ "iter tail call: (test (op primitive-procedure?) (reg proc)); (branch (label \
-       primitive-branch)); compiled-branch; (assign val (op compiled-procedure-entry) \
-       (reg proc)); (goto (reg val))"
-    ; "depth at n = 3: 0"
-    ; "depth at n = 4: 0"
-    ; "depth at n = 5: 0"
-    ]
-    (Sec_5_34.ex_5_34 ())
+let contains haystack needle =
+  let n = String.length haystack
+  and m = String.length needle in
+  let rec go i =
+    if i + m > n
+    then false
+    else if String.sub haystack i m = needle
+    then true
+    else go (i + 1)
+  in
+  go 0
 ;;
 
-(* 5.35: the compilation reproduces the book's Figure 5.18 listing
-   statement for statement. *)
+let ex_5_34 () =
+  match Sec_5_34.ex_5_34 () with
+  | Ok lines ->
+    Alcotest.check Alcotest.int "5.34 line count" 7 (List.length lines);
+    strings
+      "5.34 calls"
+      [ "iterative call: Label \"compiled-branch12\"; Goto \"compiled-apply\""
+      ; "iterative call: Label \"compiled-branch4\"; Goto \"compiled-apply\""
+      ; "recursive call: Label \"compiled-branch7\"; Assign (\"continue\", Label_ref \
+         \"proc-return9\"); Goto \"compiled-apply\""
+      ]
+      (List.filteri (fun i _ -> i < 3) lines);
+    Alcotest.check
+      Alcotest.bool
+      "5.34 tail calls assign no continue"
+      true
+      ((not (contains (List.nth lines 0) "Assign (\"continue\""))
+       && not (contains (List.nth lines 1) "Assign (\"continue\""));
+    Alcotest.check
+      Alcotest.bool
+      "5.34 recursive call assigns continue"
+      true
+      (contains (List.nth lines 2) "Assign (\"continue\"");
+    the_string "5.34 saves" "saves in the iterative compilation: 0" (List.nth lines 3);
+    strings
+      "5.34 depths"
+      [ "depth at n = 3: iterative 2, recursive 6"
+      ; "depth at n = 4: iterative 2, recursive 8"
+      ; "depth at n = 5: iterative 2, recursive 10"
+      ]
+      (List.filteri (fun i _ -> i >= 4) lines)
+  | Error e -> Alcotest.fail (Sicp_common.Eval_error.to_string e)
+;;
+
 let ex_5_35 () =
   match Sec_5_35.ex_5_35 () with
   | Ok lines ->
     the_string
       "5.35 source"
-      "compiled to the figure: (define (f x) (+ x (g (+ x 2))))"
+      "compiled to the figure: let f x = x + g (x + 2)"
       (List.nth lines 0);
-    the_string "5.35 verdict" "figure matches: true" (List.nth (List.rev lines) 0)
-  | Error e -> Alcotest.fail (Eval.error_to_string e)
+    the_string "5.35 verdict" "figure matches: true" (List.nth (List.rev lines) 0);
+    strings
+      "5.35 figure"
+      Sec_5_35.figure
+      (List.filteri (fun i _ -> i > 0 && i < List.length lines - 1) lines)
+  | Error e -> Alcotest.fail (Sicp_common.Eval_error.to_string e)
 ;;
 
-(* 5.36: the compiler evaluates operands right to left; flipping
-   construct-arglist's reverse flips the recorded order and leaves the
-   instruction count untouched. *)
 let ex_5_36 () =
-  strings_outcome
+  pin
     "5.36"
-    [ "default order: 2 1"
-    ; "left-to-right order: 1 2"
-    ; "instruction counts: 42 = 42: true"
+    [ "default order: 123"
+    ; "right-to-left order: 321"
+    ; "statements: 154 and 154; steps: 166 and 166"
+    ; "answers: 6 and 6"
     ]
     (Sec_5_36.ex_5_36 ())
 ;;
 
-(* 5.37: disabling preserving grows the factorial compilation from 79
-   statements with 12 saves/restores to 149 with 82. *)
 let ex_5_37 () =
-  strings_outcome
+  pin
     "5.37"
-    [ "with preserving: 79 statements, 12 saves/restores"
-    ; "without: 149 statements, 82 saves/restores"
-    ; "monitored with: "
-    ; "monitored without: "
+    [ "f (g 1) 2 with preserving: Save \"proc\"; Save \"argl\"; Restore \"argl\"; \
+       Restore \"proc\""
+    ; "f (g 1) 2 without: Save \"continue\"; Save \"env\"; Save \"continue\"; Restore \
+       \"continue\"; Restore \"env\"; Restore \"continue\"; Save \"continue\"; Save \
+       \"proc\"; Save \"env\"; Save \"env\"; Restore \"env\"; Save \"argl\"; Save \
+       \"continue\"; Save \"env\"; Save \"continue\"; Restore \"continue\"; Restore \
+       \"env\"; Restore \"continue\"; Save \"continue\"; Save \"proc\"; Save \"env\"; \
+       Restore \"env\"; Save \"argl\"; Save \"continue\"; Restore \"continue\"; Restore \
+       \"argl\"; Restore \"proc\"; Restore \"continue\"; Save \"continue\"; Restore \
+       \"continue\"; Restore \"argl\"; Restore \"env\"; Save \"argl\"; Save \
+       \"continue\"; Restore \"continue\"; Restore \"argl\"; Restore \"proc\"; Restore \
+       \"continue\"; Save \"continue\"; Restore \"continue\""
+    ; "factorial with preserving: 40 statements, 4 saves/restores"
+    ; "factorial without: 88 statements, 52 saves/restores"
+    ; "factorial 5 with preserving: answers 120 with 10 pushes, depth 10"
+    ; "factorial 5 without: answers 120 with 111 pushes, depth 16"
     ]
     (Sec_5_37.ex_5_37 ())
 ;;
 
-(* 5.38: open-coding the primitive compounds shrinks the compilation
-   from 79 to 42 statements and every open-coded call answers. *)
 let ex_5_38 () =
-  strings_outcome
+  pin
     "5.38"
-    [ "plain compilation: 79 statements"
-    ; "open-coded compilation: 42 statements"
-    ; "factorial 5: ;;; EC-Eval value: ok ;;; EC-Eval input: ;;; EC-Eval value: 120 ;;; \
-       EC-Eval input:"
-    ; "(+ 1 2 3 4): ;;; EC-Eval value: ok ;;; EC-Eval input: ;;; EC-Eval value: 10 ;;; \
-       EC-Eval input:"
-    ; "(< 1 2): ;;; EC-Eval value: ok ;;; EC-Eval input: ;;; EC-Eval value: #t ;;; \
-       EC-Eval input:"
+    [ "plain: 181 statements, 0 open-coded operations; answers \"35\" in 397 steps"
+    ; "open-coded: 134 statements, 3 open-coded operations; answers \"35\" in 284 steps"
+    ; "Assign_op (\"arg2\", \"Array.length\", [Reg \"arg1\"])"
+    ; "Assign_op (\"arg1\", \"Array.get\", [Reg \"arg1\"; Reg \"arg2\"])"
     ]
     (Sec_5_38.ex_5_38 ())
 ;;
 
-(* 5.39: the lexical machine runs a program whose counter set!s
-   accumulate through the global fallback on the captured frame and
-   whose cell set!s ride lexical-address-set! on the captured parameter
-   frame; the one printed value is the last form's, and it answers only
-   if both addressing operations and the frame overrides worked. *)
 let ex_5_39 () =
-  strings_outcome "5.39" [ "lexical machine session: 110" ] (Sec_5_39.ex_5_39 ())
+  pin
+    "5.39"
+    [ "c at (1, 2): 13"
+    ; "x at (2, 0): 1"
+    ; "y at (0, 0): 21"
+    ; "y at (2, 1): 2"
+    ; "loop before its group is filled: error: bad instruction: lexical address (0, 0) \
+       of loop is unassigned"
+    ]
+    (Sec_5_39.ex_5_39 ())
 ;;
 
-(* 5.40: the lexical-address mapping for the book's three-run example. *)
 let ex_5_40 () =
-  strings_outcome
+  pin
     "5.40"
-    [ "z in (y z) (a b c d e) (x y)"
-    ; "y in (y z) (a b c d e) (x y)"
-    ; "x in (y z) (a b c d e) (x y)"
-    ; "+ in (y z) (a b c d e) (x y)"
+    [ "x in [y; z] [a; b; c; d; e] [x; y]"
+    ; "y in [y; z] [a; b; c; d; e] [x; y]"
+    ; "z in [y; z] [a; b; c; d; e] [x; y]"
+    ; "a in [a; b; c; d; e] [x; y]"
+    ; "b in [a; b; c; d; e] [x; y]"
+    ; "x in [a; b; c; d; e] [x; y]"
+    ; "c in [a; b; c; d; e] [x; y]"
+    ; "d in [a; b; c; d; e] [x; y]"
+    ; "x in [a; b; c; d; e] [x; y]"
     ]
     (Sec_5_40.ex_5_40 ())
 ;;
 
-(* 5.41: the book's three lookup examples answer (1 2), (2 0), and
-   not-found. *)
 let ex_5_41 () =
-  strings_outcome "5.41" [ "c: (1 2)"; "x: (2 0)"; "w: not-found" ] (Sec_5_41.ex_5_41 ())
+  pin "5.41" [ "c: (1, 2)"; "x: (2, 0)"; "w: not found" ] (Sec_5_41.ex_5_41 ())
 ;;
 
-(* 5.42: compile-variable's lexical emission names the book's addresses
-   (z at (0 1), y at (0 0), x at (2 0)), and the applied example runs to
-   the book's 180 through those lexical lookups on the lexical
-   machine of 5.39. *)
 let ex_5_42 () =
-  strings_outcome
-    "5.42"
-    [ "(assign val (op lexical-address-lookup) (const 0) (const 1) (reg env))\n\
-       (assign val (op lexical-address-lookup) (const 0) (const 0) (reg env))\n\
-       (assign val (op lexical-address-lookup) (const 2) (const 0) (reg env))"
-    ; "lexical run: 180"
-    ]
-    (Sec_5_42.ex_5_42 ())
+  match Sec_5_42.ex_5_42 () with
+  | Ok lines ->
+    the_string "5.42 run" "lexical run: 180" (List.nth (List.rev lines) 0);
+    Alcotest.check Alcotest.int "5.42 lookups" 9 (List.length lines - 1)
+  | Error e -> Alcotest.fail (Sicp_common.Eval_error.to_string e)
 ;;
 
-(* 5.43: the plain body compiles define-variable!, the scanned body
-   binds the quoted *unassigned* marker and compiles no define, and the
-   scanned program runs to the book's 3 without ever executing a
-   define. *)
 let ex_5_43 () =
-  strings_outcome
+  pin
     "5.43"
-    [ "plain body: quoted *unassigned* marker = false, define-variable! = true"
-    ; "scanned body: quoted *unassigned* marker = true, define-variable! = false"
-    ; "scanned run: ;;; EC-Eval value: ok ;;; EC-Eval input: ;;; EC-Eval value: 3 ;;; \
-       EC-Eval input:"
+    [ "group code in order: let-rec-group, group-environment, fill-first-pending, \
+       fill-first-pending"
+    ; "plain run: 3"
+    ; "lexical run: 3"
     ]
     (Sec_5_43.ex_5_43 ())
 ;;
 
-(* 5.44: the open-coding analysis of the compiled set!-procedure: no
-   open-coded operation under either shadowing or free names. *)
 let ex_5_44 () =
-  strings_outcome
+  pin
     "5.44"
-    [ "shadowed parameters: 0 open-coded operations"
-    ; "free names: 0 open-coded operations"
+    [ "shadowed parameter: 5.38 compiler: 1 open-coded, answers \"42\"; scoped: 0 \
+       open-coded, answers \"large\""
+    ; "free name: 5.38 compiler: 1 open-coded, answers \"42\"; scoped: 1 open-coded, \
+       answers \"42\""
     ]
     (Sec_5_44.ex_5_44 ())
 ;;
 
-(* 5.45: the three machines on the same monitored stack: the
-   interpreted factorial at n = 5 costs the book's 144 pushes and 28
-   depth, the compiled one the book's 5.5.7 session's 31 and 14, the
-   special-purpose one 2n - 2 = 8; the ratios put the compiled code
-   close to the interpreter and the special-purpose machine far ahead. *)
 let ex_5_45 () =
-  strings_outcome
+  pin
     "5.45"
-    [ "n = 5: interpreted 144/28, compiled 31/14, special 8/8;           ratios compiled \
-       0.215/0.500, special 0.056/0.286"
-    ; "n = 10: interpreted 304/53, compiled 61/29, special 18/18;           ratios \
-       compiled 0.201/0.547, special 0.059/0.340"
+    [ "n = 5: interpreted 105/18, compiled 10/10, special 8/8; ratios compiled \
+       0.095/0.556, special 0.076/0.444"
+    ; "n = 10: interpreted 220/33, compiled 20/20, special 18/18; ratios compiled \
+       0.091/0.606, special 0.082/0.545"
     ]
     (Sec_5_45.ex_5_45 ())
 ;;
 
-(* 5.46: the fib ratios stay near-constant per n (the call tree
-   doubles, no convergence) and the special-purpose machine keeps its
-   constant-factor lead at every measured n. *)
 let ex_5_46 () =
-  strings_outcome
+  pin
     "5.46"
-    [ "n = 5: interpreted 408/28, compiled 77/14, special 28/8;           ratios \
-       compiled 0.189/0.500, special 0.069/0.286"
-    ; "n = 6: interpreted 688/33, compiled 127/17, special 48/10;           ratios \
-       compiled 0.185/0.515, special 0.070/0.303"
-    ; "n = 7: interpreted 1136/38, compiled 207/20, special 80/12;           ratios \
-       compiled 0.182/0.526, special 0.070/0.316"
+    [ "n = 5: interpreted 300/18, compiled 23/10, special 28/8; ratios compiled \
+       0.077/0.556, special 0.093/0.444"
+    ; "n = 6: interpreted 505/21, compiled 38/12, special 48/10; ratios compiled \
+       0.075/0.571, special 0.095/0.476"
+    ; "n = 7: interpreted 833/24, compiled 62/14, special 80/12; ratios compiled \
+       0.074/0.583, special 0.096/0.500"
     ]
     (Sec_5_46.ex_5_46 ())
 ;;
 
-(* 5.47: the compound-call branch rides through unev, and the book's
-   session answers 12 through it. *)
 let ex_5_47 () =
-  strings_outcome
+  pin
     "5.47"
-    [ "compound branch instructions: (test (op compound-procedure?) (reg proc)); (branch \
-       (label compound-branch6)); (assign unev (label compound-apply)); (goto (reg \
-       unev)); (test (op compound-procedure?) (reg proc)); (branch (label \
-       compound-branch10)); (assign unev (label compound-apply)); (goto (reg unev))"
-    ; "session: ;;; EC-Eval value: ok ;;; EC-Eval input: ;;; EC-Eval value: ok ;;; \
-       EC-Eval input: ;;; EC-Eval value: 12 ;;; EC-Eval input:"
+    [ "compound branch: Test (\"compound-procedure?\", [Reg \"proc\"]); Branch \
+       \"ca-compound\"; Perform (\"signal-not-applicable\", [Reg \"proc\"]); Label \
+       \"ca-compound\"; Goto \"apply-entry\""
+    ; "without the branch: error: not applicable: closure is not a procedure"
+    ; "with the branch: 12"
+    ; "all compiled with the branch: 12"
     ]
     (Sec_5_47.ex_5_47 ())
 ;;
 
-(* 5.48: the compile-and-run primitive answers ok, the compiled define
-   recorded by the primitive answers ok on the next assembled machine,
-   and the call answers the book's 120 through the compiled
-   apply-dispatch. *)
 let ex_5_48 () =
-  strings_outcome
+  pin
     "5.48"
-    [ "session: ;;; EC-Eval input: ;;; EC-Eval value: ok ;;; EC-Eval input: ;;; EC-Eval \
-       value: ok ;;; EC-Eval input: ;;; EC-Eval value: 120 ;;; EC-Eval input:"
+    [ "compile-and-run: factorial = compiled procedure entry1"
+    ; "evaluate: double = closure"
+    ; "evaluate: result = 120"
     ]
     (Sec_5_48.ex_5_48 ())
 ;;
 
-(* 5.49: the read-compile-execute-print loop compiles every form,
-   definitions persist in the one machine's global environment, and the
-   values print per form: ok, 144, ok, 882. *)
 let ex_5_49 () =
-  strings_outcome
+  pin
     "5.49"
-    [ ";;; EC-Eval input: ;;; EC-Eval value: ok"
-    ; ";;; EC-Eval input: ;;; EC-Eval value: 144"
-    ; ";;; EC-Eval input: ;;; EC-Eval value: ok"
-    ; ";;; EC-Eval input: ;;; EC-Eval value: 882"
+    [ "fib = compiled procedure entry1"
+    ; "a = 144"
+    ; "double = compiled procedure entry17"
+    ; "b = 882"
     ]
     (Sec_5_49.ex_5_49 ())
 ;;
 
-(* 5.50: the compiled metacircular answers the tick session and 120,
-   and the three interpretation levels measure 292 machine steps for
-   the plain compiled factorial and 52482 for the compiled
-   metacircular. *)
 let ex_5_50 () =
-  match Sec_5_50.ex_5_50 () with
-  | Ok lines ->
-    strings
-      "5.50 head"
-      [ "compiled metacircular session: ;;; EC-Eval value: (tick tick tick) ;;; EC-Eval \
-         input: ;;; EC-Eval value: 120 ;;; EC-Eval input:"
-      ; "level 0 (compiled factorial), steps = 292"
-      ; "level 1 (interpreted factorial), monitored pushes = 0"
-      ]
-      [ List.nth lines 0; List.nth lines 1; List.nth lines 2 ];
-    has_prefix
-      "5.50 level 2"
-      3
-      "level 2 (compiled metacircular), machine steps = 52482"
-      lines;
-    the_string
-      "5.50 price"
-      "interpretation price: level 2 over level 0 = 180 machine steps"
-      (List.nth lines 4)
-  | Error e -> Alcotest.fail (Eval.error_to_string e)
+  pin
+    "5.50"
+    [ "metacircular answers: compiled 120, explicit-control 120, direct 120; counter 3"
+    ; "native oracle agrees: 120"
+    ; "native counter agrees: 3"
+    ; "level 0 (compiled factorial): 120 in 1707 machine steps"
+    ; "level 1 (factorial on the explicit-control evaluator): 120 in 11082 machine steps"
+    ; "level 2 (factorial on the compiled metacircular evaluator): 120 in 55149 machine \
+       steps"
+    ; "interpretation price: level 1 is 6 times level 0, level 2 is 32 times level 0"
+    ]
+    (Sec_5_50.ex_5_50 ())
 ;;
 
-(* 5.51: the C translation of the evaluator builds with the system
-   compiler and answers the book's factorial session. *)
-let ex_5_51 () = strings_outcome "5.51" [ "ok\n120\n" ] (Sec_5_51.ex_5_51 ())
+let ex_5_51 () =
+  pin
+    "5.51"
+    [ "factorial: C evaluator \"120\", direct \"120\"; pushes 110, maximum depth 21"
+    ; "list length: C evaluator \"3\", direct \"3\"; pushes 67, maximum depth 15"
+    ; "counter: C evaluator \"5 12\", direct \"5 12\"; pushes 78, maximum depth 17"
+    ]
+    (Sec_5_51.ex_5_51 ())
+;;
 
-(* 5.52: the compiler's C backend compiles the adapted metacircular
-   into a C interpreter whose object factorial answers 120. *)
-let ex_5_52 () = strings_outcome "5.52" [ "120\n" ] (Sec_5_52.ex_5_52 ())
+let ex_5_52 () =
+  match Sec_5_52.ex_5_52 () with
+  | Ok lines ->
+    the_string
+      "5.52 outputs"
+      "compiled metacircular in C: \"120\\n\" (machine \"120\\n\"); counter \"3\\n\""
+      (List.nth lines 0);
+    the_string "5.52 native" "native oracle: \"120\\n\"" (List.nth lines 1);
+    Alcotest.check Alcotest.int "5.52 lines" 3 (List.length lines)
+  | Error e -> Alcotest.fail (Sicp_common.Eval_error.to_string e)
+;;
 
 let () =
   Alcotest.run

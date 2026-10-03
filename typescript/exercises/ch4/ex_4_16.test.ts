@@ -3,4 +3,4 @@
 
 import { test } from "vitest";
 
-test.todo("Exercise 4.16: scan out internal defines");
+test.todo("Exercise 4.16: scan out internal declarations");

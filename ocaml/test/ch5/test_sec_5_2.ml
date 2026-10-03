@@ -1,15 +1,19 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(* Alcotest suite over the section 5.2 simulator and the reference
+(* Alcotest suite over the section 5.2 machines and the reference
    solutions' public contracts. Every exercise's demonstration is
    pinned to the exact observable outcomes the solutions produce; the
    simulator's own contract -- assembly-time checks, the monitored
-   stack, the trace and breakpoint machinery -- is pinned too, so a
-   solution that leans on a broken clause cannot pass. *)
+   stack -- and the solutions' monitor, trace, and breakpoint
+   machinery are pinned too, so a solution that leans on a broken
+   clause cannot pass. *)
 
+module M = Sicp_ch5.Sec_5_1
 module Machine = Sicp_ch5.Sec_5_2
+module Eval_error = Sicp_common.Eval_error
 module Solutions = Sicp_ch5_solutions.Sec_5_7
+module Sec_5_5 = Sicp_ch5_solutions.Sec_5_5
 module Sec_5_8 = Sicp_ch5_solutions.Sec_5_8
 module Sec_5_9 = Sicp_ch5_solutions.Sec_5_9
 module Sec_5_10 = Sicp_ch5_solutions.Sec_5_10
@@ -22,111 +26,102 @@ module Sec_5_16 = Sicp_ch5_solutions.Sec_5_16
 module Sec_5_17 = Sicp_ch5_solutions.Sec_5_17
 module Sec_5_18 = Sicp_ch5_solutions.Sec_5_18
 module Sec_5_19 = Sicp_ch5_solutions.Sec_5_19
+module Monitor = Sec_5_15.Monitor
 
-let ( >>= ) = Result.bind
+let ( let* ) = Result.bind
 let strings = Alcotest.(check (list string))
 let the_string = Alcotest.check Alcotest.string
 let the_int = Alcotest.check Alcotest.int
 
 let strings_outcome name expected = function
   | Ok lines -> strings name expected lines
-  | Error e -> Alcotest.fail (Machine.error_to_string e)
+  | Error e -> Alcotest.fail (Eval_error.to_string e)
+;;
+
+let outcome = function
+  | Ok _ -> "ok"
+  | Error e -> "Error: " ^ Eval_error.to_string e
 ;;
 
 (* The simulator: the book's GCD session runs, and the assembly-time
    checks are the typed failures the section names. *)
 let simulator_gcd () =
   match
-    Machine.make_machine
-      ~registers:[ "a"; "b"; "t" ]
-      ~operations:Machine.arith_operations
-      ~controller:
-        {|(controller
- test-b
-   (test (op =) (reg b) (const 0))
-   (branch (label gcd-done))
-   (assign t (op rem) (reg a) (reg b))
-   (assign a (reg b))
-   (assign b (reg t))
-   (goto (label test-b))
- gcd-done)|}
-    >>= fun m ->
-    Machine.set_register m "a" (Machine.Int 206)
-    >>= fun () ->
-    Machine.set_register m "b" (Machine.Int 40)
-    >>= fun () -> Machine.start m >>= fun () -> Machine.get_register m "a"
+    let* m =
+      Machine.make_machine
+        ~registers:[ "a"; "b"; "t" ]
+        ~operations:M.arith_operations
+        ~controller:Sec_5_10.gcd_controller
+    in
+    let* () = Machine.set_register m "a" (M.Int 206) in
+    let* () = Machine.set_register m "b" (M.Int 40) in
+    let* () = Machine.start m in
+    Machine.get_register m "a"
   with
-  | Ok (Int n) -> Alcotest.(check int) "gcd session" 2 n
-  | Ok v -> Alcotest.fail (Machine.value_to_string v)
-  | Error e -> Alcotest.fail (Machine.error_to_string e)
+  | Ok (M.Int n) -> the_int "gcd session" 2 n
+  | Ok v -> Alcotest.fail (M.value_to_string v)
+  | Error e -> Alcotest.fail (Eval_error.to_string e)
 ;;
 
 let simulator_checks () =
   let assemble controller registers =
-    Machine.make_machine ~registers ~operations:Machine.arith_operations ~controller
-    |> function
-    | Ok _ -> "assembled"
-    | Error e -> "Error: " ^ Machine.error_to_string e
+    outcome (Machine.make_machine ~registers ~operations:M.arith_operations ~controller)
   in
   strings
     "assembly-time checks"
-    [ "Error: bad instruction: the label again is used twice"
+    [ "Error: bad instruction: label again is defined twice"
     ; "Error: unknown register nope"
     ; "Error: unknown label nowhere"
     ; "Error: unknown operation nosuch"
-    ; "Error: bad instruction: the register a is declared twice"
+    ; "Error: bad instruction: register a is declared twice"
     ]
     [ assemble
-        {|(controller (assign a (const 1)) again (goto (label again)) again)|}
+        M.[ Assign ("a", Const (Int 1)); Label "again"; Goto "again"; Label "again" ]
         [ "a" ]
-    ; assemble {|(controller (assign a (reg nope)))|} [ "a" ]
-    ; assemble {|(controller (goto (label nowhere)))|} [ "a" ]
-    ; assemble {|(controller (assign a (op nosuch) (const 1)))|} [ "a" ]
-    ; assemble {|(controller (assign a (const 1)))|} [ "a"; "a" ]
+    ; assemble M.[ Assign ("a", Reg "nope") ] [ "a" ]
+    ; assemble M.[ Goto "nowhere" ] [ "a" ]
+    ; assemble M.[ Assign_op ("a", "nosuch", [ Const (Int 1) ]) ] [ "a" ]
+    ; assemble M.[ Assign ("a", Const (Int 1)) ] [ "a"; "a" ]
     ]
 ;;
 
-(* A branch reached before any test is the typed failure; the stack
-   underflow names its register; the monitored stack counts. *)
+(* A branch reached before any test is the typed failure; the monitored
+   stack counts pushes and depth since the last initialization. *)
 let branch_without_test () =
   match
-    Machine.make_machine
-      ~registers:[ "a" ]
-      ~operations:[]
-      ~controller:{|(controller (branch (label end)) end)|}
-    >>= fun m -> Machine.start m
+    let* m =
+      Machine.make_machine
+        ~registers:[ "a" ]
+        ~operations:[]
+        ~controller:M.[ Branch "end"; Label "end" ]
+    in
+    Machine.start m
   with
-  | Error Branch_without_test -> ()
+  | Error Eval_error.Branch_without_test -> ()
   | _ -> Alcotest.fail "expected the branch-without-test failure"
-;;
-
-let underflow_names_register () =
-  match
-    Machine.make_machine
-      ~registers:[ "x" ]
-      ~operations:[]
-      ~controller:{|(controller (restore x))|}
-    >>= fun m -> Machine.start m
-  with
-  | Error (Stack_underflow "x") -> ()
-  | _ -> Alcotest.fail "expected the typed underflow"
 ;;
 
 let monitored_stack_counts () =
   match
-    Machine.make_machine
-      ~registers:[ "x" ]
-      ~operations:Machine.arith_operations
-      ~controller:
-        {|(controller
-   (perform (op initialize-stack))
-   (save x)
-   (save x)
-   (restore x)
-   (perform (op print-stack-statistics)))|}
-    >>= fun m -> Machine.start m >>= fun () -> Ok m
+    let* m =
+      Machine.make_machine
+        ~registers:[ "x" ]
+        ~operations:M.arith_operations
+        ~controller:
+          M.
+            [ Save "x"
+            ; Perform ("initialize-stack", [])
+            ; Save "x"
+            ; Save "x"
+            ; Restore "x"
+            ; Perform ("print-stack-statistics", [])
+            ]
+    in
+    let* () = Machine.set_register m "x" (M.Int 1) in
+    let* () = Machine.start m in
+    Ok m
   with
-  | Error e -> Alcotest.fail (Machine.error_to_string e)
+  | Error e -> Alcotest.fail (Eval_error.to_string e)
   | Ok m ->
     the_string
       "stack statistics"
@@ -138,30 +133,67 @@ let monitored_stack_counts () =
       (Machine.transcript m)
 ;;
 
-(* The monitoring core: the traced, counted, breakpointed machine of
-   the later exercises. *)
+(* The monitor: counted, reset, and stopped by breakpoints. *)
+let fib_monitor () =
+  Monitor.make
+    ~registers:[ "n"; "val"; "continue" ]
+    ~operations:M.arith_operations
+    ~controller:Sec_5_5.fib_controller
+;;
+
 let monitored_counts () =
   match
-    Sec_5_15.Sim.make
-      ~registers:[ "n"; "val"; "continue" ]
-      ~operations:Machine.arith_operations
-      ~controller:Sec_5_15.fib_controller
-    >>= fun m ->
-    Sec_5_15.Sim.set_register m "n" (Machine.Int 6)
-    >>= fun () ->
-    Sec_5_15.Sim.start m
-    >>= fun _ -> Sec_5_15.Sim.get_register m "val" >>= fun v -> Ok (m, v)
+    let* m = fib_monitor () in
+    let* () = Monitor.set_register m "n" (M.Int 6) in
+    let* _ = Monitor.start m in
+    let* v = Monitor.get_register m "val" in
+    Ok (m, v)
   with
-  | Error e -> Alcotest.fail (Machine.error_to_string e)
+  | Error e -> Alcotest.fail (Eval_error.to_string e)
   | Ok (m, v) ->
-    the_string "fib 6" "8" (Machine.value_to_string v);
-    the_int "instruction count" 281 (Sec_5_15.Sim.take_instruction_count m);
-    the_int "count after reset" 0 (Sec_5_15.Sim.take_instruction_count m);
+    the_string "fib 6" "8" (M.value_to_string v);
+    the_int "instruction count" 281 (Monitor.take_instruction_count m);
+    the_int "count after reset" 0 (Monitor.take_instruction_count m);
     (match
-       Sec_5_15.Sim.set_register m "n" (Machine.Int 3) >>= fun () -> Sec_5_15.Sim.start m
+       let* () = Monitor.set_register m "n" (M.Int 3) in
+       Monitor.start m
      with
-     | Error e -> Alcotest.fail (Machine.error_to_string e)
-     | Ok _ -> the_int "fib 3 count" 51 (Sec_5_15.Sim.instruction_count m))
+     | Error e -> Alcotest.fail (Eval_error.to_string e)
+     | Ok _ -> the_int "fib 3 count" 51 (Monitor.instruction_count m))
+;;
+
+let breakpoint_boundaries () =
+  match fib_monitor () with
+  | Error e -> Alcotest.fail (Eval_error.to_string e)
+  | Ok m ->
+    strings
+      "breakpoint placement"
+      [ "ok"
+      ; "Error: bad instruction: the breakpoint at fib-loop 0 is past the code"
+      ; "Error: bad instruction: the breakpoint at immediate-answer 3 is past the code"
+      ; "Error: unknown label nowhere"
+      ]
+      [ outcome (Monitor.set_breakpoint m "immediate-answer" 2)
+      ; outcome (Monitor.set_breakpoint m "fib-loop" 0)
+      ; outcome (Monitor.set_breakpoint m "immediate-answer" 3)
+      ; outcome (Monitor.set_breakpoint m "nowhere" 1)
+      ];
+    let stops =
+      let* () = Monitor.set_register m "n" (M.Int 2) in
+      let rec run acc stop =
+        match stop with
+        | Sec_5_15.Completed -> Ok (List.rev acc)
+        | Sec_5_15.Breakpoint _ ->
+          let* next = Monitor.proceed m in
+          run (Sec_5_19.show_stop stop :: acc) next
+      in
+      let* first = Monitor.start m in
+      run [] first
+    in
+    strings_outcome
+      "fib 2 returns through immediate-answer twice"
+      [ "stop at immediate-answer 2"; "stop at immediate-answer 2" ]
+      stops
 ;;
 
 (* Every exercise's demonstration, pinned to its exact observable
@@ -187,15 +219,32 @@ let ex_5_07a_oracle () =
 let ex_5_08_duplicate_label () =
   strings_outcome
     "ex 5.8"
-    [ "Error: bad instruction: the label again is used twice" ]
+    [ "Error: bad instruction: label again is defined twice" ]
     (Sec_5_8.ex_5_08 ())
 ;;
 
 let ex_5_09_label_operands () =
   strings_outcome
     "ex 5.9"
-    [ "5"; "Error: bad instruction: an operation input is written (reg r) or (const c)" ]
-    (Sec_5_9.ex_5_09 ())
+    [ "5"
+    ; "Error: bad instruction: an operation input is a register or a constant, not the \
+       label there"
+    ]
+    (Sec_5_9.ex_5_09 ());
+  strings
+    "every operation position is checked"
+    [ "ok"
+    ; "Error: bad instruction: an operation input is a register or a constant, not the \
+       label x"
+    ; "Error: bad instruction: an operation input is a register or a constant, not the \
+       label y"
+    ]
+    [ outcome
+        (Sec_5_9.check_operands
+           M.[ Assign ("a", Label_ref "x"); Test ("=", [ Reg "a"; Const (Int 0) ]) ])
+    ; outcome (Sec_5_9.check_operands M.[ Test ("=", [ Label_ref "x"; Reg "a" ]) ])
+    ; outcome (Sec_5_9.check_operands M.[ Perform ("print", [ Label_ref "y" ]) ])
+    ]
 ;;
 
 let ex_5_10_new_syntax () =
@@ -203,26 +252,88 @@ let ex_5_10_new_syntax () =
     "ex 5.10"
     [ "4"
     ; "4"
-    ; "(assign t (op rem) (reg a) (reg b))"
-    ; "(assign t (op rem) (reg a) (reg b))"
+    ; "Assign_op (\"t\", \"rem\", [Reg \"a\"; Reg \"b\"])"
+    ; "Assign_op (\"t\", \"rem\", [Reg \"a\"; Reg \"b\"])"
     ]
-    (Sec_5_10.ex_5_10 ())
+    (Sec_5_10.ex_5_10 ());
+  strings
+    "the syntax procedures refuse what the machine cannot run"
+    [ "Error: bad instruction: the call + cannot be an operand"
+    ; "Error: bad instruction: a jump goes to a label or through a register"
+    ]
+    [ outcome
+        (Sec_5_10.syntax
+           Sec_5_10.[ Set ("a", Call ("*", [ R "b"; Call ("+", [ R "b"; N 1 ]) ])) ])
+    ; outcome (Sec_5_10.syntax Sec_5_10.[ Jump (N 3) ])
+    ]
 ;;
 
 let ex_5_11_disciplines () =
   strings_outcome
     "ex 5.11"
-    [ "(a) untagged: (save y) (save x) (restore y) leaves y = 8"
-    ; "(a) fib with afterfib-n-2's exchange replaced by one (restore n): answers n=0..9 \
-       match the original"
-    ; "(b) tagged: (save y) (save x) (restore y) reports -- Error: bad instruction: \
-       restore y but the stack holds x"
+    [ "(a) untagged: Save \"y\"; Save \"x\"; Restore \"y\" leaves y = 8"
+    ; "(a) fib with afterfib-n-2's exchange replaced by one Restore \"n\": answers \
+       n=0..9 match the original"
+    ; "(b) tagged: Save \"y\"; Save \"x\"; Restore \"y\" reports -- Error: bad \
+       instruction: restore y but the stack holds x"
     ; "(b) tagged fib 6 = 8"
-    ; "(c) per-register: (save y) (save x) (restore y) leaves y = 7"
-    ; "(c) restore from an empty per-register stack reports -- Error: stack underflow \
-       restoring x"
+    ; "(c) per-register: Save \"y\"; Save \"x\"; Restore \"y\" leaves y = 7"
+    ; "(c) restore from an empty per-register stack reports -- Error: bad instruction: \
+       restore x from an empty stack"
     ]
     (Sec_5_11.ex_5_11 ())
+;;
+
+(* The disciplined machines replace one instruction by one, so they
+   execute exactly as many instructions as the untagged machine. *)
+let ex_5_11_counts_unchanged () =
+  let executed discipline =
+    let* m =
+      Sec_5_11.make
+        ~discipline
+        ~registers:[ "n"; "val"; "continue" ]
+        ~operations:M.arith_operations
+        ~controller:Sec_5_5.fib_controller
+    in
+    let* () = M.set_register m "n" (M.Int 6) in
+    let* () = M.start m in
+    Ok (M.executed m)
+  in
+  List.iter
+    (fun (name, discipline) ->
+       match executed discipline with
+       | Ok n -> the_int (name ^ " fib 6 instructions") 281 n
+       | Error e -> Alcotest.fail (Eval_error.to_string e))
+    [ "untagged", Sec_5_11.Untagged
+    ; "tagged", Sec_5_11.Tagged
+    ; "per-register", Sec_5_11.Per_register
+    ]
+;;
+
+let ex_5_11_one_fewer () =
+  the_int
+    "the one-fewer machine has one instruction fewer"
+    (List.length Sec_5_11.fib_one_fewer_controller)
+    (List.length Sec_5_5.fib_controller - 1)
+;;
+
+let syntax_covers_whole_program () =
+  match Sec_5_10.syntax Sec_5_10.gcd_new_syntax with
+  | Error e -> Alcotest.fail (Eval_error.to_string e)
+  | Ok translated ->
+    let assembled controller =
+      match M.assemble controller with
+      | Ok program -> program
+      | Error e -> Alcotest.fail (Eval_error.to_string e)
+    in
+    let old_program = assembled Sec_5_10.gcd_controller in
+    let new_program = assembled translated in
+    strings
+      "the translation covers the whole controller"
+      [ string_of_bool (old_program.code = new_program.code)
+      ; string_of_bool (old_program.labels = new_program.labels)
+      ]
+      [ "true"; "true" ]
 ;;
 
 let ex_5_12_analysis () =
@@ -239,9 +350,10 @@ let ex_5_12_analysis () =
     ; "perform: 0"
     ; "entry-point registers: continue"
     ; "saved/restored registers: continue, n, val"
-    ; "sources of continue: (label fib-done), (label afterfib-n-1), (label afterfib-n-2)"
-    ; "sources of n: (reg n), (const 1), (const 2), (reg val)"
-    ; "sources of val: (reg val), (reg n)"
+    ; "sources of continue: Label_ref \"fib-done\", Label_ref \"afterfib-n-1\", \
+       Label_ref \"afterfib-n-2\""
+    ; "sources of n: Reg \"n\", Const (1), Const (2), Reg \"val\""
+    ; "sources of val: Reg \"val\", Reg \"n\""
     ; "factorial:"
     ; "unique instructions, sorted by type: 13"
     ; "assign: 5"
@@ -253,15 +365,19 @@ let ex_5_12_analysis () =
     ; "perform: 0"
     ; "entry-point registers: continue"
     ; "saved/restored registers: continue, n"
-    ; "sources of continue: (label fact-done), (label after-fact)"
-    ; "sources of n: (reg n), (const 1)"
-    ; "sources of val: (reg n), (reg val), (const 1)"
+    ; "sources of continue: Label_ref \"fact-done\", Label_ref \"after-fact\""
+    ; "sources of n: Reg \"n\", Const (1)"
+    ; "sources of val: Reg \"n\", Reg \"val\", Const (1)"
     ]
     (Sec_5_12.ex_5_12 ())
 ;;
 
 let ex_5_13_derived_registers () =
-  strings_outcome "ex 5.13" [ "gcd 206 40 = 2"; "fib 6 = 8" ] (Sec_5_13.ex_5_13 ())
+  strings_outcome "ex 5.13" [ "gcd 206 40 = 2"; "fib 6 = 8" ] (Sec_5_13.ex_5_13 ());
+  strings
+    "first-use order, no duplicates"
+    [ "b"; "t"; "a" ]
+    (Sec_5_13.derive_registers Sec_5_10.gcd_controller)
 ;;
 
 let ex_5_14_stack_formulas () =
@@ -290,95 +406,91 @@ let ex_5_15_instruction_count () =
     (Sec_5_15.ex_5_15 ())
 ;;
 
+let gcd_pass =
+  [ "Test (\"=\", [Reg \"b\"; Const (0)])"
+  ; "Branch \"gcd-done\""
+  ; "Assign_op (\"t\", \"rem\", [Reg \"a\"; Reg \"b\"])"
+  ; "Assign (\"a\", Reg \"b\")"
+  ; "Assign (\"b\", Reg \"t\")"
+  ; "Goto \"test-b\""
+  ]
+;;
+
 let ex_5_16_tracing () =
   strings_outcome
     "ex 5.16"
-    [ "(test (op =) (reg b) (const 0))"
-    ; "(branch (label gcd-done))"
-    ; "(assign t (op rem) (reg a) (reg b))"
-    ; "(assign a (reg b))"
-    ; "(assign b (reg t))"
-    ; "(goto (label test-b))"
-    ; "(test (op =) (reg b) (const 0))"
-    ; "(branch (label gcd-done))"
-    ; "(assign t (op rem) (reg a) (reg b))"
-    ; "(assign a (reg b))"
-    ; "(assign b (reg t))"
-    ; "(goto (label test-b))"
-    ; "(test (op =) (reg b) (const 0))"
-    ; "(branch (label gcd-done))"
-    ; "gcd 12 8 = 4"
-    ; "with tracing off the run on (20, 14) printed 0 trace lines and answered 2"
-    ]
+    (gcd_pass
+     @ gcd_pass
+     @ [ "Test (\"=\", [Reg \"b\"; Const (0)])"
+       ; "Branch \"gcd-done\""
+       ; "gcd 12 8 = 4"
+       ; "with tracing off the run on (20, 14) printed 0 trace lines and answered 2"
+       ])
     (Sec_5_16.ex_5_16 ())
+;;
+
+let fib_call =
+  [ "fib-loop: Test (\"<\", [Reg \"n\"; Const (2)])"; "Branch \"immediate-answer\"" ]
+;;
+
+let fib_descend =
+  fib_call
+  @ [ "Save \"continue\""
+    ; "Assign (\"continue\", Label_ref \"afterfib-n-1\")"
+    ; "Save \"n\""
+    ; "Assign_op (\"n\", \"-\", [Reg \"n\"; Const (1)])"
+    ; "Goto \"fib-loop\""
+    ]
+;;
+
+let fib_leaf =
+  fib_call @ [ "immediate-answer: Assign (\"val\", Reg \"n\")"; "Goto_reg \"continue\"" ]
+;;
+
+let fib_second_call =
+  [ "afterfib-n-1: Restore \"n\""
+  ; "Restore \"continue\""
+  ; "Assign_op (\"n\", \"-\", [Reg \"n\"; Const (2)])"
+  ; "Save \"continue\""
+  ; "Assign (\"continue\", Label_ref \"afterfib-n-2\")"
+  ; "Save \"val\""
+  ; "Goto \"fib-loop\""
+  ]
+;;
+
+let fib_sum =
+  [ "afterfib-n-2: Assign (\"n\", Reg \"val\")"
+  ; "Restore \"val\""
+  ; "Restore \"continue\""
+  ; "Assign_op (\"val\", \"+\", [Reg \"val\"; Reg \"n\"])"
+  ; "Goto_reg \"continue\""
+  ]
 ;;
 
 let ex_5_17_labels_in_trace () =
   strings_outcome
     "ex 5.17"
-    [ "(assign continue (label fib-done))"
-    ; "fib-loop: (test (op <) (reg n) (const 2))"
-    ; "(branch (label immediate-answer))"
-    ; "(save continue)"
-    ; "(assign continue (label afterfib-n-1))"
-    ; "(save n)"
-    ; "(assign n (op -) (reg n) (const 1))"
-    ; "(goto (label fib-loop))"
-    ; "fib-loop: (test (op <) (reg n) (const 2))"
-    ; "(branch (label immediate-answer))"
-    ; "(save continue)"
-    ; "(assign continue (label afterfib-n-1))"
-    ; "(save n)"
-    ; "(assign n (op -) (reg n) (const 1))"
-    ; "(goto (label fib-loop))"
-    ; "fib-loop: (test (op <) (reg n) (const 2))"
-    ; "(branch (label immediate-answer))"
-    ; "immediate-answer: (assign val (reg n))"
-    ; "(goto (reg continue))"
-    ; "afterfib-n-1: (restore n)"
-    ; "(restore continue)"
-    ; "(assign n (op -) (reg n) (const 2))"
-    ; "(save continue)"
-    ; "(assign continue (label afterfib-n-2))"
-    ; "(save val)"
-    ; "(goto (label fib-loop))"
-    ; "fib-loop: (test (op <) (reg n) (const 2))"
-    ; "(branch (label immediate-answer))"
-    ; "immediate-answer: (assign val (reg n))"
-    ; "(goto (reg continue))"
-    ; "afterfib-n-2: (assign n (reg val))"
-    ; "(restore val)"
-    ; "(restore continue)"
-    ; "(assign val (op +) (reg val) (reg n))"
-    ; "(goto (reg continue))"
-    ; "afterfib-n-1: (restore n)"
-    ; "(restore continue)"
-    ; "(assign n (op -) (reg n) (const 2))"
-    ; "(save continue)"
-    ; "(assign continue (label afterfib-n-2))"
-    ; "(save val)"
-    ; "(goto (label fib-loop))"
-    ; "fib-loop: (test (op <) (reg n) (const 2))"
-    ; "(branch (label immediate-answer))"
-    ; "immediate-answer: (assign val (reg n))"
-    ; "(goto (reg continue))"
-    ; "afterfib-n-2: (assign n (reg val))"
-    ; "(restore val)"
-    ; "(restore continue)"
-    ; "(assign val (op +) (reg val) (reg n))"
-    ; "(goto (reg continue))"
-    ; "fib 3 = 2 in 51 instructions"
-    ]
+    ([ "Assign (\"continue\", Label_ref \"fib-done\")" ]
+     @ fib_descend
+     @ fib_descend
+     @ fib_leaf
+     @ fib_second_call
+     @ fib_leaf
+     @ fib_sum
+     @ fib_second_call
+     @ fib_leaf
+     @ fib_sum
+     @ [ "fib 3 = 2 in 51 instructions" ])
     (Sec_5_17.ex_5_17 ())
 ;;
 
 let ex_5_18_register_trace () =
   strings_outcome
     "ex 5.18"
-    [ "n: *unassigned* -> 3"
+    [ "n: unassigned -> 3"
     ; "n: 3 -> 2"
     ; "n: 2 -> 1"
-    ; "val: *unassigned* -> 1"
+    ; "val: unassigned -> 1"
     ; "n: 1 -> 2"
     ; "val: 1 -> 2"
     ; "n: 2 -> 3"
@@ -386,6 +498,27 @@ let ex_5_18_register_trace () =
     ; "fact 3 = 6"
     ]
     (Sec_5_18.ex_5_18 ())
+;;
+
+(* A traced register reports every write, including one that stores the
+   word it already holds; turning tracing off silences it. *)
+let register_trace_transitions () =
+  match
+    let* m =
+      Monitor.make
+        ~registers:[ "a" ]
+        ~operations:M.arith_operations
+        ~controller:M.[ Assign ("a", Const (Int 1)); Assign ("a", Const (Int 1)) ]
+    in
+    let* () = Monitor.trace_register m "a" true in
+    let* _ = Monitor.start m in
+    let* () = Monitor.trace_register m "a" false in
+    let* _ = Monitor.start m in
+    Ok (Monitor.traced_assignments m)
+  with
+  | Ok lines ->
+    strings "same-word writes report" [ "a: unassigned -> 1"; "a: 1 -> 1" ] lines
+  | Error e -> Alcotest.fail (Eval_error.to_string e)
 ;;
 
 let ex_5_19_breakpoints () =
@@ -408,9 +541,13 @@ let () =
       , [ Alcotest.test_case "gcd session" `Quick simulator_gcd
         ; Alcotest.test_case "assembly-time checks" `Quick simulator_checks
         ; Alcotest.test_case "branch without test" `Quick branch_without_test
-        ; Alcotest.test_case "typed underflow" `Quick underflow_names_register
         ; Alcotest.test_case "monitored stack" `Quick monitored_stack_counts
         ; Alcotest.test_case "monitored counts" `Quick monitored_counts
+        ; Alcotest.test_case "breakpoint boundaries" `Quick breakpoint_boundaries
+        ; Alcotest.test_case
+            "register trace transitions"
+            `Quick
+            register_trace_transitions
         ] )
     ; ( "exercises"
       , [ Alcotest.test_case "5.7" `Quick ex_5_07_expt_machines
@@ -418,7 +555,10 @@ let () =
         ; Alcotest.test_case "5.8" `Quick ex_5_08_duplicate_label
         ; Alcotest.test_case "5.9" `Quick ex_5_09_label_operands
         ; Alcotest.test_case "5.10" `Quick ex_5_10_new_syntax
+        ; Alcotest.test_case "5.10 whole program" `Quick syntax_covers_whole_program
         ; Alcotest.test_case "5.11" `Quick ex_5_11_disciplines
+        ; Alcotest.test_case "5.11 counts" `Quick ex_5_11_counts_unchanged
+        ; Alcotest.test_case "5.11 one fewer" `Quick ex_5_11_one_fewer
         ; Alcotest.test_case "5.12" `Quick ex_5_12_analysis
         ; Alcotest.test_case "5.13" `Quick ex_5_13_derived_registers
         ; Alcotest.test_case "5.14" `Quick ex_5_14_stack_formulas

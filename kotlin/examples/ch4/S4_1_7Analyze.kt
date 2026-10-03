@@ -1,75 +1,106 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.1
 // Chapter 4, section 4.1.7, separating syntactic analysis from execution:
-// `analyze` compiles each expression once into an execution procedure and
-// the analyzed run answers exactly as the direct evaluator does.
+// admission builds the typed syntax once, before any guest effect, and the
+// analyzed run answers exactly what the direct run answers -- the same
+// checked program executed repeatedly stays itself.
 
 package sicp.ch4.examples
 
-import arrow.core.raise.either
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.ch4.Analyzer
-import sicp.ch4.Evaluator
-import sicp.ch4.OutputSink
-import sicp.ch4.parseProgram
-import sicp.ch4.readProgram
-import sicp.ch4.setupEnvironment
-import sicp.runtime.DefineE
-import sicp.runtime.Env
-import sicp.runtime.VInt
+import sicp.ch4.Analyzed
+import sicp.ch4.Direct
+import sicp.guest.Admission
+import sicp.guest.CheckedProgram
+import sicp.guest.Mode
 
-private const val FACTORIAL = "(define (factorial n) (if (= n 1) 1 (* n (factorial (- n 1)))))"
+private val FACTORIAL: String =
+    """
+    fun factorial(n: Long): Long = if (n < 2L) 1L else factorial(n - 1L) * n
 
-/** The whole text analyzed once, then run against an environment. */
-private fun analyzeAndRun(
-    text: String,
-    env: Env,
-): String {
-    val analyzer = Analyzer(env)
-    val sink = OutputSink()
-    val out = StringBuilder()
-    either {
-        for (expr in parseProgram(readProgram(text))) {
-            if (expr is DefineE) {
-                analyzer.eval(expr, env) // a define prints nothing
-                continue
-            }
-            out.append(sicp.ch4.printValue(analyzer.eval(expr, env))).append('\n')
+    fun main() {
+        println(factorial(5L))
+        println(factorial(10L))
+    }
+    """.trimIndent()
+
+private val REPEATED_CALL: String =
+    """
+    fun factorial(n: Long): Long = if (n < 2L) 1L else factorial(n - 1L) * n
+
+    fun main() {
+        println(factorial(6L))
+    }
+    """.trimIndent()
+
+private val SHAPE_SESSION: String =
+    """
+    fun square(x: Long): Long = x * x
+
+    fun render(xs: List<Long>): String {
+        var out = ""
+        var i = 0
+        while (i < xs.size) {
+            if (i > 0) { out = out + " " }
+            out = out + "${'$'}{xs.get(i)}"
+            i = i + 1
         }
-    }.fold(
-        { e -> out.append("Error: ").append(sicp.ch4.formatError(e)).append('\n') },
-        { },
+        return out
+    }
+
+    fun main() {
+        println(render(listOf(square(3L))))
+        println(render(listOf(1L, 2L)))
+        println(square(4L) > square(3L))
+    }
+    """.trimIndent()
+
+private val ILL_TYPED: String =
+    """
+    fun main() {
+        println("this unit never runs")
+        val broken: Long = "not a number"
+    }
+    """.trimIndent()
+
+private fun checked(source: String): CheckedProgram =
+    Admission.admit(source, Mode.CORE).fold(
+        { e -> throw AssertionError("admission rejected the unit: ${e.category}: ${e.message}") },
+        { it },
     )
-    return out.toString()
-}
 
 public class S4_1_7AnalyzeTest :
     FunSpec({
-        test("the analyzed evaluator answers as the direct one") {
-            val program = "$FACTORIAL\n(factorial 5)\n(factorial 10)"
-            val direct = sicp.ch4.runProgram(program, setupEnvironment(OutputSink()), OutputSink())
-            val analyzed = analyzeAndRun(program, setupEnvironment(OutputSink()))
-            direct shouldBe "120\n3628800\n"
-            analyzed shouldBe "120\n3628800\n"
+        test("the analyzed run answers exactly what the direct run answers") {
+            val program = checked(FACTORIAL)
+            val direct = Direct.run(program)
+            val analyzed = Analyzed.run(program)
+            direct.output shouldBe "120\n3628800\n"
+            analyzed.output shouldBe direct.output
+            analyzed.mainValue shouldBe direct.mainValue
+            analyzed.error shouldBe null
         }
 
-        test("the same execution procedure runs many times") {
-            val env = setupEnvironment(OutputSink())
-            val analyzer = Analyzer(env)
-            either {
-                for (expr in parseProgram(readProgram(FACTORIAL))) analyzer.eval(expr, env)
-                val call = parseProgram(readProgram("(factorial 6)")).single()
-                analyzer.eval(call, env) shouldBe VInt(720)
-                analyzer.eval(call, env) shouldBe VInt(720) // no re-analysis needed
-            }
+        test("one checked program runs many times, answering the same thing") {
+            val program = checked(REPEATED_CALL)
+            val first = Analyzed.run(program)
+            val second = Analyzed.run(program)
+            first.output shouldBe "720\n"
+            second.output shouldBe first.output
         }
 
-        test("the direct evaluator and the analyzer agree on data shapes") {
-            val env = setupEnvironment(OutputSink())
-            val program = "(cons (square 3) '())\n(list (quote a) (quote b))"
-            val direct = sicp.ch4.runProgram("(define (square x) (* x x))\n$program", setupEnvironment(OutputSink()), OutputSink())
-            val analyzed = analyzeAndRun("(define (square x) (* x x))\n$program", env)
-            direct shouldBe "(9)\n(a b)\n"
-            analyzed shouldBe direct
+        test("the two engines agree on the shapes a program can answer") {
+            val program = checked(SHAPE_SESSION)
+            Direct.run(program).output shouldBe "9\n1 2\ntrue\n"
+            Analyzed.run(program).output shouldBe Direct.run(program).output
+        }
+
+        test("analysis rejects an ill-typed unit before any guest effect") {
+            val admitted = Admission.admit(ILL_TYPED, Mode.CORE)
+            admitted.isLeft() shouldBe true
+            val direct = Direct.run(ILL_TYPED, Mode.CORE)
+            direct.isLeft() shouldBe true
+            direct.fold({ e -> e.category shouldBe "TypeMismatch" }, { })
         }
     })

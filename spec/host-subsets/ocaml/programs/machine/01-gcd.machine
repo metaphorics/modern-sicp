@@ -1,0 +1,16 @@
+(* GCD register machine (lesson: 5.1 registers, labels, controller). *)
+Machine
+  { registers = [ "a"; "b"; "t" ]
+  ; operations = [ ("rem", [ Int_type; Int_type ], Int_type); ("=", [ Int_type; Int_type ], Bool_type) ]
+  ; inputs = [ ("a", Int 206); ("b", Int 40) ]
+  ; controller =
+      [ Label "loop"
+      ; Test ("=", [ Reg "b"; Const (Int 0) ])
+      ; Branch "done"
+      ; Assign_op ("t", "rem", [ Reg "a"; Reg "b" ])
+      ; Assign ("a", Reg "b")
+      ; Assign ("b", Reg "t")
+      ; Goto "loop"
+      ; Label "done"
+      ]
+  }

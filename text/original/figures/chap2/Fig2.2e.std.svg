@@ -46,9 +46,9 @@
             <rdf:li>box</rdf:li>
             <rdf:li>pointer</rdf:li>
             <rdf:li>notation</rdf:li>
-            <rdf:li>cons</rdf:li>
-            <rdf:li>car</rdf:li>
-            <rdf:li>cdr</rdf:li>
+            <rdf:li>pairing</rdf:li>
+            <rdf:li>first</rdf:li>
+            <rdf:li>rest</rdf:li>
           </rdf:Bag>
         </dc:subject>
       </cc:Work>

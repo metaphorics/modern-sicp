@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.3: implement a representation for rectangles in a plane. (Hint:
  * you may want to make use of exercise 2.2.) In terms of your constructors
@@ -17,4 +15,4 @@ import sicp.runtime.PendingSolution
  * The scaffold returns the perimeter and area of a 4-by-3 rectangle, built
  * once from each of the two representations, all four numbers agreeing.
  */
-public fun ex_2_03(): Pair<Double, Double> = throw PendingSolution()
+public fun ex_2_03(): Pair<Double, Double> = throw PendingExercise()

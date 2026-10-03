@@ -12,6 +12,10 @@ public class E5_44Test :
         test("Exercise 5.44: shadowed parameters open-code nothing, free names open-code all").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            openCodeShadowingCounts() shouldBe emptyList()
+            openCodeShadowingCounts() shouldBe
+                listOf(
+                    "rebound names reported: plus",
+                    "the probe answers: 3",
+                )
         }
     })

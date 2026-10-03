@@ -1,100 +1,77 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Adapted from the Scheme program of SICP section 5.4 *)
 
-(** Exercise 5.28: the evaluator with its tail-recursion removed -- the
-    naive [ev-sequence] of the 5.4.2 footnote, where every expression
-    of a sequence is evaluated across a saved [continue] -- rerunning
-    the measurements of 5.26 and 5.27 to show both factorial versions
-    now demand space that grows with n. *)
+let ( let* ) = Result.bind
 
-let ( >>= ) = Result.bind
-
+module M = Sicp_ch5.Sec_5_1
 module Eval = Sicp_ch5.Sec_5_4
-module Measured = Sec_5_26
 
-(** The naive sequence evaluation of the 5.4.2 footnote: no expression
-    is in tail position, so a tail call pushes. *)
+let r name = M.Reg name
+let dispatch = M.Goto "eval-dispatch"
+
+(* The 5.4.2 footnote's sequence: the last expression, too, runs as a
+   subproblem across a saved [continue]. *)
 let naive_ev_sequence =
-  {|ev-sequence
-  (test (op no-more-exps?) (reg unev))
-  (branch (label ev-sequence-end))
-  (assign exp (op first-exp) (reg unev))
-  (save unev)
-  (save env)
-  (assign continue
-          (label ev-sequence-continue))
-  (goto (label eval-dispatch))
-ev-sequence-continue
-  (restore env)
-  (restore unev)
-  (assign unev
-          (op rest-exps)
-          (reg unev))
-  (goto (label ev-sequence))
-ev-sequence-end
-  (restore continue)
-  (goto (reg continue))|}
+  [ M.Label "ev-sequence"
+  ; M.Save "exp"
+  ; M.Save "env"
+  ; M.Save "continue"
+  ; M.Assign ("continue", M.Label_ref "ev-sequence-rest")
+  ; M.Assign_op ("exp", "first-expression", [ r "exp" ])
+  ; dispatch
+  ; M.Label "ev-sequence-rest"
+  ; M.Restore "continue"
+  ; M.Restore "env"
+  ; M.Restore "exp"
+  ; M.Assign_op ("exp", "second-expression", [ r "exp" ])
+  ; M.Save "continue"
+  ; M.Assign ("continue", M.Label_ref "ev-sequence-last-done")
+  ; dispatch
+  ; M.Label "ev-sequence-last-done"
+  ; M.Restore "continue"
+  ; M.Goto_reg "continue"
+  ]
 ;;
 
-(** The monitored controller with the naive sequence evaluation. *)
+(* A procedure body is the subset's last expression of a sequence: the
+   same subproblem shape, so no call is in tail position.  It mirrors
+   the naive sequence above: restore the caller's [continue], then run
+   the body across it saved again. *)
+let naive_compound_body =
+  [ M.Label "compound-tail"
+  ; M.Restore "continue"
+  ; M.Save "continue"
+  ; M.Assign ("continue", M.Label_ref "compound-body-done")
+  ; dispatch
+  ; M.Label "compound-body-done"
+  ; M.Restore "continue"
+  ; M.Goto_reg "continue"
+  ]
+;;
+
 let controller =
-  String.concat
-    "\n"
-    (List.map
-       (fun (name, text) ->
-          match name with
-          | "driver" -> Measured.monitored_driver
-          | "ev-sequence" -> naive_ev_sequence
-          | _ -> text)
-       Eval.controller_fragments)
+  Eval.base_controller
+  |> Sec_5_23.splice ~from:"ev-sequence" ~until:"ev-and" naive_ev_sequence
+  |> Sec_5_23.splice ~from:"compound-tail" ~until:"compound-partial" naive_compound_body
 ;;
 
-let run source =
-  Eval.make_evaluator ~controller ~source ()
-  >>= fun m ->
-  let ended =
-    match Eval.start m with
-    | Ok () -> Ok ()
-    | Error e when Eval.error_to_string e = "operation failed: " ^ Eval.input_exhausted ->
-      Ok ()
-    | Error e -> Error e
-  in
-  ended >>= fun () -> Ok (Eval.transcript m)
+let grows samples =
+  match Sec_5_26.fit_linear samples with
+  | Some ((a, _) as fit) -> a > 0 && Sec_5_26.holds fit samples
+  | None -> false
 ;;
 
-(** [ex_5_28 ()] reruns the 5.26 and 5.27 experiments on the
-    non-tail-recursive evaluator: the iterative factorial's maximum
-    depth, constant under the book's evaluator, now grows linearly,
-    and the recursive factorial's depth keeps growing too -- both rows
-    of the book's demonstration. *)
 let ex_5_28 () =
   let ns = [ 1; 2; 3; 4; 5 ] in
-  let measure source =
-    Eval.result_all
-      (List.map
-         (fun n ->
-            run (source ^ "\n(factorial " ^ string_of_int n ^ ")")
-            >>= fun lines ->
-            match List.rev (Measured.stats_of lines) with
-            | s :: _ -> Ok s
-            | [] -> Error (Eval.Op_failed "the call printed no stack statistics"))
-         ns)
-  in
-  Measured.iterative_source
-  |> measure
-  >>= fun iterative ->
-  Sec_5_27.recursive_source
-  |> measure
-  >>= fun recursive ->
-  let table name stats = List.map2 (fun n s -> Measured.render_stats name n s) ns stats in
-  let depths = List.map Measured.depth_of iterative in
-  let rec increasing = function
-    | a :: (b :: _ as rest) -> b > a && increasing rest
-    | _ -> true
-  in
-  let grows = increasing depths in
+  let* iterative = Sec_5_26.measure ~controller Sec_5_26.iterative_source ns in
+  let* recursive = Sec_5_26.measure ~controller Sec_5_27.recursive_source ns in
   Ok
-    (table "non-tail iterative factorial" iterative
-     @ table "non-tail recursive factorial" recursive
-     @ [ "iterative maximum depth now grows with n: " ^ string_of_bool grows ])
+    (List.map (Sec_5_26.render_point "non-tail iterative factorial") iterative
+     @ List.map (Sec_5_26.render_point "non-tail recursive factorial") recursive
+     @ [ Sec_5_26.formula_line "iterative maximum depth" (Sec_5_26.depths iterative)
+       ; Sec_5_26.formula_line "recursive maximum depth" (Sec_5_26.depths recursive)
+       ; Printf.sprintf
+           "iterative maximum depth now grows with n: %b"
+           (grows (Sec_5_26.depths iterative))
+       ])
 ;;

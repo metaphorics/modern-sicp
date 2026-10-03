@@ -1,125 +1,153 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
+import type { CaseClause, Decl, Expr, Stmt } from "../../packages/ch4/src/syntax/ast.ts";
+import type { Span } from "../../packages/ch4/src/syntax/diagnostics.ts";
 import {
   assign,
   branch,
-  type ControllerLine,
-  jump,
-  mark,
-  op,
-  reg,
-  test,
-} from "../../packages/ch5/src/02-simulator.js";
-import {
-  appendLines,
   evaluatorController,
+  gotoLabel,
   insertBeforeInstruction,
-  isNilWord,
-  isPairWord,
-  isSpecialForm,
-  makeListWord,
-  makeSymbolWord,
-  makeVariantEvaluator,
+  type MachineStatement,
+  makeEvaluator,
+  type Operation,
+  op,
+  register,
+  replaceSegment,
+  test,
   type Word,
-  wordAt,
-  wordItems,
-  wordOperation1,
-} from "../../packages/ch5/src/04-eceval.js";
+} from "../../packages/ch5/src/04-eceval.ts";
+import { mark } from "./ex_5_07.ts";
 
-const isNamed = (w: Word, name: string): boolean =>
-  !isPairWord(w) && typeof w === "object" && "symbol" in w && w.symbol === name;
+type EvaluatorStatement = MachineStatement<Word>;
 
-// The book's 4.1.2 cond->if: each clause becomes an if, a bodyless
-// clause's consequent is its own test, and a missing else ends the
-// chain in the false constant.
-const sequenceToExpression = (actions: readonly Word[]): Word =>
-  actions.length === 1 ? (actions[0] as Word) : makeListWord([makeSymbolWord("begin"), ...actions]);
+const span: Span = { start: 0, end: 0, line: 1, column: 1 };
 
-const expandClauses = (clauses: Word): Word => {
-  if (isNilWord(clauses)) return false;
-  const first = wordAt(clauses, 0);
-  const predicate = wordAt(first, 0);
-  const actions = wordItems(first).slice(1);
-  const consequent = actions.length === 0 ? predicate : sequenceToExpression(actions);
-  if (isNamed(predicate, "else")) return consequent;
-  return makeListWord([
-    makeSymbolWord("if"),
-    predicate,
-    consequent,
-    expandClauses(makeListWord(wordItems(clauses).slice(1))),
-  ]);
+/** The transformer of exercise 5.23: one machine operation builds the
+ * derived `if` chain out of the switch's clauses and the dispatch
+ * re-enters eval on the transformed form, so the rest of the controller
+ * never knows the form existed. Each clause runs one at a time and ends
+ * the switch, the derived-form discipline of the book's cond; the basic
+ * form's fall-through and break bookkeeping is what exercise 5.24 adds
+ * in the controller. A clause that would fall through is left to the
+ * basic form or rejected there, never silently mistranslated. */
+export const makeSwitchTransformer = (): {
+  operations: Readonly<Record<string, Operation<Word>>>;
+  fired: () => number;
+} => {
+  let count = 0;
+  return {
+    operations: {
+      transformSwitch: (args) => {
+        const node = switchNode(args[0]);
+        return node !== null && clausesFit(node);
+      },
+      switchToIf: (args) => {
+        const node = switchNode(args[0]);
+        if (node === null) return undefined;
+        count += 1;
+        return switchToIfChain(node);
+      },
+    },
+    fired: () => count,
+  };
 };
 
-const condToIf = (form: Word): Word => expandClauses(makeListWord(wordItems(form).slice(1)));
+interface SwitchForm {
+  readonly tag: "switch";
+  readonly discriminant: Expr;
+  readonly cases: ReadonlyArray<CaseClause>;
+  readonly defaultBody: ReadonlyArray<Decl | Stmt> | null;
+  readonly span: Span;
+}
 
-// The book's let->combination: a lambda over the binding names applied
-// to the binding initializers in one expression.
-const letToCombination = (form: Word): Word => {
-  const bindings = wordItems(wordAt(form, 1));
-  const names = bindings.map((binding) => wordAt(binding, 0));
-  const initializers = bindings.map((binding) => wordAt(binding, 1));
-  return makeListWord([
-    makeListWord([makeSymbolWord("lambda"), makeListWord(names), ...wordItems(form).slice(2)]),
-    ...initializers,
-  ]);
+const isSwitchForm = (word: Word): word is SwitchForm =>
+  typeof word === "object" && word !== null && "tag" in word && word.tag === "switch";
+
+const switchNode = (word: Word): SwitchForm | null => (isSwitchForm(word) ? word : null);
+
+const endsTheSwitch = (body: ReadonlyArray<Decl | Stmt>): boolean => {
+  const last = body[body.length - 1];
+  if (last === undefined) return true;
+  return last.tag === "return" || last.tag === "throw";
 };
 
-// The dispatch grows one test per derived form, ahead of the
-// application test: a cond or let is a pair, so the derived tests must
-// come first, and each entry transforms exp and re-enters eval-dispatch.
-const isApplicationTest = (line: ControllerLine): boolean =>
-  line.tag === "test" && line.op === "application?";
+const clausesFit = (node: SwitchForm): boolean =>
+  node.cases.every((clause) => endsTheSwitch(clause.body)) &&
+  (node.defaultBody === null || endsTheSwitch(node.defaultBody));
 
-const dispatchTests: ControllerLine[] = [
-  test("cond?", reg("exp")),
-  branch("ev-cond-derived"),
-  test("let?", reg("exp")),
-  branch("ev-let-derived"),
-];
+const switchToIfChain = (node: SwitchForm): Stmt => {
+  const build = (index: number): Stmt | null => {
+    const clause = node.cases[index];
+    if (clause === undefined) {
+      const fallback = node.defaultBody;
+      return fallback === null || fallback.length === 0
+        ? null
+        : { tag: "block", body: [...fallback], span };
+    }
+    return {
+      tag: "if",
+      test: { tag: "binary", op: "===", left: node.discriminant, right: clause.test, span },
+      consequent: { tag: "block", body: [...clause.body], span },
+      alternative: build(index + 1),
+      span,
+    };
+  };
+  const chain = build(0);
+  return chain === null ? { tag: "block", body: [], span } : chain;
+};
 
-const transformerEntries: ControllerLine[] = [
-  mark("ev-cond-derived"),
-  assign("exp", op("cond->if", reg("exp"))),
-  jump("eval-dispatch"),
-  mark("ev-let-derived"),
-  assign("exp", op("let->combination", reg("exp"))),
-  jump("eval-dispatch"),
-];
-
-export const derivedExpressionController: readonly ControllerLine[] = appendLines(
+/** The derived-entry controller: the derived test goes before the basic
+ * switch pair, exactly the splice point the exercise is about, and the
+ * derived segment re-enters eval-form on the transformed form. A switch
+ * the transformer declines falls through to the basic form. */
+export const derivedSwitchController: readonly EvaluatorStatement[] = replaceSegment(
   insertBeforeInstruction(
     evaluatorController,
-    isApplicationTest,
-    "the application dispatch test",
-    dispatchTests,
+    (line) => line.tag === "test" && line.operation === "isSwitchStmt",
+    "the derived switch test goes first",
+    [test("transformSwitch", register("expr")), branch("ef-switch-derived")],
   ),
-  transformerEntries,
+  "done",
+  "done",
+  [
+    mark("ef-switch-derived"),
+    assign("expr", op("switchToIf", register("expr"))),
+    gotoLabel("eval-form"),
+  ],
 );
 
-export const derivedExpressionOperations = {
-  "cond?": wordOperation1("cond?", (w) => isSpecialForm("cond", w)),
-  "let?": wordOperation1("let?", (w) => isSpecialForm("let", w)),
-  "cond->if": wordOperation1("cond->if", condToIf),
-  "let->combination": wordOperation1("let->combination", letToCombination),
+/** Exercise 5.23: the transformer answers the switch sessions with the
+ * same values the basic form answers, and the counter shows one
+ * transformation per switch. */
+export const ex_5_23 = (): readonly string[] => {
+  const { operations, fired } = makeSwitchTransformer();
+  const program = [
+    "function classify(n: number) {",
+    "  switch (n) {",
+    '    case 0: return "zero";',
+    '    case 1: return "one";',
+    '    default: return "many";',
+    "  }",
+    "}",
+    "console.log(classify(0));",
+    "console.log(classify(1));",
+    "console.log(classify(7));",
+  ].join("\n");
+  const variant = makeEvaluator(program, operations, derivedSwitchController);
+  const result = variant.run();
+  if (result.outcome.tag !== "ok") {
+    throw new Error(`the transformed session faulted: ${JSON.stringify(result.outcome.error)}`);
+  }
+  const base = makeEvaluator(program).run();
+  const baseLines = base.transcript;
+  for (let i = 0; i < Math.max(result.transcript.length, baseLines.length); i += 1) {
+    if (result.transcript[i] !== baseLines[i]) {
+      throw new Error(
+        `the transformed session diverged at line ${i}: ${result.transcript[i] ?? "<missing>"} != ${baseLines[i] ?? "<missing>"}`,
+      );
+    }
+  }
+  return [...result.transcript, `transformations: ${fired()}`];
 };
-
-export const runDerivedExpressions = (source: string): readonly string[] =>
-  makeVariantEvaluator(source, derivedExpressionController, derivedExpressionOperations).run();
-
-const classifyProgram = `
-(define (classify n)
-  (cond ((= n 0) (quote zero))
-        ((= n 1) (quote one))
-        (else (quote many))))
-(classify 0)
-(classify 1)
-(classify 7)
-(let ((a 2) (b 3)) (* a b))
-(cond ((= 1 1)))
-(cond ((= 1 2)))
-`;
-
-export const derivedExpressionTranscript = (): readonly string[] =>
-  runDerivedExpressions(classifyProgram);
-export const ex_5_23 = derivedExpressionTranscript;

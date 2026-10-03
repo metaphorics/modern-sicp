@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.1: define a better version of `makeRat` that handles both
  * positive and negative arguments. `makeRat` should normalize the sign so
@@ -20,4 +18,4 @@ public data class Rational(
     val denom: Long,
 )
 
-public fun ex_2_01(): Rational = throw PendingSolution()
+public fun ex_2_01(): Rational = throw PendingExercise()

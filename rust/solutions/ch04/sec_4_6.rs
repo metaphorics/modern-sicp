@@ -1,53 +1,142 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Original exercise
 
-//! The reference solution of exercise 4.6: let as a derived expression, re-derived through the
-// seam even though the grammar carries it in the base, so the rewrite
-// and its scoping rule are pinned..
+//! The reference solution of exercise 4.6: `let` as a derived
+//! expression over typed syntax data.
 
-use ch04::eval_support::*;
+/// Shared typed support for this exercise.
+pub mod support;
 
-mod ex_4_06 {
-    use super::*;
+use std::collections::HashMap;
 
-    /// The evaluator whose `let` is the derived expression of this
-    /// exercise: the rewrite runs at every nesting depth.
-    pub struct WithLetDerived;
+#[derive(Clone)]
+enum Expr {
+    Int(i64),
+    Var(String),
+    Add(Box<Expr>, Box<Expr>),
+    Lambda {
+        parameters: Vec<String>,
+        body: Box<Expr>,
+    },
+    Call {
+        function: Box<Expr>,
+        arguments: Vec<Expr>,
+    },
+    Let {
+        name: String,
+        value: Box<Expr>,
+        body: Box<Expr>,
+    },
+}
 
-    impl Evaluator for WithLetDerived {
-        fn step(&self, exp: &Value, env: &Rc<Env>) -> StepResult {
-            if is_let(exp) {
-                return Ok(Step::Tail(let_to_combination(exp)?, Rc::clone(env)));
-            }
-            self.base_step(exp, env)
+fn let_to_combination(name: &str, value: &Expr, body: &Expr) -> Expr {
+    Expr::Call {
+        function: Box::new(Expr::Lambda {
+            parameters: vec![name.to_owned()],
+            body: Box::new(body.clone()),
+        }),
+        arguments: vec![value.clone()],
+    }
+}
+
+#[derive(Clone, Copy)]
+enum LetEvaluation {
+    Direct,
+    Derived,
+}
+
+fn eval(expr: &Expr, env: &HashMap<String, i64>) -> Option<i64> {
+    eval_with_let(expr, env, LetEvaluation::Derived)
+}
+
+fn eval_direct(expr: &Expr, env: &HashMap<String, i64>) -> Option<i64> {
+    eval_with_let(expr, env, LetEvaluation::Direct)
+}
+
+fn eval_with_let(
+    expr: &Expr,
+    env: &HashMap<String, i64>,
+    let_evaluation: LetEvaluation,
+) -> Option<i64> {
+    match expr {
+        Expr::Int(value) => Some(*value),
+        Expr::Var(name) => env.get(name).copied(),
+        Expr::Add(left, right) => Some(
+            eval_with_let(left, env, let_evaluation)? + eval_with_let(right, env, let_evaluation)?,
+        ),
+        Expr::Call {
+            function,
+            arguments,
+        } => {
+            let operands: Option<Vec<i64>> = arguments
+                .iter()
+                .map(|argument| eval_with_let(argument, env, let_evaluation))
+                .collect();
+            apply_lambda(function, operands?, env, let_evaluation)
         }
+        Expr::Let { name, value, body } => match let_evaluation {
+            LetEvaluation::Direct => eval_let(name, value, body, env, let_evaluation),
+            LetEvaluation::Derived => {
+                eval_with_let(&let_to_combination(name, value, body), env, let_evaluation)
+            }
+        },
+        Expr::Lambda { .. } => None,
     }
+}
 
-    /// Answers the printed rewrite of the book's shape and the value
-    /// the derived evaluator produces, inits evaluated in the outer
-    /// environment.
-    pub fn answers() -> Result<(String, String), SchemeError> {
-        let form = read("(let ((x 3) (y 4)) (+ x y))").expect("read");
-        let rewritten = let_to_combination(&form)?;
-        let (values, _) = run_with(&WithLetDerived, "(let ((x 3) (y 4)) (+ x y))")?;
-        let value = printed(&values).last().cloned().unwrap_or_default();
-        // The initializers still see the outer x, so y is 5, not 3.
-        let scoping = "(define x 5)\n(let ((x 3) (y x)) y)";
-        let (values, _) = run_with(&WithLetDerived, scoping)?;
-        assert_eq!(printed(&values).last(), Some(&"5".to_owned()));
-        assert_eq!(
-            run_base("(define x 5)\n(let ((x 3) (y x)) y)").last(),
-            Some(&"5".to_owned())
-        );
-        Ok((print_value(&rewritten), value))
+fn eval_let(
+    name: &str,
+    value: &Expr,
+    body: &Expr,
+    env: &HashMap<String, i64>,
+    let_evaluation: LetEvaluation,
+) -> Option<i64> {
+    let initial = eval_with_let(value, env, let_evaluation)?;
+    let mut scope = env.clone();
+    scope.insert(name.to_owned(), initial);
+    eval_with_let(body, &scope, let_evaluation)
+}
+
+fn apply_lambda(
+    callee: &Expr,
+    operands: Vec<i64>,
+    env: &HashMap<String, i64>,
+    let_evaluation: LetEvaluation,
+) -> Option<i64> {
+    let Expr::Lambda { parameters, body } = callee else {
+        return None;
+    };
+    if parameters.len() != operands.len() {
+        return None;
     }
+    let mut scope = env.clone();
+    for (name, value) in parameters.iter().cloned().zip(operands) {
+        scope.insert(name, value);
+    }
+    eval_with_let(body, &scope, let_evaluation)
 }
 
 #[test]
 fn ex_4_06() {
-    let (rewritten, value) = ex_4_06::answers().expect("runs");
-    // The rewrite is exactly the book's combination, and it evaluates
-    // to the book's answer.
-    assert_eq!(rewritten, "((lambda (x y) (+ x y)) 3 4)");
-    assert_eq!(value, "7");
+    let mut outer = HashMap::new();
+    outer.insert("x".to_owned(), 5);
+    let source = Expr::Let {
+        name: "x".to_owned(),
+        value: Box::new(Expr::Add(
+            Box::new(Expr::Var("x".to_owned())),
+            Box::new(Expr::Int(1)),
+        )),
+        body: Box::new(Expr::Add(
+            Box::new(Expr::Var("x".to_owned())),
+            Box::new(Expr::Int(20)),
+        )),
+    };
+    let Expr::Let { name, value, body } = &source else {
+        unreachable!();
+    };
+    let lowered = let_to_combination(name, value, body);
+
+    assert!(matches!(&lowered, Expr::Call { .. }));
+    assert_eq!(eval_direct(&source, &outer), Some(26));
+    assert_eq!(eval(&source, &outer), Some(26));
+    assert_eq!(eval(&lowered, &outer), Some(26));
 }

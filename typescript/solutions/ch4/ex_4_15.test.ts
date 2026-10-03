@@ -1,63 +1,47 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-import { it } from "@effect/vitest";
-import { Effect } from "effect";
-import { describe, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import type { Value } from "../../packages/ch4/src/core.js";
-import type { EvaluationError } from "../../packages/ch4/src/errors.js";
-import {
-  falseOracle,
-  makeDiagonalEnvironment,
-  makeFueledEvaluator,
-  RUN_FOREVER,
-  runFueled,
-  TRY,
-  trueOracle,
-} from "./ex_4_15.js";
+import { format } from "../../packages/ch4/src/read.js";
+import type { Outcome } from "../../packages/ch4/src/runtime/errors.js";
+import { call, ident, lam, param, returnStmt } from "../../packages/ch4/src/syntax/ast.js";
+import { haltingEnv } from "./ex_4_15.js";
 
-const failureOf = (run: Effect.Effect<Value, EvaluationError>): Effect.Effect<EvaluationError> =>
-  Effect.flatMap(Effect.result(run), (outcome) =>
-    outcome._tag === "Failure"
-      ? Effect.succeed(outcome.failure)
-      : Effect.die(new Error("expected a failure")),
-  );
+/** The observable result: the rendered value, or the fault category and detail. */
+const shown = (outcome: Outcome): string => {
+  if (outcome.tag === "ok") {
+    return format(outcome.value);
+  }
+  return outcome.error.tag === "bad-operand"
+    ? `error:bad-operand:${outcome.error.detail}`
+    : `error:${outcome.error.tag}`;
+};
 
-const fuelMessage = (error: EvaluationError): string =>
-  error._tag === "RuntimeError" ? error.message : "<not a RuntimeError>";
+const identity = lam(
+  [param("u")],
+  [returnStmt({ tag: "variable", name: "u", span: { start: 0, end: 0, line: 1, column: 1 } })],
+);
 
-const BOOK = [RUN_FOREVER, TRY];
+describe("exercise 4.15: the halting diagonal, executed", () => {
+  it("the true oracle's answer for the diagonal call is false: the run exhausts its fuel", () => {
+    const { session, env, spent } = haltingEnv(true, 500);
+    const outcome = session.evaluate(call(ident("tryProgram"), [ident("tryProgram")]), env);
+    expect(shown(outcome)).toBe("error:bad-operand:out of fuel");
+    expect(spent()).toBe(501);
+  });
 
-describe("exercise 4.15: the halting diagonal", () => {
-  it.effect("under the true oracle, (try try) runs forever and hits the fuel limit", () =>
-    Effect.gen(function* () {
-      const env = yield* makeDiagonalEnvironment(trueOracle);
-      const fueled = yield* makeFueledEvaluator(500);
-      const failure = yield* failureOf(runFueled(fueled, [...BOOK, "(try try)"], env));
-      expect(failure._tag).toBe("RuntimeError");
-      expect(fuelMessage(failure)).toBe("out of fuel");
-      expect(yield* fueled.stepsUsed).toBe(501);
-    }),
-  );
+  it("the false oracle's answer is wrong too: the run halts under the limit", () => {
+    const { session, env, spent } = haltingEnv(false, 500);
+    const outcome = session.evaluate(call(ident("tryProgram"), [identity]), env);
+    expect(shown(outcome)).toBe(JSON.stringify("halted"));
+    expect(spent() < 500).toBe(true);
+  });
 
-  it.effect("under the false oracle, (try (lambda (u) u)) answers 'halted", () =>
-    Effect.gen(function* () {
-      const env = yield* makeDiagonalEnvironment(falseOracle);
-      const fueled = yield* makeFueledEvaluator(500);
-      const value = yield* runFueled(fueled, [...BOOK, "(try (lambda (u) u))"], env);
-      expect(value).toStrictEqual({ _tag: "Symbol", name: "halted" });
-      expect(yield* fueled.stepsUsed).toBeLessThan(500);
-    }),
-  );
-
-  it.effect("under the true oracle the same lambda drives try into run-forever", () =>
-    Effect.gen(function* () {
-      const env = yield* makeDiagonalEnvironment(trueOracle);
-      const fueled = yield* makeFueledEvaluator(500);
-      const failure = yield* failureOf(runFueled(fueled, [...BOOK, "(try (lambda (u) u))"], env));
-      expect(failure._tag).toBe("RuntimeError");
-      expect(fuelMessage(failure)).toBe("out of fuel");
-    }),
-  );
+  it("under the true oracle a halting procedure still exhausts the fuel", () => {
+    const { session, env, spent } = haltingEnv(true, 500);
+    const outcome = session.evaluate(call(ident("tryProgram"), [identity]), env);
+    expect(shown(outcome)).toBe("error:bad-operand:out of fuel");
+    expect(spent()).toBe(501);
+  });
 });

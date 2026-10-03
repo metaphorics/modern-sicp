@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.41: Write a procedure `tripleSum(n, s)` to find all ordered triples of
  * distinct positive integers i, j, and k less than or equal to a given
@@ -14,4 +12,4 @@ import sicp.runtime.PendingSolution
  *
  * The scaffold returns `tripleSum(5, 10)`, the triples `(1 4 5)` and `(2 3 5)`.
  */
-public fun ex_2_41(): List<List<Long>> = throw PendingSolution()
+public fun ex_2_41(): List<List<Long>> = throw PendingExercise()

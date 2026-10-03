@@ -14,16 +14,16 @@ describe("exercise 2.37", () => {
   });
 
   it("matrix-times-vector dots each row with the vector", () => {
-    expect(showList(matrixTimesVector(m, list(1, 2, 3, 4)))).toBe("(30 56 80)");
+    expect(showList(matrixTimesVector(m, list(1, 2, 3, 4)))).toBe("[30, 56, 80]");
   });
 
   it("transpose turns rows into columns", () => {
-    expect(showList(transpose(m))).toBe("((1 4 6) (2 5 7) (3 6 8) (4 6 9))");
+    expect(showList(transpose(m))).toBe("[[1, 4, 6], [2, 5, 7], [3, 6, 8], [4, 6, 9]]");
   });
 
   it("matrix-times-matrix dots rows with columns", () => {
     expect(showList(matrixTimesMatrix(m, m))).toBe(
-      "((27 33 39 43) (60 75 90 100) (82 103 124 138))",
+      "[[27, 33, 39, 43], [60, 75, 90, 100], [82, 103, 124, 138]]",
     );
   });
 });

@@ -2,34 +2,91 @@
 // Adapted from the Scheme programs in SICP section 4.4
 
 //! Section 4.4.4.1: the driver loop and instantiation: filing an
-//! `assert!`, answering queries, and printing unbound variables as
+//! assertion, answering queries, and printing unbound variables as
 //! `?name`.
 
-use ch04::sec_4_4::microshaft;
+pub mod common;
+
+use ch04::sec_4_4::{Query, Rule, qeval};
+use common::{atom, fact, list, microshaft, person, render, render_query, resolve, var};
+
+fn relation(name: &str, arguments: Vec<ch04::sec_4_4::Term>) -> Query {
+    Query::Relation {
+        name: name.to_owned(),
+        arguments,
+    }
+}
 
 fn main() {
-    let engine = microshaft();
+    let database = microshaft();
 
-    // A query streams its answers; an assertion is filed silently.
-    let session = engine.session(&[
-        "(supervisor ?name (Bitdiddle Ben))",
-        "(assert! (job (Bitdiddle Ben) (computer wizard)))",
-        "(salary (Bitdiddle Ben) ?amount)",
-    ]);
-    println!("@{session}");
-    assert!(session.contains(
-        ";;; Query input: (supervisor ?name (Bitdiddle Ben))\n\
-         ;;; Query results:\n\
-         (supervisor (Hacker Alyssa P) (Bitdiddle Ben))\n"
+    // A query streams its answers; each answer renders as the book's
+    // instantiated query. Ben's direct reports are the three people
+    // supervised by `(Bitdiddle Ben)`, in assertion order.
+    let query = relation(
+        "supervisor",
+        vec![var("who"), person(&["Bitdiddle", "Ben"])],
+    );
+    let answers = qeval(&database, &query).answers;
+    let rendered: Vec<String> = answers
+        .iter()
+        .map(|frame| {
+            render_query(
+                "supervisor",
+                &[var("who"), person(&["Bitdiddle", "Ben"])],
+                frame,
+            )
+        })
+        .collect();
+    assert_eq!(answers.len(), 3);
+    assert_eq!(
+        rendered[0],
+        "(supervisor (Hacker Alyssa P) (Bitdiddle Ben))"
+    );
+
+    // Filing an assertion: a new hire's job answers exactly once
+    // afterwards. The ground query answers its empty substitution
+    // exactly once.
+    let mut filed = microshaft();
+    filed.assert(fact(
+        "job",
+        vec![
+            person(&["Hacker", "Kay"]),
+            list(&[atom("computer"), atom("programmer")]),
+        ],
     ));
-    assert!(session.contains("Assertion added to data base.\n"));
-    assert!(session.contains("(salary (Bitdiddle Ben) 60000)\n"));
+    let probe = relation(
+        "job",
+        vec![
+            person(&["Hacker", "Kay"]),
+            list(&[atom("computer"), atom("programmer")]),
+        ],
+    );
+    let filed_answers = qeval(&filed, &probe).answers;
+    assert_eq!(filed_answers.len(), 1);
+    assert!(filed_answers[0].is_empty());
+
+    // An unbound variable prints with the book's `?` prefix: the
+    // printer is the only place the notation lives.
+    assert_eq!(render(&var("amount")), "?amount");
+    let frame = resolve(&filed_answers[0], "amount");
+    assert_eq!(render(&frame), "?amount");
 
     // A rule is filed the same way and answers queries afterwards.
-    let session = engine.session(&[
-        "(assert! (rule (same ?x ?x)))",
-        "(same (Bitdiddle Ben) (Bitdiddle Ben))",
-    ]);
-    assert!(session.contains("Assertion added to data base.\n"));
-    assert!(session.contains("(same (Bitdiddle Ben) (Bitdiddle Ben))\n"));
+    // The bodyless `same` rule has no conditions: its empty body is
+    // always true.
+    let mut ruled = microshaft();
+    ruled.add_rule(Rule {
+        conclusion: fact("same", vec![var("x"), var("x")]),
+        conditions: Vec::new(),
+    });
+    let answers = qeval(
+        &ruled,
+        &relation(
+            "same",
+            vec![person(&["Bitdiddle", "Ben"]), person(&["Bitdiddle", "Ben"])],
+        ),
+    )
+    .answers;
+    assert_eq!(answers.len(), 1);
 }

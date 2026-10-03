@@ -3,4 +3,4 @@
 
 import { test } from "vitest";
 
-test.todo("Exercise 4.13: make-unbound!");
+test.todo("Exercise 4.13: unbind through removeBinding");

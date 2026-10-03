@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import { describe, expect, it } from "vitest";
-import { ex_5_34 } from "./ex_5_34.js";
+// Original exercise
 
-describe("exercise 5.34", () => {
-  it("annotates the bounded stack of the iterative factorial", () => {
-    const answers = ex_5_34();
-    expect(answers[0]).toContain("iter");
-    expect(answers[1]).toMatch(/\d+ statements, \d+ saves/);
-    expect(answers[2]).toContain("bounded");
+import { describe, expect, it } from "vitest";
+import { ex_5_34 } from "./ex_5_34.ts";
+
+describe("exercise 5.34 iterative factorial compilation", () => {
+  it("pairs executed saves across call branches and compiles tail calls to gotos", () => {
+    const lines = ex_5_34();
+    expect(lines[1]).toBe("every executed save is paired: true");
+    expect(lines[2]).toBe("tail calls compile to gotos");
   });
 });

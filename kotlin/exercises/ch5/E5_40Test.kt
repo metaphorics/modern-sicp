@@ -12,6 +12,12 @@ public class E5_40Test :
         test("Exercise 5.40: every variable reference reports its compile-time environment").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            compileTimeEnvDump() shouldBe emptyList()
+            compileTimeEnvDump() shouldBe
+                listOf(
+                    "product -> frame 1, offset 0",
+                    "counter -> frame 1, offset 1",
+                    "n -> frame 0, offset 0",
+                    "missing -> unbound",
+                )
         }
     })

@@ -2,7 +2,7 @@
 // Original exercise
 
 /**
- * Exercise 1.26: Louis Reasoner replaced `(square (expmod base (/ exp 2) m))`
+ * Exercise 1.26: Louis Reasoner replaced `square(expmod(base, exp / 2, m))`
  * with two separate self-calls multiplied together. In an eager host each
  * argument is evaluated before the multiplication, so every even step
  * spawns two subproblems of half the exponent instead of one: the

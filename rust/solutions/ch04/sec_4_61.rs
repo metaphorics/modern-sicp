@@ -1,44 +1,41 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Original exercise
 
-//! The reference solution of exercise 4.61: the book's `next-to` rules
-//! over lists. The base rule fires when the list starts with the two
-//! elements; the recursive rule strips the head; the interleaved rule
-//! streams pin the answer order.
+//! The reference solution of exercise 4.61: `last_pair` as two typed
+//! rules over pair terms.
 
-use ch04::sec_4_4::{Engine, QueryEngine};
+/// Shared typed support for this exercise.
+pub mod support;
 
-mod ex_4_61 {
-    //! Exercise 4.61: the `next-to` relation over two-element adjacencies.
+use ch04::sec_4_4::{Database, qeval};
+use sicp_runtime::host::query::Term;
+use support::{answer_text, atom, fact, list, pair, relation, rule, var};
 
-    use super::*;
-
-    /// One engine carrying the book's two rules.
-    pub fn engine() -> Engine {
-        let engine = QueryEngine::new();
-        engine.load(&[
-            "(rule (?x next-to ?y in (?x ?y . ?u)))",
-            "(rule (?x next-to ?y in (?v . ?z)) (?x next-to ?y in ?z))",
-        ]);
-        engine
-    }
+fn last_pair_rules() -> Database {
+    let mut database = Database::new();
+    database.add_rule(rule(
+        fact(
+            "last_pair",
+            vec![pair(var("item"), Term::Empty), var("item")],
+        ),
+        vec![],
+    ));
+    database.add_rule(rule(
+        fact(
+            "last_pair",
+            vec![pair(var("item"), var("rest")), var("last")],
+        ),
+        vec![relation("last_pair", vec![var("rest"), var("last")])],
+    ));
+    database
 }
 
 #[test]
 fn ex_4_61() {
-    // The book's first query: the base rule answers the head pair, and
-    // the recursion answers the tail pair; the interleaved streams put
-    // the head pair first.
-    assert_eq!(
-        ex_4_61::engine().answers("(?x next-to ?y in (1 (2 3) 4))"),
-        [
-            "(1 next-to (2 3) in (1 (2 3) 4))",
-            "((2 3) next-to 4 in (1 (2 3) 4))",
-        ]
+    let query = relation(
+        "last_pair",
+        vec![list(vec![atom("a"), atom("b"), atom("c")]), var("last")],
     );
-    // The book's second query: both adjacencies of the element 1.
-    assert_eq!(
-        ex_4_61::engine().answers("(?x next-to 1 in (2 1 3 1))"),
-        ["(2 next-to 1 in (2 1 3 1))", "(3 next-to 1 in (2 1 3 1))",]
-    );
+    let outcome = qeval(&last_pair_rules(), &query);
+    assert_eq!(outcome.answers.len(), 1);
+    assert_eq!(answer_text(&outcome.answers[0], "last"), "c");
 }

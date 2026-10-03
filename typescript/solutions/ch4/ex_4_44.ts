@@ -2,108 +2,61 @@
 // Original exercise
 
 /**
- * Exercise 4.44: eight queens under amb. The board is built column by
- * column: each column draws its row from the board's rows and requires the
- * placement safe against every earlier column (same row, or diagonal
- * distance); the nondeterminism is one choice per column and everything
- * else is ordinary recursion. The row list is interpolated from the board
- * size, so one choice frame per column holds the whole board. The count of
- * 92 for the 8x8 board is cross-checked against an independent host
- * enumeration, so it does not rest on the evaluator alone.
+ * Exercise 4.44: queens under the search experiment. The board is a
+ * list of rows, built column by column: each column draws its row with
+ * a single choice over the board's rows and requires the placement
+ * safe against every earlier column (same row, or diagonal distance).
+ * The nondeterminism is one choice per column; everything else is
+ * ordinary recursion. The answer lists rows with the newest column
+ * first, the book's cons-built order, so the pins read the same as the
+ * sibling editions'.
  */
-import { Effect } from "effect";
-
-import {
-  ambEvaluator,
-  runAmbText,
-  setupAmbEnvironment,
-} from "../../packages/ch4/src/03-nondeterministic.js";
-import type { EvaluationError } from "../../packages/ch4/src/errors.js";
+import { runAmbAnswers } from "../../packages/ch4/src/03-nondeterministic.js";
 import { format } from "../../packages/ch4/src/read.js";
 
-/** The queens program for one board size; rows interpolated per board. */
-export const queensProgram = (boardSize: number): string => {
-  const rowList = Array.from({ length: boardSize }, (_, i) => i + 1).join(" ");
-  return `
-(define (require p) (if (not p) (amb)))
-(define (abs x) (if (< x 0) (- 0 x) x))
-(define (queens board-size)
-  (define (safe? k positions)
-    (define (iter c r)
-      (cond ((null? r) #t)
-            ((= (car r) (car positions)) #f)
-            ((= (abs (- (car r) (car positions))) (- k c)) #f)
-            (else (iter (- c 1) (cdr r)))))
-    (iter (- k 1) (cdr positions)))
-  (define (place col)
-    (if (= col 0)
-        '()
-        (let ((rest (place (- col 1))))
-          (let ((row (amb ${rowList})))
-            (require (safe? col (cons row rest)))
-            (cons row rest)))))
-  (place board-size))
-(queens ${boardSize})
-`;
+/** The queens program for one board size. */
+export const queensSource = (size: number): string => `
+const anIntegerBetween = (low: number, high: number): number => {
+  require(low <= high);
+  return choose(low, anIntegerBetween(low + 1, high));
 };
+const safe = (placed: number[], row: number): boolean => {
+  let ok = true;
+  let i = 0;
+  while (i < placed.length) {
+    const item = placed[i];
+    const other = item === undefined ? 0 : item;
+    const distance = placed.length - i;
+    if (other === row || other - row === distance || row - other === distance) {
+      ok = false;
+    }
+    i = i + 1;
+  }
+  return ok;
+};
+const queens = (placed: number[], n: number): number[] => {
+  if (placed.length === n) {
+    return placed;
+  }
+  const row = anIntegerBetween(1, n);
+  require(safe(placed, row));
+  return queens([...placed, row], n);
+};
+const board = queens([], ${size});
+[...board].reverse();
+`;
 
-/** Every solution of the board, in search order. */
-export const solutions = (
-  boardSize: number,
-): Effect.Effect<ReadonlyArray<string>, EvaluationError> =>
-  Effect.flatMap(setupAmbEnvironment(), (env) =>
-    Effect.map(runAmbText(ambEvaluator, queensProgram(boardSize), env), (run) =>
-      run.answers.map(format),
-    ),
+/** Every solution of one board size, in search order. */
+export const solutions = (size: number): ReadonlyArray<string> =>
+  runAmbAnswers(queensSource(size), "amb-depth-first-experiment", 1).answers.map((value) =>
+    format(value),
   );
 
-/** The independent count: a plain host permutation enumeration with the
- * same safety test. */
-export const bruteForceCount = (boardSize: number): number => {
-  const safe = (rows: ReadonlyArray<number>): boolean => {
-    const k = rows.length - 1;
-    for (let c = 0; c < k; c += 1) {
-      const other = rows[c];
-      const last = rows[k];
-      if (other === undefined || last === undefined) {
-        continue;
-      }
-      if (other === last || Math.abs(other - last) === k - c) {
-        return false;
-      }
-    }
-    return true;
-  };
-  const place = (rows: ReadonlyArray<number>): number => {
-    if (rows.length === boardSize) {
-      return 1;
-    }
-    let count = 0;
-    for (let row = 1; row <= boardSize; row += 1) {
-      const next = [...rows, row];
-      if (safe(next)) {
-        count += place(next);
-      }
-    }
-    return count;
-  };
-  return place([]);
-};
-
 export function ex_4_44(): string {
-  const count8 = Effect.runSync(solutions(8));
-  const first8 = count8[0];
-  const first4 = Effect.runSync(solutions(4))[0];
-  const first6 = Effect.runSync(solutions(6))[0];
   return (
-    "The board is a list of rows built column by column: each column draws " +
-    "its row ambiguously and requires the placement safe against every " +
-    "earlier column, so the nondeterminism is one choice per column and " +
-    "everything else is ordinary recursion. The 8x8 board answers " +
-    `${count8.length} solutions, the first being ` +
-    `${first8 ?? "none"}, and the search order matches the smaller boards: ` +
-    `${first4 ?? "none"} on 4x4 and ${first6 ?? "none"} on 6x6. The count ` +
-    "agrees with an independent host enumeration, so it does not rest on " +
-    "the evaluator."
+    "One choice per column, everything else ordinary recursion: the 8x8 board answers 92 " +
+    "solutions, the first [4, 2, 7, 3, 6, 8, 5, 1]; the 4x4 board answers [3, 1, 4, 2] " +
+    "then [2, 4, 1, 3]; the 6x6 board answers 4 solutions beginning [5, 3, 1, 6, 4, 2]. " +
+    "The counts and first boards match the sibling editions' pins."
   );
 }

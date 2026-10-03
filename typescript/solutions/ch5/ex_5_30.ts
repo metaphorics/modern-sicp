@@ -1,119 +1,147 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
+import { builtinMember } from "../../packages/ch4/src/runtime/builtins.ts";
 import {
-  assign,
-  branch,
-  type ControllerLine,
-  jump,
-  jumpReg,
-  mark,
-  op,
-  reg,
-  restore,
-  test,
-} from "../../packages/ch5/src/02-simulator.js";
-import {
-  EvaluatorFault,
-  evaluatorController,
-  isTaggedWord,
-  makeConditionWord,
-  makeVariantEvaluator,
-  type OperationsSpec,
-  replaceSegment,
-  type State,
-  type Word,
-  wordName,
-  wordOperation1,
-  wordOperation2,
-} from "../../packages/ch5/src/04-eceval.js";
+  ArrayValue,
+  ErrorValue,
+  MapValue,
+  RecordValue,
+  SetValue,
+} from "../../packages/ch4/src/runtime/value.ts";
+import { MachineErrorValue, makeEvaluator, type Word } from "../../packages/ch5/src/04-eceval.ts";
+import type { Operation } from "./ex_5_07.ts";
 
-// (a) The lookup operation answers a distinguished condition code for
-// an unbound variable, a word no user value can spell, and ev-variable
-// tests for it before using val.
-const checkingVariable: ControllerLine[] = [
-  assign("val", op("lookup-variable-value", reg("exp"), reg("env"))),
-  test("condition?", reg("val")),
-  branch("signal-error"),
-  jumpReg("continue"),
-];
-
-// (b) The primitive application answers a condition code when an
-// applicability check fails, and primitive-apply tests for it, cleans
-// the stack the way unknown-procedure-type does, and goes to
-// signal-error.
-const checkingPrimitiveApply: ControllerLine[] = [
-  assign("val", op("apply-primitive-procedure", reg("proc"), reg("argl"))),
-  test("condition?", reg("val")),
-  branch("primitive-apply-condition"),
-  restore("continue"),
-  jumpReg("continue"),
-  mark("primitive-apply-condition"),
-  restore("continue"),
-  jump("signal-error"),
-];
-
-export const checkingController: readonly ControllerLine[] = replaceSegment(
-  replaceSegment(evaluatorController, "ev-variable", "ev-quoted", checkingVariable),
-  "primitive-apply",
-  "compound-apply",
-  checkingPrimitiveApply,
-);
-
-const lookupOrCondition = (state: State, name: Word, env: Word): Word => {
-  const variable = wordName(name);
-  if (!isTaggedWord(env, "environment")) throw new EvaluatorFault("expected an environment word");
-  let index = env.payload as number;
-  while (true) {
-    const frame = state.frames[index];
-    if (!frame) break;
-    const found = frame.bindings.get(variable);
-    if (found !== undefined) return found;
-    if (frame.parent === null) break;
-    index = frame.parent;
-  }
-  return makeConditionWord("error", `unbound variable: ${variable}`);
-};
-
-export const checkingOperations: OperationsSpec = (state, base) => ({
-  "condition?": wordOperation1("condition?", (w) => isTaggedWord(w, "condition")),
-  "lookup-variable-value": wordOperation2("lookup-variable-value", (v, e) =>
-    lookupOrCondition(state, v, e),
-  ),
-  // Each primitive keeps its applicability checks; a failed check
-  // surfaces here as the condition code primitive-apply tests.
-  "apply-primitive-procedure": wordOperation2("apply-primitive-procedure", (proc, args) => {
-    const baseApply = base["apply-primitive-procedure"];
-    if (!baseApply) throw new EvaluatorFault("the base table lacks apply-primitive-procedure");
-    try {
-      return baseApply([proc, args]) as Word;
-    } catch (error) {
-      if (error instanceof EvaluatorFault) return makeConditionWord("error", error.message);
-      throw error;
+/** Exercise 5.30: error signaling inside the evaluator. The checking
+ * operations trap division by zero and the bad selectors of member and
+ * index access, answering a typed error value the machine raises like
+ * any guest throw: the run reports the error category and no plausible
+ * value. Correct programs are left untouched. */
+export const makeCheckingOperations = (): Readonly<Record<string, Operation<Word>>> => ({
+  binaryValue: (args) => {
+    const operator = args[0];
+    const left = args[1];
+    const right = args[2];
+    if (operator === "/" && typeof right === "number" && right === 0) {
+      return new MachineErrorValue({
+        tag: "bad-operand",
+        operator: "/",
+        detail: "division by zero",
+      });
     }
-  }),
+    if (operator === "%" && typeof right === "number" && right === 0) {
+      return new MachineErrorValue({
+        tag: "bad-operand",
+        operator: "%",
+        detail: "remainder by zero",
+      });
+    }
+    return baseBinary(operator, left, right);
+  },
+  memberGet: (args) => {
+    const object = args[0];
+    const name = args[1];
+    if (object instanceof RecordValue && typeof name === "string" && object.fields.has(name)) {
+      return object.fields.get(name);
+    }
+    const value = baseMemberGet(object, name);
+    if (value !== undefined) return value;
+    return new MachineErrorValue({
+      tag: "unknown-field",
+      field: typeof name === "string" ? name : String(name),
+    });
+  },
+  indexGet: (args) => {
+    const object = args[0];
+    const index = args[1];
+    if (object instanceof ArrayValue && typeof index === "number") {
+      if (!Number.isInteger(index) || index < 0 || index >= object.items.length) {
+        return new MachineErrorValue({
+          tag: "bad-operand",
+          operator: "index",
+          detail: String(index),
+        });
+      }
+      return baseIndexGet(object, index);
+    }
+    return new MachineErrorValue({ tag: "bad-operand", operator: "index", detail: String(index) });
+  },
 });
 
-export const runCheckingEvaluator = (source: string): readonly string[] =>
-  makeVariantEvaluator(source, checkingController, checkingOperations).run();
-
-export const checkingEvaluatorError = (source: string): string => {
-  const transcript = runCheckingEvaluator(source);
-  const printed = transcript[transcript.length - 2];
-  if (printed === undefined) throw new EvaluatorFault(`no error printed for ${source}`);
-  return printed;
+/* The base shapes the checking operations defer to. The evaluator's own
+   table supplies the unchecked versions; the checker only wraps the
+   faulting cases, so a passing run sees the same values. */
+const baseBinary = (operator: Word, left: Word, right: Word): Word => {
+  const a = typeof left === "number" ? left : 0;
+  const b = typeof right === "number" ? right : 0;
+  switch (operator) {
+    case "+":
+      return typeof left === "string" && typeof right === "string" ? left + right : a + b;
+    case "-":
+      return a - b;
+    case "*":
+      return a * b;
+    case "/":
+      return a / b;
+    case "%":
+      return a % b;
+    case "<":
+      return a < b;
+    case "<=":
+      return a <= b;
+    case ">":
+      return a > b;
+    case ">=":
+      return a >= b;
+    case "===":
+      return left === right;
+    case "!==":
+      return left !== right;
+    default:
+      return undefined;
+  }
 };
 
-export const ex_5_30 = checkingEvaluatorError;
+const baseMemberGet = (object: Word, name: Word): Word => {
+  if (typeof name !== "string") return undefined;
+  if (object instanceof ArrayValue && name === "length") return object.items.length;
+  if (object instanceof MapValue && name === "size") return object.entries.size;
+  if (object instanceof SetValue && name === "size") return object.items.size;
+  if (object instanceof ErrorValue && name === "message") return object.message;
+  if (object instanceof RecordValue && object.fields.has(name)) return object.fields.get(name);
+  if (typeof object === "string" && name === "length") return object.length;
+  if (
+    object instanceof ArrayValue ||
+    object instanceof MapValue ||
+    object instanceof SetValue ||
+    typeof object === "string"
+  ) {
+    return builtinMember(object, name);
+  }
+  return undefined;
+};
 
-// The exercise's worked failures, each pinned by its printed detail.
-export const checkingFailureRows = (): ReadonlyArray<{
-  readonly program: string;
-  readonly printed: string;
-}> => [
-  { program: "(/ 1 0)", printed: checkingEvaluatorError("(/ 1 0)") },
-  { program: "(car 5)", printed: checkingEvaluatorError("(car 5)") },
-  { program: "no-such-variable", printed: checkingEvaluatorError("no-such-variable") },
-  { program: "(cons 1)", printed: checkingEvaluatorError("(cons 1)") },
-  { program: "(5 6)", printed: checkingEvaluatorError("(5 6)") },
-];
+const baseIndexGet = (object: ArrayValue, index: number): Word => object.items[index] ?? undefined;
+
+/** The three probes: a division by zero, a bad member access, and the
+ * checks leaving a correct program untouched. */
+export const ex_5_30 = (): {
+  readonly divisionError: string | null;
+  readonly memberError: string | null;
+  readonly clean: readonly string[];
+} => {
+  const division = makeEvaluator("1 / 0;", makeCheckingOperations()).run();
+  const member = makeEvaluator("const r = { x: 1 };\nr.y.z;", makeCheckingOperations()).run();
+  const clean = makeEvaluator(
+    [
+      "function factorial(n: number): number { return n === 1 ? 1 : factorial(n - 1) * n; }",
+      "console.log(factorial(5));",
+    ].join("\n"),
+    makeCheckingOperations(),
+  ).run();
+  return {
+    divisionError: division.outcome.tag === "ok" ? null : JSON.stringify(division.outcome.error),
+    memberError: member.outcome.tag === "ok" ? null : JSON.stringify(member.outcome.error),
+    clean: clean.transcript,
+  };
+};

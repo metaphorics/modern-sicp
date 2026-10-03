@@ -7,9 +7,10 @@
     reports the statistics line it printed. *)
 val measure : int -> (string, Sicp_ch5.Sec_5_2.error) result
 
-(** The Figure 5.11 controller augmented with the stack-clearing and
-    statistics instructions. *)
-val factorial_measured_controller : string
+(** The Figure 5.11 controller between [Perform ("initialize-stack",
+    [])] and [Perform ("print-stack-statistics", [])]. *)
+val factorial_measured_controller
+  : Sicp_ch5.Sec_5_1.value Sicp_ch5.Sec_5_1.instruction list
 
 (** [ex_5_14 ()] measures n = 1..7 and states the formulas: pushes and
     maximum depth are both 2n - 2 for n > 1. *)

@@ -8,7 +8,7 @@ import type { Vect2 } from "./ex_2_46.js";
  * Exercise 2.47: exercise 2.46's vectors supply the frame
  * constructor's arguments. The book proposes two representations, each
  * with its own selectors: a frame is the three-element list
- * `(origin edge1 edge2)`, or the pair `(origin (edge1 edge2))`. A
+ * `[origin, edge1, edge2]`, or the pair `[origin, [edge1, edge2]]`. A
  * painter only ever calls selectors, so the two representations are
  * interchangeable below them - which the data abstraction guarantees.
  */
@@ -39,7 +39,7 @@ export const edge1FrameList = (frame: List<Vect2>): Vect2 => frameVectorAt(frame
 /** The second edge selector for the list representation. */
 export const edge2FrameList = (frame: List<Vect2>): Vect2 => frameVectorAt(frame, 2);
 
-/** The pair representation: the frame is (origin (edge1 edge2)). */
+/** The pair representation: the frame is [origin, [edge1, edge2]]. */
 export const makeFramePair = (origin: Vect2, e1: Vect2, e2: Vect2): FramePair => [origin, [e1, e2]];
 
 /** The origin selector for the pair representation. */

@@ -12,6 +12,12 @@ public class E5_50Test :
         test("Exercise 5.50: the compiled interpreter answers 120 and the levels are timed").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            compiledMetacircularRuns() shouldBe emptyList()
+            compiledMetacircularRuns() shouldBe
+                listOf(
+                    "direct answer: 120.0",
+                    "explicit-control answer: 120.0",
+                    "compiled machine answer: 120.0",
+                    "the three executions agree: true",
+                )
         }
     })

@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.50: define the transformation `flip-horiz`, which flips
  * painters horizontally, and transformations that rotate painters
@@ -14,4 +12,4 @@ import sicp.runtime.PendingSolution
  * The scaffold returns the segment count of `rotate180(wave)` painted
  * into `unitSquare`.
  */
-public fun ex_2_50(): Int = throw PendingSolution()
+public fun ex_2_50(): Int = throw PendingExercise()

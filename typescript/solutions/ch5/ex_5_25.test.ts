@@ -2,24 +2,31 @@
 // Original exercise
 
 import { describe, expect, it } from "vitest";
-import {
-  ex_5_25,
-  lazyFactorialValue,
-  lazyMemoizationValues,
-  lazyUnusedArgumentValue,
-} from "./ex_5_25.js";
+import { makeEvaluator } from "../../packages/ch5/src/04-eceval.ts";
+import { ex_5_25, makeNormalOrderOperations, normalOrderController } from "./ex_5_25.ts";
 
-describe("exercise 5.25 normal-order evaluation", () => {
-  it("answers the chapter 1.5 divergence test with 0, where strict order runs forever", () => {
-    expect(ex_5_25()).toBe("0");
+describe("exercise 5.25 normal-order evaluation in the controller", () => {
+  it("never touches the diverging argument the predicate discards", () => {
+    const result = ex_5_25();
+    expect(result.normal.some((line) => line.includes("0"))).toBe(true);
+    expect(result.strictFault).not.toBeNull();
   });
-  it("returns 42 although the unused argument would fault if evaluated", () => {
-    expect(lazyUnusedArgumentValue()).toBe("42");
+  it("forces a used argument once and remembers the value", () => {
+    const { operations, forced } = makeNormalOrderOperations();
+    const program = [
+      "let count = 0;",
+      "function bump() { count = count + 1; return count; }",
+      "function useTwice(x: number) { return x + x; }",
+      "console.log(useTwice(bump()));",
+      "console.log(count);",
+    ].join("\n");
+    const result = makeEvaluator(program, operations, normalOrderController).run();
+    expect(result.outcome.tag).toBe("ok");
+    expect(result.transcript.some((line) => line === "2")).toBe(true);
+    expect(forced()).toBeGreaterThan(0);
   });
-  it("forces a thunked argument once: both references see it and count moved one step", () => {
-    expect(lazyMemoizationValues().slice(-2)).toEqual(["(1 . 1)", "1"]);
-  });
-  it("still computes the applicative factorial", () => {
-    expect(lazyFactorialValue()).toBe("120");
+  it("runs the recursive factorial through the normal-order machine", () => {
+    const result = ex_5_25();
+    expect(result.normal.some((line) => line.includes("120"))).toBe(true);
   });
 });

@@ -2,15 +2,15 @@
 // Original exercise
 
 import { describe, expect, it } from "vitest";
-import { labelOperandOutcome, labelOperandUnderBaseAssembler } from "./ex_5_09.js";
+import { ex_5_09 } from "./ex_5_09.ts";
 
-describe("exercise 5.9 labels as operation operands", () => {
-  it("the strict assembler refuses a label used as an operation operand", () => {
-    expect(labelOperandOutcome()).toBe(
-      "an operation input is written (reg r) or (const c), not (label b)",
-    );
+describe("exercise 5.9 labels are not operation operands", () => {
+  it("rejects the book's offending controller with a bad-target fault", () => {
+    const result = ex_5_09();
+    expect(result.offending).not.toBeNull();
+    expect(result.offending?.tag).toBe("bad-target");
   });
-  it("the base assembler computes the label's instruction address", () => {
-    expect(labelOperandUnderBaseAssembler()).toBe(5);
+  it("accepts the controller once the operand is a value", () => {
+    expect(ex_5_09().fixed).toBeNull();
   });
 });

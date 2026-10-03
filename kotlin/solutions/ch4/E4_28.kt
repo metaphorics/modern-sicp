@@ -3,57 +3,50 @@
 
 package sicp.ch4.solutions
 
-import arrow.core.raise.Raise
-import sicp.ch4.EvalStep
-import sicp.ch4.LazyEvaluator
-import sicp.ch4.lazyTranscriptOn
-import sicp.runtime.AppE
-import sicp.runtime.Env
-import sicp.runtime.Expr
-import sicp.runtime.SchemeError
+import sicp.ch4.LazyModule
 
-// Exercise 4.28: why the operator forces. `apply` dispatches on the
-// procedure VALUE in the operator position -- primitive versus compound --
-// so what sits there must be an actual procedure, not the thunk an
-// argument would be. In `((id +) 2 3)` the operator expression `(id +)`
-// evaluates to `id`'s parameter, which the application delayed: forcing it
-// yields the `+` primitive and the call answers 5. [UnforcedOperator] is
-// the counterfactual the exercise asks for: it applies whatever `eval`
-// returned without forcing, so the call dispatches on a thunk and fails
-// the typed not-applicable fault, naming the thunk.
+// Exercise 4.28: why the operator forces. Application dispatches on the
+// procedure VALUE in the operator position, so what sits there must be an
+// actual procedure, not the thunk an argument would be. In `id(::add)(2, 3)`
+// the operator expression `id(::add)` evaluates to `id`'s parameter, which
+// the application delayed; forcing it yields the `add` function and the
+// call answers 5. The lazy experiment makes that forcing an invariant
+// (the operator is forced before application), and the counterfactual --
+// applying the thunk itself without forcing -- cannot survive source
+// typing at all: the checker rejects the call before any guest effect,
+// which is exactly the failed-admission-before-effect boundary.
 
-/** The counterfactual evaluator: no forcing in the operator position. */
-public class UnforcedOperator(
-    global: Env,
-) : LazyEvaluator(global) {
-    context(r: Raise<SchemeError>)
-    override fun evalApplication(
-        expr: AppE,
-        env: Env,
-    ): EvalStep {
-        val procedure = eval(expr.operator, env) // the book's `eval`, not `actual-value`
-        return applyDelaying(procedure, expr.operands, env)
-    }
+/** The operator forced: `id(::add)(2, 3)` dispatches on the `add`
+ * function. => "5\n" */
+internal val FORCED_OPERATOR_PROGRAM: String =
+    """
+fun add(a: Long, b: Long): Long = a + b
+
+fun id(x: (Long, Long) -> Long): (Long, Long) -> Long = x
+
+fun main() {
+    println(id(::add)(2L, 3L))
 }
+    """.trimIndent()
 
-/** The operator forced: `((id +) 2 3)` dispatches on the `+` primitive.
+/** The counterfactual: the delayed operator applied without forcing. The
+ * checker rejects the call before the program runs, so the effect before
+ * it never happens. */
+internal val UNFORCED_OPERATOR_PROGRAM: String =
+    """
+fun add(a: Long, b: Long): Long = a + b
+
+fun main() {
+    println("before")
+    val op = thunk { ::add }
+    println(op(2L, 3L))
+}
+    """.trimIndent()
+
+/** The operator forced: the call dispatches on the `add` function.
  * => "5\n" */
-public fun forcedOperatorTranscript(): String =
-    lazyTranscriptOn(
-        ::LazyEvaluator,
-        """
-        (define (id x) x)
-        ((id +) 2 3)
-        """.trimIndent(),
-    )
+public fun forcedOperatorTranscript(): String = outcomeText(LazyModule.run(FORCED_OPERATOR_PROGRAM).map { it.result })
 
-/** The operator unforced: the call dispatches on the delayed operand.
- * => "Error: not a procedure: #[thunk]\n" */
-public fun unforcedOperatorTranscript(): String =
-    lazyTranscriptOn(
-        ::UnforcedOperator,
-        """
-        (define (id x) x)
-        ((id +) 2 3)
-        """.trimIndent(),
-    )
+/** The operator unforced: the call is rejected at admission, before the
+ * `before` effect can run. => "Error: <rejection category>\n" */
+public fun unforcedOperatorTranscript(): String = outcomeText(LazyModule.run(UNFORCED_OPERATOR_PROGRAM).map { it.result })

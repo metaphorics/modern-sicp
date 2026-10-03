@@ -8,16 +8,19 @@ import io.kotest.matchers.shouldBe
 
 public class E2_27Test :
     FunSpec({
-        test("reverseTree reverses only the top level: ((3 4) (1 2))") {
-            toBookString(reverseTree(bookPairTree())) shouldBe "((3 4) (1 2))"
+        test("reverseTree changes only the root's child order") {
+            reverseTree(twoBranchTree()) shouldBe
+                tree(tree(leaf(3L), leaf(4L)), tree(leaf(1L), leaf(2L)))
         }
-        test("deepReverse reverses at every level: ((4 3) (2 1))") {
-            toBookString(deepReverse(bookPairTree())) shouldBe "((4 3) (2 1))"
+        test("deepReverse reverses child order recursively") {
+            deepReverse(twoBranchTree()) shouldBe
+                tree(tree(leaf(4L), leaf(3L)), tree(leaf(2L), leaf(1L)))
         }
-        test("deepReverse of (1 (2 3 4)) is ((4 3 2) 1)") {
-            toBookString(deepReverse(tree(leaf(1L), tree(leaf(2L), leaf(3L), leaf(4L))))) shouldBe "((4 3 2) 1)"
+        test("deepReverse reverses each nested node's children") {
+            val input = tree(leaf(1L), tree(leaf(2L), leaf(3L), leaf(4L)))
+            deepReverse(input) shouldBe tree(tree(leaf(4L), leaf(3L), leaf(2L)), leaf(1L))
         }
-        test("ex_2_27 prints ((4 3) (2 1))") {
-            ex_2_27() shouldBe "((4 3) (2 1))"
+        test("ex_2_27 returns the recursively reversed sample tree") {
+            ex_2_27() shouldBe tree(tree(leaf(4L), leaf(3L)), tree(leaf(2L), leaf(1L)))
         }
     })

@@ -17,7 +17,7 @@ use std::cell::Cell;
 use std::fmt;
 use std::rc::Rc;
 
-use sicp_runtime::SchemeError;
+use sicp_runtime::SicpError;
 
 /// What a bank-account operation answers with: the book's `withdraw`
 /// returns either the new balance or the `Insufficient funds` message,
@@ -169,11 +169,11 @@ impl Rand {
     /// `random-init`.
     ///
     /// # Errors
-    /// Returns [`SchemeError::ZeroSeed`] when `seed` is zero, because
+    /// Returns [`SicpError::ZeroSeed`] when `seed` is zero, because
     /// `xorshift64*` maps zero to zero forever.
-    pub fn new(seed: u64) -> Result<Self, SchemeError> {
+    pub fn new(seed: u64) -> Result<Self, SicpError> {
         if seed == 0 {
-            return Err(SchemeError::ZeroSeed);
+            return Err(SicpError::ZeroSeed);
         }
         Ok(Self { x: seed })
     }

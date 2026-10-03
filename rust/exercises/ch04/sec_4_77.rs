@@ -12,7 +12,7 @@ pub struct Pending {
 }
 
 mod ex_4_77 {
-    //! Exercise 4.77: not and lisp-value deferred until their variables are bound.
+    //! Exercise 4.77: `Not` and `Value` deferred until their variables are bound.
 
     use super::Pending;
 

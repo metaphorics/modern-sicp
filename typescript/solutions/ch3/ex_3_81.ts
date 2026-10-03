@@ -13,7 +13,7 @@ import { consStream, type Stream, streamCdr } from "../../packages/ch3/src/05-st
  * to `reset` the sequence to a specified value, and an output stream
  * of the random numbers, with no assignment anywhere. The seed is
  * carried as a value instead of in a state cell: `generate` emits
- * `rand-update` of the carried seed and `reset` emits the requested
+ * `randUpdate` of the carried seed and `reset` emits the requested
  * seed itself, and the tail of the output recurses on the rest of the
  * requests with the emitted value as the new carried seed. The
  * generator's state therefore lives in the stream of emitted numbers,
@@ -26,7 +26,7 @@ import { consStream, type Stream, streamCdr } from "../../packages/ch3/src/05-st
 export type RandRequest = "generate" | { readonly kind: "reset"; readonly seed: number };
 
 /** The book's request-driven `rand`: the stream of random numbers
- * answering the request stream, starting from `random-init`. Passing
+ * answering the request stream, starting from `randomInit`. Passing
  * `seed` overrides the starting state, which the recursion uses to
  * carry the current state down the stream. Each request answers with
  * the next xorshift state for `generate` or the requested seed for

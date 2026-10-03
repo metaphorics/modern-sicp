@@ -13,10 +13,10 @@ use ch02::sec_2_4::{
     add_complex, angle, div_complex, imag_part, install_polar_package, install_rectangular_package,
     magnitude, make_from_mag_ang, make_from_real_imag, mul_complex, real_part, sub_complex,
 };
-use sicp_runtime::{OpTable, SchemeError, Value};
+use sicp_runtime::{OpTable, SicpError, Value};
 
 /// The real number a selector produced, as the example's error type.
-fn real_value(v: Result<Value, SchemeError>) -> Result<f64, Box<dyn std::error::Error>> {
+fn real_value(v: Result<Value, SicpError>) -> Result<f64, Box<dyn std::error::Error>> {
     match v {
         Ok(Value::Real(x)) => Ok(x),
         other => Err(format!("expected a real: {other:?}").into()),

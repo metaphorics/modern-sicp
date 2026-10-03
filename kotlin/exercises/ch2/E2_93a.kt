@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.93a is added by this edition and extends exercise 2.93; the
  * map's idea is "reduce rational functions lazily". Exercise 2.97 makes
@@ -15,4 +13,4 @@ import sicp.runtime.PendingSolution
  * on first access, by Kotlin's `by lazy` delegate -- then memoized for
  * every later reader.
  */
-public fun ex_2_93a(): Triple<Int, Int, Boolean> = throw PendingSolution()
+public fun ex_2_93a(): Triple<Int, Int, Boolean> = throw PendingExercise()

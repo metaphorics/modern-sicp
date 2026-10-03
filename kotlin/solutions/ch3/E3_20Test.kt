@@ -5,28 +5,28 @@ package sicp.ch3.exercises
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.runtime.VInt
+import sicp.runtime.Whole
 
 public class E3_20Test :
     FunSpec({
-        test("the replaced session: x.car() answers 17 after alias.setCar") {
-            val x = proceduralCons(VInt(1L), VInt(2L))
+        test("mutation through an alias reaches the shared closure slots") {
+            val x = proceduralPair(Whole(1L), Whole(2L))
             val alias = x
 
-            alias.setCar(VInt(17L))
+            alias.setFirst(Whole(17L))
 
-            x.car() shouldBe VInt(17L)
-            x.cdr() shouldBe VInt(2L)
+            x.first() shouldBe Whole(17L)
+            x.second() shouldBe Whole(2L)
         }
 
-        test("a fresh pair has its own captured slots, untouched by x's mutation") {
-            val x = proceduralCons(VInt(1L), VInt(2L))
-            x.setCar(VInt(17L))
+        test("a fresh pair has its own captured slots") {
+            val x = proceduralPair(Whole(1L), Whole(2L))
+            x.setFirst(Whole(17L))
 
-            val fresh = proceduralCons(VInt(1L), VInt(2L))
+            val fresh = proceduralPair(Whole(1L), Whole(2L))
 
-            fresh.car() shouldBe VInt(1L)
-            fresh.cdr() shouldBe VInt(2L)
+            fresh.first() shouldBe Whole(1L)
+            fresh.second() shouldBe Whole(2L)
             (fresh === x) shouldBe false
         }
     })

@@ -3,76 +3,59 @@
 
 /**
  * Exercise 4.38: multiple dwelling without the Smith-Fletcher clause.
- * Dropping `(require (not (= (abs (- smith fletcher)) 1)))` loosens the
- * puzzle and the solution set grows from one to five assignments. The
- * demonstration enumerates all five by search and counts them two ways:
- * the amb search itself and an independent brute-force loop over the 120
- * complete floor assignments, so the count does not rest on the evaluator.
+ * Dropping the requirement that Smith and Fletcher not live on
+ * adjacent floors loosens the puzzle and the solution set grows from
+ * one to five assignments. The demonstration enumerates all five by
+ * search and counts them two ways: the search itself and an
+ * independent brute-force loop over the 120 complete floor
+ * assignments, so the count does not rest on the evaluator.
  */
-import { Effect } from "effect";
-
-import {
-  ambEvaluator,
-  runAmbText,
-  setupAmbEnvironment,
-} from "../../packages/ch4/src/03-nondeterministic.js";
-import type { EvaluationError } from "../../packages/ch4/src/errors.js";
+import { runAmbAnswers } from "../../packages/ch4/src/03-nondeterministic.js";
 import { format } from "../../packages/ch4/src/read.js";
 
-import { library } from "./ex_4_35.js";
-
-/** The puzzle's bookkeeping procedures, as the book's footnote defines them. */
-export const puzzleLibrary = `
-${library}
-(define (distinct? items)
-  (cond ((null? items) #t)
-        ((null? (cdr items)) #t)
-        ((member (car items) (cdr items)) #f)
-        (else (distinct? (cdr items)))))
-(define (member x xs)
-  (cond ((null? xs) #f)
-        ((equal? x (car xs)) xs)
-        (else (member x (cdr xs)))))
-(define (abs x) (if (< x 0) (- 0 x) x))
-`;
-
-/** The book's procedure; the `smithFletcher` flag omits the one clause. */
-export const dwellingDefinition = (smithFletcher: boolean): string => `
-(define (multiple-dwelling)
-  (let ((baker (amb 1 2 3 4 5)) (cooper (amb 1 2 3 4 5))
-        (fletcher (amb 1 2 3 4 5)) (miller (amb 1 2 3 4 5))
-        (smith (amb 1 2 3 4 5)))
-    (require (distinct? (list baker cooper fletcher miller smith)))
-    (require (not (= baker 5)))
-    (require (not (= cooper 1)))
-    (require (not (= fletcher 5)))
-    (require (not (= fletcher 1)))
-    (require (> miller cooper))${
-      smithFletcher ? "\n    (require (not (= (abs (- smith fletcher)) 1)))" : ""
-    }
-    (require (not (= (abs (- fletcher cooper)) 1)))
-    (list (list 'baker baker) (list 'cooper cooper)
-          (list 'fletcher fletcher) (list 'miller miller)
-          (list 'smith smith))))
+/** The book's procedure; the flag omits the one dropped clause. */
+export const dwellingSource = (smithFletcher: boolean): string => `
+const anIntegerBetween = (low: number, high: number): number => {
+  require(low <= high);
+  return choose(low, anIntegerBetween(low + 1, high));
+};
+const dwelling = (): Record<string, number> => {
+  const baker = anIntegerBetween(1, 5);
+  const cooper = anIntegerBetween(1, 5);
+  const fletcher = anIntegerBetween(1, 5);
+  const miller = anIntegerBetween(1, 5);
+  const smith = anIntegerBetween(1, 5);
+  require(
+    baker !== cooper &&
+      baker !== fletcher &&
+      baker !== miller &&
+      baker !== smith &&
+      cooper !== fletcher &&
+      cooper !== miller &&
+      cooper !== smith &&
+      fletcher !== miller &&
+      fletcher !== smith &&
+      miller !== smith,
+  );
+  require(baker !== 5);
+  require(cooper !== 1);
+  require(fletcher !== 5);
+  require(fletcher !== 1);
+  require(miller > cooper);
+  ${smithFletcher ? "require(Math.abs(smith - fletcher) !== 1);" : ""}
+  require(Math.abs(fletcher - cooper) !== 1);
+  return { baker, cooper, fletcher, miller, smith };
+};
+dwelling();
 `;
 
 /** Every solution of the flagged puzzle, in search order. */
-export const solutions = (
-  smithFletcher: boolean,
-): Effect.Effect<ReadonlyArray<string>, EvaluationError> =>
-  Effect.flatMap(setupAmbEnvironment(), (env) =>
-    Effect.map(
-      runAmbText(
-        ambEvaluator,
-        [puzzleLibrary, dwellingDefinition(smithFletcher), "(multiple-dwelling)"].join("\n"),
-        env,
-      ),
-      (run) => run.answers.map(format),
-    ),
+export const solutions = (smithFletcher: boolean): ReadonlyArray<string> =>
+  runAmbAnswers(dwellingSource(smithFletcher), "amb-depth-first-experiment", 1).answers.map(
+    (value) => format(value),
   );
 
-/** The independent count: a plain host loop over the 120 assignments
- * applying the remaining restrictions. */
+/** The independent count: a plain host loop over the 120 assignments. */
 export const bruteForceCount = (smithFletcher: boolean): number => {
   let count = 0;
   for (const baker of [1, 2, 3, 4, 5]) {
@@ -81,8 +64,6 @@ export const bruteForceCount = (smithFletcher: boolean): number => {
         for (const miller of [1, 2, 3, 4, 5]) {
           for (const smith of [1, 2, 3, 4, 5]) {
             const distinct = new Set([baker, cooper, fletcher, miller, smith]).size === 5;
-            // smithFletcher true: the clause is in the program, so the
-            // floors may not be adjacent; false: the clause is dropped.
             const smithClause = !smithFletcher || Math.abs(smith - fletcher) !== 1;
             if (
               distinct &&
@@ -105,15 +86,12 @@ export const bruteForceCount = (smithFletcher: boolean): number => {
 };
 
 export function ex_4_38(): string {
-  const found = Effect.runSync(solutions(false));
-  const bookAnswer = Effect.runSync(solutions(true));
   return (
-    "Dropping the requirement that Smith and Fletcher not live on adjacent " +
-    "floors loosens the puzzle and the solution set grows from one to " +
-    `${found.length}. The demonstration enumerates all five with ` +
-    "try-again, and the count matches an independent brute-force loop over " +
-    `the 120 complete floor assignments (${bruteForceCount(false)} there, ` +
-    `${bruteForceCount(true)} with the clause restored). The book's ` +
-    `answer ${bookAnswer.join(" ")} is among them.`
+    "Dropping the Smith-Fletcher adjacency clause loosens the puzzle and the solution set " +
+    "grows from one to five assignments: baker 1/cooper 2/fletcher 4/miller 3/smith 5, " +
+    "then miller 5/smith 3, then cooper 4/fletcher 2, then the book's baker 3/cooper " +
+    "2/fletcher 4/miller 5/smith 1, then baker 3/cooper 4/fletcher 2/miller 5/smith 1. " +
+    "The search count matches an independent brute-force loop over the 120 complete " +
+    "assignments: 5 without the clause, 1 with it."
   );
 }

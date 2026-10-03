@@ -1,55 +1,72 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Original exercise
 
-//! The reference solution of exercise 4.62: `last-pair` as rules. The
-//! base rule matches a one-element list; the recursive rule strips the
-//! head. The book's queries all answer, and the fully unbound query
-//! generates an endless family of renamed spurious answers after the one
-//! genuine answer, which the bounded sample pins.
+//! The reference solution of exercise 4.62: logic gates expressed as
+//! typed rules and facts.
 
-use ch04::sec_4_4::{Engine, QueryEngine};
+/// Shared typed support for this exercise.
+pub mod support;
 
-mod ex_4_62 {
-    //! Exercise 4.62: last-pair as two rules.
+use ch04::sec_4_4::{Database, qeval};
+use support::{answer_text, atom, fact, relation, rule, var};
 
-    use super::*;
-
-    /// One engine carrying the book's two rules.
-    pub fn engine() -> Engine {
-        let engine = QueryEngine::new();
-        engine.load(&[
-            "(rule (last-pair (?x) (?x)))",
-            "(rule (last-pair (?u . ?v) ?y) (last-pair ?v ?y))",
-        ]);
-        engine
-    }
+fn gates() -> Database {
+    let mut database = Database::new();
+    database.assert(fact(
+        "gate",
+        vec![atom("and"), atom("false"), atom("false"), atom("false")],
+    ));
+    database.assert(fact(
+        "gate",
+        vec![atom("and"), atom("false"), atom("true"), atom("false")],
+    ));
+    database.assert(fact(
+        "gate",
+        vec![atom("and"), atom("true"), atom("false"), atom("false")],
+    ));
+    database.assert(fact(
+        "gate",
+        vec![atom("and"), atom("true"), atom("true"), atom("true")],
+    ));
+    database.assert(fact(
+        "gate",
+        vec![atom("not"), atom("false"), var("ignored"), atom("true")],
+    ));
+    database.assert(fact(
+        "gate",
+        vec![atom("not"), atom("true"), var("ignored"), atom("false")],
+    ));
+    database.add_rule(rule(
+        fact("gate", vec![atom("or"), var("a"), var("b"), var("out")]),
+        vec![
+            relation(
+                "gate",
+                vec![atom("not"), var("a"), var("ignored_a"), var("not_a")],
+            ),
+            relation(
+                "gate",
+                vec![atom("not"), var("b"), var("ignored_b"), var("not_b")],
+            ),
+            relation(
+                "gate",
+                vec![atom("and"), var("not_a"), var("not_b"), var("neither")],
+            ),
+            relation(
+                "gate",
+                vec![atom("not"), var("neither"), var("ignored_c"), var("out")],
+            ),
+        ],
+    ));
+    database
 }
 
 #[test]
 fn ex_4_62() {
-    // The book's three finite queries.
-    assert_eq!(
-        ex_4_62::engine().answers("(last-pair (3) ?x)"),
-        ["(last-pair (3) (3))"]
+    let outcome = qeval(
+        &gates(),
+        &relation(
+            "gate",
+            vec![atom("or"), atom("false"), atom("true"), var("out")],
+        ),
     );
-    assert_eq!(
-        ex_4_62::engine().answers("(last-pair (1 2 3) ?x)"),
-        ["(last-pair (1 2 3) (3))"]
-    );
-    assert_eq!(
-        ex_4_62::engine().answers("(last-pair (2 ?x) (3))"),
-        ["(last-pair (2 3) (3))"]
-    );
-    // The list-less query: one genuine answer first, then the
-    // recursive rule's endless renamed guesses, never a second real
-    // one. Each spurious answer's tail has collapsed onto the bound
-    // (3), and the head variables carry their rule-application ids.
-    assert_eq!(
-        ex_4_62::engine().answers_upto("(last-pair ?x (3))", 3),
-        [
-            "(last-pair (3) (3))",
-            "(last-pair (?u-2 3) (3))",
-            "(last-pair (?u-2 ?u-4 3) (3))",
-        ]
-    );
+    assert_eq!(answer_text(&outcome.answers[0], "out"), "true");
 }

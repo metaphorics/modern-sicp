@@ -1,29 +1,50 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
-
-import { armedStrictError, descendingStrictError, ex_4_25, lazyAnswers } from "./ex_4_25.js";
+import { format } from "../../packages/ch4/src/read.js";
+import { bool, call, ident, num } from "../../packages/ch4/src/syntax/ast.js";
+import { runLazyFactorial, strictEnv } from "./ex_4_25.js";
 
 describe("exercise 4.25: unless breaks under applicative order", () => {
-  it("the lazy factorial bottoms out at 120", async () => {
-    const transcript = await Effect.runPromise(lazyAnswers());
-    expect(transcript[transcript.length - 1]).toBe("120");
+  it("the lazy unless-based factorial answers 120", () => {
+    const outcome = runLazyFactorial().outcome;
+    expect(outcome.tag).toBe("ok");
+    if (outcome.tag === "ok") {
+      expect(format(outcome.value)).toBe("120");
+    }
   });
 
-  it("the armed call dies in the division under strict arguments", async () => {
-    const error = await Effect.runPromise(armedStrictError());
-    expect(error.message).toBe("/: expects a nonzero divisor list");
+  it("under strict arguments the unused arm runs before unless is entered", () => {
+    const { env, session } = strictEnv(500);
+    const outcome = session.evaluate(
+      call(ident("unlessStrict"), [bool(true), call(ident("mark"), [num(1)]), num(42)]),
+      env,
+    );
+    expect(outcome.tag).toBe("ok");
+    if (outcome.tag === "ok") {
+      expect(format(outcome.value)).toBe("42");
+    }
+    const marks = session.lookupVariableValue("marks", env);
+    expect(marks.tag).toBe("ok");
+    if (marks.tag === "ok") {
+      expect(format(marks.value)).toBe("1");
+    }
   });
 
-  it("the strict factorial only stops at the budget", async () => {
-    const error = await Effect.runPromise(descendingStrictError());
-    expect(error.message).toContain("still descending");
+  it("under strict arguments the failing arm reaches the caller first", () => {
+    const { env, session } = strictEnv(500);
+    const outcome = session.evaluate(
+      call(ident("unlessStrict"), [bool(true), call(ident("boom"), []), num(42)]),
+      env,
+    );
+    expect(outcome).toMatchObject({ tag: "error", error: { tag: "bad-operand" } });
   });
 
-  it("reports the contrast", () => {
-    expect(ex_4_25()).toContain("120");
-    expect(ex_4_25()).toContain("still descending");
+  it("the strict factorial reaches the evaluation budget", () => {
+    const { env, session, spent } = strictEnv(100);
+    const outcome = session.evaluate(call(ident("factStrict"), [num(5)]), env);
+    expect(outcome).toMatchObject({ tag: "error", error: { tag: "bad-operand" } });
+    expect(spent()).toBe(101);
   });
 });

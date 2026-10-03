@@ -3,8 +3,15 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.VInt
-import sicp.runtime.vlist
+import sicp.runtime.Whole
+import sicp.runtime.datumList
+import sicp.runtime.renderDatum
 
-/** The book's expression, evaluated: `toString` prints the nested form `(1 (2 (3 4)))`. */
-public fun ex_2_24(): String = vlist(VInt(1L), vlist(VInt(2L), vlist(VInt(3L), VInt(4L)))).toString()
+/** Render the nested datum tree in the canonical native constructor form. */
+public fun ex_2_24(): String =
+    renderDatum(
+        datumList(
+            Whole(1L),
+            datumList(Whole(2L), datumList(Whole(3L), Whole(4L))),
+        ),
+    )

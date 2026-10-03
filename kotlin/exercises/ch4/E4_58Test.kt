@@ -12,6 +12,14 @@ public class E4_58Test :
         test("Exercise 4.58: the big-shot query").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            bigShotQuery() shouldBe listOf("MEASURE")
+            bigShotQuery() shouldBe
+                listOf(
+                    "?person = [Warbucks, Oliver]",
+                    "?division = administration",
+                    "?person = [Bitdiddle, Ben]",
+                    "?division = computer",
+                    "?person = [Scrooge, Eben]",
+                    "?division = accounting",
+                )
         }
     })

@@ -12,6 +12,10 @@ public class E5_15Test :
         test("Exercise 5.15: counting executed instructions").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            gcdInstructionCounts() shouldBe emptyList()
+            gcdInstructionCounts() shouldBe
+                listOf(
+                    "gcd(206, 40): 26 instructions",
+                    "factorial(5): 49 instructions",
+                )
         }
     })

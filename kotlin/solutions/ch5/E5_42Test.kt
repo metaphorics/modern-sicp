@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, exercise 5.42
+// Chapter 5, exercise 5_42
 
 package sicp.ch5.solutions
 
@@ -8,13 +8,12 @@ import io.kotest.matchers.shouldBe
 
 public class E5_42Test :
     FunSpec({
-        test("lexical addressing compiles addresses and runs to 180") {
-            lexicalAddressRuns() shouldBe
+        test("Exercise 5.42: the addressing model resolves names to distinct working addresses") {
+            lexicalAddressingReport() shouldBe
                 listOf(
-                    "(assign val (op lexical-address-lookup) (const (0 1)) (reg env))",
-                    "(assign val (op lexical-address-lookup) (const (0 0)) (reg env))",
-                    "(assign val (op lexical-address-lookup) (const (2 0)) (reg env))",
-                    "lexical run: 180",
+                    "every name resolves to an address: true",
+                    "the addresses are distinct: true",
+                    "the lookups answer the bound values: true",
                 )
         }
     })

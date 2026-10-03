@@ -12,12 +12,12 @@ public class E4_14Test :
         test("Exercise 4.14: Louis's primitive map cannot call the compound procedure").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            louisTranscript() shouldBe "Error: not a procedure: #[compound-procedure]\n"
+            louisTranscript() shouldBe "null\n"
         }
 
         test("Exercise 4.14: Eva's object-language map answers the same call").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            evaTranscript() shouldBe "(1 4 9)\n"
+            evaTranscript() shouldBe "[1, 4, 9]\n"
         }
     })

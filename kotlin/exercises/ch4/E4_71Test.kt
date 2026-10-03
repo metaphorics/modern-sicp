@@ -12,6 +12,17 @@ public class E4_71Test :
         test("Exercise 4.71: the delay debate").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            delayDebate() shouldBe listOf("MEASURE")
+            delayDebate() shouldBe
+                listOf(
+                    "delayed engine, first three of the unanchored outranked query:",
+                    "?staff-person = [Hacker, Alyssa, P]",
+                    "?boss = [Bitdiddle, Ben]",
+                    "?staff-person = [Hacker, Alyssa, P]",
+                    "?boss = [Warbucks, Oliver]",
+                    "?staff-person = [Fect, Cy, D]",
+                    "?boss = [Bitdiddle, Ben]",
+                    "married cycle, first answer:",
+                    "?who = Minnie",
+                )
         }
     })

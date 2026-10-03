@@ -11,13 +11,10 @@ public class E4_63Test :
         test("Exercise 4.63: the Genesis queries") {
             genesisQueries() shouldBe
                 listOf(
-                    "query: (grandson Cain ?x)",
-                    "(grandson Cain Irad)",
-                    "query: (son Lamech ?x)",
-                    "(son Lamech Jabal)",
-                    "(son Lamech Jubal)",
-                    "query: (grandson ?x Methushael)",
-                    "(grandson Irad Methushael)",
+                    "?x = Irad",
+                    "?x = Jabal",
+                    "?x = Jubal",
+                    "?x = Irad",
                 )
         }
     })

@@ -95,7 +95,10 @@ of @ref{2.2.3}:
 
 @example ocaml
 let sum_primes a b =
-  List.fold_left ( + ) 0 (List.filter Primality.is_prime (enumerate_interval a b))
+  List.fold_left
+    ( + )
+    0
+    (List.filter Primality.is_prime (enumerate_interval a b))
 ;;
 @end example
 
@@ -116,7 +119,9 @@ sequence paradigm to compute the second prime in the interval from 10,000 to
 @example ocaml
 List.hd
   (List.tl
-     (List.filter Primality.is_prime (enumerate_interval 10000 1000000)))
+     (List.filter
+        Primality.is_prime
+        (enumerate_interval 10000 1000000)))
 @end example
 
 @noindent
@@ -185,11 +190,16 @@ let rec stream_ref s n =
 let rec stream_map f s =
   if stream_null s
   then the_empty_stream
-  else cons_stream (f (stream_car s)) (fun () -> stream_map f (stream_cdr s))
+  else
+    cons_stream
+      (f (stream_car s))
+      (fun () -> stream_map f (stream_cdr s))
 ;;
 
 let rec stream_for_each f s =
-  if stream_null s then () else (f (stream_car s); stream_for_each f (stream_cdr s))
+  if stream_null s
+  then ()
+  else (f (stream_car s); stream_for_each f (stream_cdr s))
 ;;
 @end example
 
@@ -331,7 +341,9 @@ and 1,000,000.  @code{stream_enumerate_interval} is the stream analog of
 let rec stream_enumerate_interval low high =
   if low > high
   then the_empty_stream
-  else cons_stream low (fun () -> stream_enumerate_interval (low + 1) high)
+  else
+    cons_stream low
+      (fun () -> stream_enumerate_interval (low + 1) high)
 ;;
 @end example
 
@@ -360,7 +372,8 @@ let rec stream_filter pred s =
   then the_empty_stream
   else if pred (stream_car s)
   then
-    cons_stream (stream_car s) (fun () -> stream_filter pred (stream_cdr s))
+    cons_stream (stream_car s)
+      (fun () -> stream_filter pred (stream_cdr s))
   else stream_filter pred (stream_cdr s)
 ;;
 @end example
@@ -396,7 +409,9 @@ Cons
   ( 10007
   , lazy
       (stream_filter Primality.is_prime
-         (Cons (10008, lazy (stream_enumerate_interval 10009 1000000)))) )
+         (Cons
+            (10008, lazy
+               (stream_enumerate_interval 10009 1000000)))) )
 @end example
 
 @noindent
@@ -411,7 +426,9 @@ Cons
   ( 10009
   , lazy
       (stream_filter Primality.is_prime
-         (Cons (10010, lazy (stream_enumerate_interval 10011 1000000)))) )
+         (Cons
+            (10010, lazy
+               (stream_enumerate_interval 10011 1000000)))) )
 @end example
 
 @noindent
@@ -742,7 +759,7 @@ infinite, because the sieve contains a sieve within it.
 @image{../../text/original/figures/chap3/Fig3.31a,,132mm,Figure 3.31: The prime sieve viewed as a signal-processing system.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.31a.std,,132mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.31a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.31:} The prime sieve viewed as a signal-processing system.}
@@ -791,7 +808,8 @@ definitions and names the implicit one @code{integers_implicit}; the run of
 the section proves that the two agree element for element:
 
 @example ocaml
-let rec integers_implicit = Cons (1, lazy (add_streams ones integers_implicit))
+let rec integers_implicit =
+  Cons (1, lazy (add_streams ones integers_implicit))
 @end example
 
 @noindent
@@ -812,7 +830,10 @@ let rec fibs_implicit =
     , lazy
         (Cons
            ( 1
-           , lazy (add_streams (stream_cdr fibs_implicit) fibs_implicit) )) )
+           , lazy
+               (add_streams
+                  (stream_cdr fibs_implicit)
+                  fibs_implicit) )) )
 @end example
 
 @noindent
@@ -966,7 +987,9 @@ let rec merge s1 s2 =
     then
       cons_stream s1car (fun () -> merge (stream_cdr s1) s2)
     else if s1car > s2car
-    then cons_stream s2car (fun () -> merge s1 (stream_cdr s2))
+    then
+      cons_stream s2car
+        (fun () -> merge s1 (stream_cdr s2))
     else
       cons_stream
         s1car
@@ -1076,7 +1099,8 @@ constant term, which is @math{{e^0 = 1}}.  Accordingly, we can generate the seri
 for @math{e^x} as
 
 @example ocaml
-let rec exp_series = Cons (1.0, lazy (integrate_series exp_series))
+let rec exp_series =
+  Cons (1.0, lazy (integrate_series exp_series))
 @end example
 
 Show how to generate the series for sine and cosine, starting from the facts
@@ -1191,7 +1215,9 @@ local binding here.}
 @example ocaml
 let sqrt_stream x =
   let rec guesses =
-    Cons (1.0, lazy (stream_map (fun guess -> sqrt_improve guess x) guesses))
+    Cons
+      (1.0, lazy
+         (stream_map (fun guess -> sqrt_improve guess x) guesses))
   in
   guesses
 ;;
@@ -1236,7 +1262,9 @@ and scale the result by 4:
 
 @example ocaml
 let rec partial_sums (s : float stream) : float stream =
-  Cons (stream_car s, lazy (add_streams_float (stream_cdr s) (partial_sums s)))
+  Cons
+    (stream_car s, lazy
+       (add_streams_float (stream_cdr s) (partial_sums s)))
 ;;
 
 let rec pi_summands n =
@@ -1244,7 +1272,8 @@ let rec pi_summands n =
     ( 1.0 /. float_of_int n
     , lazy (stream_map (fun x -> -. x) (pi_summands (n + 2))) )
 ;;
-let pi_stream = stream_map (fun x -> 4.0 *. x) (partial_sums (pi_summands 1))
+let pi_stream =
+  stream_map (fun x -> 4.0 *. x) (partial_sums (pi_summands 1))
 
 show_stream show_float 8 pi_stream;;
 (* =>
@@ -1363,7 +1392,9 @@ We can demonstrate this kind of ``super-acceleration'' of the @math{\pi}
 sequence:
 
 @example ocaml
-show_stream show_float 8 (accelerated_sequence euler_transform pi_stream);;
+show_stream
+  show_float 8
+  (accelerated_sequence euler_transform pi_stream);;
 (* =>
 4
 3.16666666666667
@@ -1398,7 +1429,9 @@ let sqrt_stream x =
   cons_stream
     1.0
     (fun () ->
-       stream_map (fun guess -> sqrt_improve guess x) (sqrt_stream x))
+       stream_map
+         (fun guess -> sqrt_improve guess x)
+         (sqrt_stream x))
 @end example
 
 Alyssa P. Hacker replies that this version of the function is considerably
@@ -1559,7 +1592,8 @@ procedure from @ref{2.2.1}:
 let rec stream_append s1 s2 =
   if stream_null s1
   then s2
-  else cons_stream (stream_car s1) (fun () -> stream_append (stream_cdr s1) s2)
+  else cons_stream (stream_car s1)
+    (fun () -> stream_append (stream_cdr s1) s2)
 @end example
 
 @noindent
@@ -1591,7 +1625,8 @@ employed it in the language KRC (@ref{Turner 1981}).}
 let rec interleave s1 s2 =
   if stream_null s1
   then s2
-  else cons_stream (stream_car s1) (fun () -> interleave s2 (stream_cdr s1))
+  else cons_stream (stream_car s1)
+    (fun () -> interleave s2 (stream_cdr s1))
 @end example
 
 @noindent
@@ -1748,7 +1783,9 @@ let integral integrand initial_value dt =
     Cons
       ( initial_value
       , lazy
-          (add_streams_float (stream_map (fun x -> dt *. x) integrand) int) )
+          (add_streams_float
+             (stream_map (fun x -> dt *. x) integrand)
+             int) )
   in
   int
 ;;
@@ -1784,7 +1821,7 @@ input  |           |      |\__    +-->|   \_  integral
 @image{../../text/original/figures/chap3/Fig3.32a,,143mm,Figure 3.32: The integral procedure viewed as a signal-processing system.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.32a.std,,143mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.32a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.32:} The @code{integral} procedure viewed as a signal-processing system.}
@@ -1833,7 +1870,7 @@ accompanying signal-flow diagram.
 @image{../../text/original/figures/chap3/Fig3.33a,,125mm,Figure 3.33: An RC circuit and the associated signal-flow diagram.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.33a.std,,125mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.33a.std,120mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.33:} An RC circuit and the associated signal-flow diagram.}
@@ -1860,10 +1897,12 @@ changes from positive to negative, and @math{0} otherwise.  (Assume that the sig
 @math{0} input is positive.)  For example, a typical input signal with its associated
 zero-crossing signal would be
 
-@example ocaml
-(* sense_data : ...; 1.; 2.; 1.5; 1.; 0.5; -0.1; -2.; -3.; -2.; -0.5; 0.2; 3.; 4.; ...
-   crossings  : ...; 0;  0; 0;   0;  0;   -1;   0;   0;   0;   0;    1;   0;  0;  ... *)
-@end example
+@smallexample
+(* sense_data : ...; 1.; 2.; 1.5; 1.; 0.5; -0.1; -2.; -3.; -2.; -0.5;
+   0.2; 3.; 4.; ...
+   crossings  : ...; 0;  0; 0;   0;  0;   -1;   0;   0;   0;   0;
+   1;   0;  0;  ... *)
+@end smallexample
 
 In Alyssa's system, the signal from the sensor is represented as a stream
 @code{sense_data} and the stream @code{zero_crossings} is the corresponding
@@ -1875,9 +1914,12 @@ constructs her zero-crossing stream as follows:
 @example ocaml
 let rec make_zero_crossings input_stream last_value =
   cons_stream
-    (sign_change_detector (stream_car input_stream) last_value)
+    (sign_change_detector
+       (stream_car input_stream) last_value)
     (fun () ->
-       make_zero_crossings (stream_cdr input_stream) (stream_car input_stream))
+       make_zero_crossings
+         (stream_cdr input_stream)
+         (stream_car input_stream))
 ;;
 let zero_crossings = make_zero_crossings sense_data 0
 @end example
@@ -1910,7 +1952,8 @@ let rec make_zero_crossings input_stream last_value =
   let avpt = (stream_car input_stream +. last_value) /. 2.0 in
   cons_stream
     (sign_change_detector avpt last_value)
-    (fun () -> make_zero_crossings (stream_cdr input_stream) avpt)
+    (fun () ->
+       make_zero_crossings (stream_cdr input_stream) avpt)
 @end example
 
 This does not correctly implement Alyssa's plan.  Find the bug that Louis has
@@ -1944,7 +1987,9 @@ let rec int =
   Cons
     ( initial_value
     , lazy
-        (add_streams_float (stream_map (fun x -> dt *. x) integrand) int) )
+        (add_streams_float
+           (stream_map (fun x -> dt *. x) integrand)
+           int) )
 @end example
 
 @noindent
@@ -1990,7 +2035,7 @@ such equations.
 @image{../../text/original/figures/chap3/Fig3.34,,110mm,Figure 3.34: An ``analog computer circuit'' that solves the equation dy / dt = f(y).,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.34.std,,110mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.34.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.34:} An ``analog computer circuit'' that solves the equation @math{{dy / dt = f(y)}}.}
@@ -2036,7 +2081,9 @@ let integral_delayed delayed_integrand initial_value dt =
       ( initial_value
       , lazy
           (let integrand = Lazy.force delayed_integrand in
-           add_streams_float (stream_map (fun x -> dt *. x) integrand) int) )
+           add_streams_float
+             (stream_map (fun x -> dt *. x) integrand)
+             int) )
   in
   int
 ;;
@@ -2046,7 +2093,7 @@ let integral_delayed delayed_integrand initial_value dt =
 Now we can implement our @code{solve} procedure by delaying the evaluation of
 @code{dy} -- the integrand is a promise that reads one cell holding @code{y},
 and the definition backpatches the cell with the stream it builds before
-anything is forced:@footnote{The book's original footnote worries that Scheme
+anything is forced:@footnote{The book's original footnote worries that
 implementations differ in how they handle internal definitions
 (see @ref{4.1.6}); this edition sidesteps the variance by planting one
 promise cell and backpatching it, so every demand advances the single
@@ -2055,7 +2102,10 @@ shared stream instead of building a fresh copy.}
 @example ocaml
 let solve f y0 dt =
   let y_cell = ref (lazy the_empty_stream) in
-  let y = integral_delayed (lazy (stream_map f (Lazy.force !y_cell))) y0 dt in
+  let y =
+    integral_delayed
+      (lazy (stream_map f (Lazy.force !y_cell))) y0 dt
+  in
   y_cell := lazy y;
   y
 ;;
@@ -2192,7 +2242,7 @@ v_C -+- C                     _)  v_L
 @image{../../text/original/figures/chap3/Fig3.36,,102mm,Figure 3.36: A series RLC circuit.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.36.std,,102mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.36.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.36:} A series RLC circuit.}
@@ -2339,7 +2389,7 @@ integrand, and every function that uses it must be aware of this.
 In effect, we have created two classes of procedures: ordinary procedures and
 procedures that take delayed arguments.  In general, creating separate classes
 of procedures forces us to create separate classes of higher-order procedures
-as well.@footnote{This is a small reflection, in Lisp, of the difficulties that
+as well.@footnote{This is a small reflection of the difficulties that
 conventional strongly typed languages such as Pascal have in coping with
 higher-order procedures.  In such languages, the programmer must specify the
 data types of the arguments and the result of each procedure: number, logical
@@ -2444,13 +2494,16 @@ let rec monte_carlo experiment_stream passed failed =
   let next passed failed =
     cons_stream
       (float_of_int passed /. float_of_int (passed + failed))
-      (fun () -> monte_carlo (stream_cdr experiment_stream) passed failed)
+      (fun () ->
+         monte_carlo (stream_cdr experiment_stream) passed failed)
   in
   if stream_car experiment_stream
   then next (passed + 1) failed
   else next passed (failed + 1)
 ;;
-let pi = stream_map (fun p -> sqrt (6.0 /. p)) (monte_carlo cesaro_stream 0 0)
+let pi =
+  stream_map (fun p -> sqrt (6.0 /. p))
+    (monte_carlo cesaro_stream 0 0)
 @end example
 
 @noindent
@@ -2607,10 +2660,10 @@ Paul's requests    |  merge  |---->| bank    |---->
 @end example
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.38a,,143mm,Figure 3.38: A joint bank account@comma{} modeled by merging two streams of transaction requests.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.38a,147mm,,Figure 3.38: A joint bank account@comma{} modeled by merging two streams of transaction requests.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.38a.std,,143mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.38a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.38:} A joint bank account, modeled by merging two streams of transaction requests.}
@@ -2679,10 +2732,11 @@ the complexity of their designs with the same general techniques used by
 designers of all complex systems.  They combine primitive elements to form
 compound objects, they abstract compound objects to form higher-level building
 blocks, and they preserve modularity by adopting appropriate large-scale views
-of system structure.  In illustrating these techniques, we have used Lisp as a
+of system structure.  In illustrating these techniques, we have used OCaml as a
 language for describing processes and for constructing computational data
 objects and processes to model complex phenomena in the real world.  However,
-as we confront increasingly complex problems, we will find that Lisp, or indeed
+as we confront increasingly complex problems, we will find that OCaml, or
+indeed
 any fixed programming language, is not sufficient for our needs.  We must
 constantly turn to new languages to express our ideas more
 effectively.  Establishing new languages is a powerful strategy for controlling
@@ -2759,36 +2813,38 @@ itself becomes no more (and no less) than the discipline of constructing
 appropriate descriptive languages.
 
 We now embark on a tour of the technology by which languages are established in
-terms of other languages.  In this chapter we shall use Lisp as a base,
-implementing evaluators as Lisp procedures.  Lisp is particularly well suited
-to this task, because of its ability to represent and manipulate symbolic
-expressions.  We will take the first step in understanding how languages are
-implemented by building an evaluator for Lisp itself.  The language implemented
-by our evaluator will be a subset of the Scheme dialect of Lisp that we use in
-this book.  Although the evaluator described in this chapter is written for a
-particular dialect of Lisp, it contains the essential structure of an evaluator
-for any expression-oriented language designed for writing programs for a
-sequential machine.  (In fact, most language processors contain, deep within
-them, a little ``Lisp'' evaluator.)  The evaluator has been simplified for the
-purposes of illustration and discussion, and some features have been left out
-that would be important to include in a production-quality Lisp system.
-Nevertheless, this simple evaluator is adequate to execute most of the programs
-in this book.@footnote{The most important features that our evaluator leaves
+terms of other languages.  In this chapter we shall use OCaml as a base,
+implementing evaluators as OCaml functions over typed syntax data.  OCaml is
+well suited to this task, because the evaluator's input is ordinary checked
+OCaml source, lowered to a typed syntax tree the evaluator can manipulate as
+data.  We will take the first step in understanding how languages are
+implemented by building an evaluator for a real subset of OCaml: the language
+implemented by our evaluator is the edition's own guest language, admitted
+OCaml source in the grammar this book uses throughout.  Although the evaluator
+described in this chapter is written for that typed subset, it contains the
+essential structure of an evaluator for any expression-oriented language
+designed for writing programs for a sequential machine.  (In fact, most
+language processors contain, deep within them, a small core evaluator.)  The
+evaluator has been simplified for the purposes of illustration and discussion,
+and some features have been left out that would be important to include in a
+production-quality language system.  Nevertheless, this simple evaluator is
+adequate to execute most of the programs in this book.
+@footnote{The most important features that our evaluator leaves
 out are mechanisms for handling errors and supporting debugging.  For a more
 extensive discussion of evaluators, see @ref{Friedman et al. 1992}, which
 gives an exposition of programming languages that proceeds via a sequence of
 evaluators written in Scheme.}
 
-An important advantage of making the evaluator accessible as a Lisp program is
-that we can implement alternative evaluation rules by describing these as
+An important advantage of making the evaluator accessible as an OCaml program
+is that we can implement alternative evaluation rules by describing these as
 modifications to the evaluator program.  One place where we can use this power
 to good effect is to gain extra control over the ways in which computational
 models embody the notion of time, which was so central to the discussion in
 @ref{Chapter 3}.  There, we mitigated some of the complexities of state and
 assignment by using streams to decouple the representation of time in the world
 from time in the computer.  Our stream programs, however, were sometimes
-cumbersome, because they were constrained by the applicative-order evaluation
-of Scheme.  In @ref{4.2}, we'll change the underlying language to
+cumbersome, because they were constrained by the strict call-by-value
+evaluation of OCaml.  In @ref{4.2}, we'll change the underlying language to
 provide for a more elegant approach, by modifying the evaluator to provide for
 @newterm{normal-order evaluation}.
 
@@ -2805,14 +2861,14 @@ searches are handled automatically by the underlying mechanism of the language.
 In @ref{4.4} we implement a @newterm{logic-programming} language in
 which knowledge is expressed in terms of relations, rather than in terms of
 computations with inputs and outputs.  Even though this makes the language
-drastically different from Lisp, or indeed from any conventional language, we
+drastically different from OCaml, or indeed from any conventional language, we
 will see that the logic-programming evaluator shares the essential structure of
-the Lisp evaluator.
+the evaluator of this chapter.
 
 @menu
 * 4.1::              The Metacircular Evaluator
-* 4.2::              Variations on a Scheme -- Lazy Evaluation
-* 4.3::              Variations on a Scheme -- Nondeterministic Computing
+* 4.2::              Variations on the Guest Language --- Lazy Evaluation
+* 4.3::              Variations on the Guest Language --- Nondeterministic Computing
 * 4.4::              Logic Programming
 @end menu
 

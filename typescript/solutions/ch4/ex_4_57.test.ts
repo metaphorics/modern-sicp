@@ -2,21 +2,25 @@
 // Original exercise
 
 import { describe, expect, it } from "vitest";
-import { ex_4_57, replacementAnswers } from "./ex_4_57.js";
+import { replacementAnswers } from "./ex_4_57.js";
 
-describe("exercise 4.57: can-replace", () => {
-  it("finds both of Cy's replacements but excludes Cy himself", () => {
-    const [cyReplacements] = replacementAnswers();
-    expect(cyReplacements).toStrictEqual([
-      "(can-replace (Hacker Alyssa P) (Fect Cy D))",
-      "(can-replace (Bitdiddle Ben) (Fect Cy D))",
+describe("exercise 4.57: the can-replace rule", () => {
+  it("replaces Fect through the shared job and the wizard step", () => {
+    const [fect] = replacementAnswers();
+    expect(fect).toStrictEqual([
+      'can-replace(["Hacker", "Alyssa", "P"], ["Fect", "Cy", "D"])',
+      'can-replace(["Bitdiddle", "Ben"], ["Fect", "Cy", "D"])',
     ]);
   });
 
-  it("uses both salaries to select cheaper replacement candidates", () => {
-    const [, lowerPaid] = replacementAnswers();
-    expect(lowerPaid.length).toBeGreaterThan(0);
-    expect(lowerPaid.every((answer) => answer.includes("?salary"))).toBe(false);
-    expect(ex_4_57()).toContain("excludes self-replacement");
+  it("keeps only replacements favoring the better-paid side", () => {
+    const [, more] = replacementAnswers();
+    expect(more).toHaveLength(2);
+    expect(more).toEqual(
+      expect.arrayContaining([
+        'and(can-replace(["Fect", "Cy", "D"], ["Hacker", "Alyssa", "P"]), salary(["Fect", "Cy", "D"], "35000"), salary(["Hacker", "Alyssa", "P"], "40000"), lisp-value("35000", "40000"))',
+        'and(can-replace(["Aull", "DeWitt"], ["Warbucks", "Oliver"]), salary(["Aull", "DeWitt"], "25000"), salary(["Warbucks", "Oliver"], "150000"), lisp-value("25000", "150000"))',
+      ]),
+    );
   });
 });

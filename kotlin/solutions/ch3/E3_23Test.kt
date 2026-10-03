@@ -7,21 +7,21 @@ import arrow.core.Either
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
-import sicp.runtime.VInt
-import sicp.runtime.VSym
+import sicp.runtime.Symbol
+import sicp.runtime.Whole
 
 public class E3_23Test :
     FunSpec({
         test("insert at both ends, then delete from both ends") {
             val d = makeDeque()
-            d.rearInsert(VSym("a"))
-            d.rearInsert(VSym("b"))
-            d.frontInsert(VSym("z"))
-            d.frontDeque() shouldBe VSym("z")
-            d.rearDeque() shouldBe VSym("b")
-            d.frontDelete() shouldBe Either.Right(VSym("z"))
-            d.rearDelete() shouldBe Either.Right(VSym("b"))
-            d.frontDelete() shouldBe Either.Right(VSym("a"))
+            d.rearInsert(Symbol("a"))
+            d.rearInsert(Symbol("b"))
+            d.frontInsert(Symbol("z"))
+            d.frontDeque() shouldBe Symbol("z")
+            d.rearDeque() shouldBe Symbol("b")
+            d.frontDelete() shouldBe Either.Right(Symbol("z"))
+            d.rearDelete() shouldBe Either.Right(Symbol("b"))
+            d.frontDelete() shouldBe Either.Right(Symbol("a"))
             d.emptyDeque() shouldBe true
         }
 
@@ -36,26 +36,26 @@ public class E3_23Test :
 
         test("the deque is reusable after emptying, from either end") {
             val d = makeDeque()
-            d.rearInsert(VSym("a"))
-            d.rearDelete() shouldBe Either.Right(VSym("a"))
-            d.frontInsert(VSym("b"))
-            d.frontDelete() shouldBe Either.Right(VSym("b"))
+            d.rearInsert(Symbol("a"))
+            d.rearDelete() shouldBe Either.Right(Symbol("a"))
+            d.frontInsert(Symbol("b"))
+            d.frontDelete() shouldBe Either.Right(Symbol("b"))
             d.emptyDeque() shouldBe true
-            d.rearInsert(VSym("c"))
-            d.frontDeque() shouldBe VSym("c")
+            d.rearInsert(Symbol("c"))
+            d.frontDeque() shouldBe Symbol("c")
         }
 
         test("mixed traffic keeps both ends consistent") {
             val d = makeDeque()
-            d.frontInsert(VInt(1))
-            d.rearInsert(VInt(2))
-            d.frontInsert(VInt(3))
-            d.rearInsert(VInt(4))
-            d.frontDeque() shouldBe VInt(3)
-            d.rearDeque() shouldBe VInt(4)
-            d.rearDelete() shouldBe Either.Right(VInt(4))
-            d.frontDelete() shouldBe Either.Right(VInt(3))
-            d.frontDelete() shouldBe Either.Right(VInt(1))
-            d.rearDelete() shouldBe Either.Right(VInt(2))
+            d.frontInsert(Whole(1))
+            d.rearInsert(Whole(2))
+            d.frontInsert(Whole(3))
+            d.rearInsert(Whole(4))
+            d.frontDeque() shouldBe Whole(3)
+            d.rearDeque() shouldBe Whole(4)
+            d.rearDelete() shouldBe Either.Right(Whole(4))
+            d.frontDelete() shouldBe Either.Right(Whole(3))
+            d.frontDelete() shouldBe Either.Right(Whole(1))
+            d.rearDelete() shouldBe Either.Right(Whole(2))
         }
     })

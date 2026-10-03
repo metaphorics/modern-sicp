@@ -2,18 +2,14 @@
 // Original exercise
 
 import { describe, expect, it } from "vitest";
-import { ex_5_05 } from "./ex_5_05.js";
+import { ex_5_05 } from "./ex_5_05.ts";
 
 describe("exercise 5.5 recursive machine hand traces", () => {
   it("pins the executed factorial and Fibonacci stack traces", () => {
     const result = ex_5_05(4, 4);
-    expect(result.factorial.ok).toBe(true);
-    expect(result.fibonacci.ok).toBe(true);
-    if (!result.factorial.ok || !result.fibonacci.ok) return;
-    const fact = result.factorial.value;
-    const fib = result.fibonacci.value;
-    expect(fact.registers["val"]).toBe(24);
-    expect(fact.instructions).toBe(38);
+    const fact = result.factorial;
+    expect(fact.value).toBe(24);
+    expect(fact.instructionCount).toBe(38);
     expect(
       fact.events.map((event) => [
         event.tag,
@@ -35,12 +31,21 @@ describe("exercise 5.5 recursive machine hand traces", () => {
       ["restore", 34, "n", 4],
       ["restore", 35, "continue", 3],
     ]);
-    expect(fib.registers["val"]).toBe(3);
-    expect(fib.instructions).toBe(97);
+    const fib = result.fibonacci;
+    expect(fib.value).toBe(3);
+    expect(fib.instructionCount).toBe(97);
     expect(fib.maxDepth).toBe(6);
     expect(fib.events).toHaveLength(32);
     expect(
       fib.events.filter((event) => event.tag === "restore").map((event) => event.matchedSave),
     ).toEqual([19, 17, 31, 29, 12, 10, 47, 45, 5, 3, 69, 67, 81, 79, 63, 61]);
+  });
+  it("every restore is paired with its save, so the nesting holds", () => {
+    const result = ex_5_05(4, 4);
+    for (const trace of [result.factorial, result.fibonacci]) {
+      for (const event of trace.events) {
+        if (event.tag === "restore") expect(event.matchedSave).not.toBeNull();
+      }
+    }
   });
 });

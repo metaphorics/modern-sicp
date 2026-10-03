@@ -19,7 +19,7 @@ mod ex_2_07 {
 
     impl Interval {
         /// The interval constructor given in the statement of exercise
-        /// 2.7: `(define (make-interval a b) (cons a b))`.
+        /// 2.7: the lower bound and the upper bound paired together.
         fn new(a: f64, b: f64) -> Self {
             Interval { lower: a, upper: b }
         }

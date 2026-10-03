@@ -13,9 +13,11 @@ spawned return. The tree-recursive @code{fib} of @ref{1.2.2} fans out
 exactly this way:
 
 @example kotlin
-public fun factorial(n: Long): Long = if (n <= 1L) 1L else n * factorial(n - 1L)
+public fun factorial(n: Long): Long =
+    if (n <= 1L) 1L else n * factorial(n - 1L)
 
-public fun fib(n: Int): Long = if (n < 2) n.toLong() else fib(n - 1) + fib(n - 2)
+public fun fib(n: Int): Long =
+    if (n < 2) n.toLong() else fib(n - 1) + fib(n - 2)
 
 factorial(20)
 // => 2432902008176640000
@@ -37,7 +39,8 @@ a loop, and refuses to compile a function whose self-calls are not
 actually in tail position:
 
 @example kotlin
-public tailrec fun factorialIter(n: Long, acc: Long = 1L): Long =
+public tailrec fun factorialIter(n: Long,
+    acc: Long = 1L): Long =
     if (n <= 1L) acc else factorialIter(n - 1L, acc * n)
 
 factorialIter(20)
@@ -103,9 +106,11 @@ and @code{filter} record work without doing any of it. A terminal operation
 such as @code{take(n)} or @code{toList()} drives the pipeline:
 
 @example kotlin
-public fun naturals(): Sequence<Long> = generateSequence(1L) @{ it + 1L @}
+public fun naturals(): Sequence<Long> =
+    generateSequence(1L) @{ it + 1L @}
 
-public fun squaresSeq(): Sequence<Long> = naturals().map @{ x -> x * x @}
+public fun squaresSeq(): Sequence<Long> =
+    naturals().map @{ x -> x * x @}
 
 public fun evens(): Sequence<Long> =
     sequence @{
@@ -138,7 +143,8 @@ stream being defined. The runtime therefore ships a second type,
 a tail that computes at most once.
 
 @example kotlin
-public fun squareStream(n: Long): LStream<Long> = consStream(n * n) @{ squareStream(n + 1L) @}
+public fun squareStream(n: Long): LStream<Long> =
+    consStream(n * n) @{ squareStream(n + 1L) @}
 
 squareStream(1L).take(5)
 // => [1, 4, 9, 16, 25]

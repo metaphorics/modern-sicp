@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.94: using `divTerms`, implement `remainder-terms` and define
  * `gcd-terms` by Euclid's algorithm on term lists, then `gcd-poly`, and
@@ -12,4 +10,4 @@ import sicp.runtime.PendingSolution
  * for polynomials and to ordinary `gcd` for integers. The book's test
  * pair works out to `x^2 - x` up to sign.
  */
-public fun ex_2_94(): String = throw PendingSolution()
+public fun ex_2_94(): String = throw PendingExercise()

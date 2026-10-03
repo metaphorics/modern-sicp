@@ -2,7 +2,7 @@
 // Original exercise
 
 /**
- * Exercise 1.3: define a procedure that takes three numbers as arguments
+ * Exercise 1.3: implement a function that takes three numbers as arguments
  * and returns the sum of the squares of the two larger numbers.
  */
 export class PendingSolution extends Error {

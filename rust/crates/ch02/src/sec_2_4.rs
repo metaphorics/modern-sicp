@@ -26,7 +26,7 @@
 
 use std::rc::Rc;
 
-use sicp_runtime::{Handler, Key, OpTable, SchemeError, Symbol, Value, car, cdr, cons_cell};
+use sicp_runtime::{Handler, Key, OpTable, SicpError, Symbol, Value, car, cdr, cons_cell};
 
 // ---------------------------------------------------------------------
 // 2.4.2 Tagged data (introduced here so the representations can carry it)
@@ -43,12 +43,12 @@ pub fn attach_tag(type_tag: &str, contents: Value) -> Value {
 /// Extracts the tag of a tagged datum: the book's `type-tag`.
 ///
 /// # Errors
-/// [`SchemeError::UserRaised`] with the book's message when `datum` is
+/// [`SicpError::UserRaised`] with the book's message when `datum` is
 /// not tagged.
-pub fn type_tag(datum: &Value) -> Result<Symbol, SchemeError> {
+pub fn type_tag(datum: &Value) -> Result<Symbol, SicpError> {
     match datum {
         Value::Tagged { tag, .. } => Ok(Rc::clone(tag)),
-        other => Err(SchemeError::UserRaised {
+        other => Err(SicpError::UserRaised {
             message: "Bad tagged datum: TYPE-TAG".into(),
             irritants: vec![other.clone()],
         }),
@@ -58,12 +58,12 @@ pub fn type_tag(datum: &Value) -> Result<Symbol, SchemeError> {
 /// Extracts the contents of a tagged datum: the book's `contents`.
 ///
 /// # Errors
-/// [`SchemeError::UserRaised`] with the book's message when `datum` is
+/// [`SicpError::UserRaised`] with the book's message when `datum` is
 /// not tagged.
-pub fn contents(datum: &Value) -> Result<Value, SchemeError> {
+pub fn contents(datum: &Value) -> Result<Value, SicpError> {
     match datum {
         Value::Tagged { data, .. } => Ok((**data).clone()),
-        other => Err(SchemeError::UserRaised {
+        other => Err(SicpError::UserRaised {
             message: "Bad tagged datum: CONTENTS".into(),
             irritants: vec![other.clone()],
         }),
@@ -96,20 +96,20 @@ pub fn is_polar(z: &Value) -> bool {
 /// The single real component behind a complex-number part. The section's
 /// complex components are reals, since magnitude, angle, and the
 /// trigonometric conversions produce reals.
-fn as_real(v: &Value) -> Result<f64, SchemeError> {
+fn as_real(v: &Value) -> Result<f64, SicpError> {
     match v {
         Value::Real(x) => Ok(*x),
-        other => Err(SchemeError::TypeMismatch(format!(
+        other => Err(SicpError::TypeMismatch(format!(
             "complex-number components are reals: {other}"
         ))),
     }
 }
 
 /// The two real arguments of a constructor handler.
-fn as_real_pair(args: &[Value]) -> Result<(f64, f64), SchemeError> {
+fn as_real_pair(args: &[Value]) -> Result<(f64, f64), SicpError> {
     match args {
         [x, y] => Ok((as_real(x)?, as_real(y)?)),
-        _ => Err(SchemeError::WrongArity {
+        _ => Err(SicpError::WrongArity {
             procedure: "operation-table handler".into(),
             expected: "2".into(),
             got: args.len(),
@@ -118,10 +118,10 @@ fn as_real_pair(args: &[Value]) -> Result<(f64, f64), SchemeError> {
 }
 
 /// The single argument of a selector handler.
-fn sole(args: &[Value]) -> Result<&Value, SchemeError> {
+fn sole(args: &[Value]) -> Result<&Value, SicpError> {
     match args {
         [one] => Ok(one),
-        _ => Err(SchemeError::WrongArity {
+        _ => Err(SicpError::WrongArity {
             procedure: "operation-table handler".into(),
             expected: "1".into(),
             got: args.len(),
@@ -134,21 +134,21 @@ fn sole(args: &[Value]) -> Result<&Value, SchemeError> {
 // working in isolation, named with the `rect_` prefix the book spells as
 // a `-rectangular` suffix.
 
-fn rect_real_part(z: &Value) -> Result<Value, SchemeError> {
+fn rect_real_part(z: &Value) -> Result<Value, SicpError> {
     car(z)
 }
 
-fn rect_imag_part(z: &Value) -> Result<Value, SchemeError> {
+fn rect_imag_part(z: &Value) -> Result<Value, SicpError> {
     cdr(z)
 }
 
-fn rect_magnitude(z: &Value) -> Result<Value, SchemeError> {
+fn rect_magnitude(z: &Value) -> Result<Value, SicpError> {
     let x = as_real(&car(z)?)?;
     let y = as_real(&cdr(z)?)?;
     Ok(Value::real((x * x + y * y).sqrt()))
 }
 
-fn rect_angle(z: &Value) -> Result<Value, SchemeError> {
+fn rect_angle(z: &Value) -> Result<Value, SicpError> {
     let x = as_real(&car(z)?)?;
     let y = as_real(&cdr(z)?)?;
     Ok(Value::real(y.atan2(x)))
@@ -182,23 +182,23 @@ pub fn rect_make_from_mag_ang_tagged(r: f64, a: f64) -> Value {
 // Alyssa P. Hacker's polar representation: a complex number is the pair
 // (magnitude, angle); she pays for the trigonometry in her selectors.
 
-fn polar_real_part(z: &Value) -> Result<Value, SchemeError> {
+fn polar_real_part(z: &Value) -> Result<Value, SicpError> {
     let r = as_real(&car(z)?)?;
     let a = as_real(&cdr(z)?)?;
     Ok(Value::real(r * a.cos()))
 }
 
-fn polar_imag_part(z: &Value) -> Result<Value, SchemeError> {
+fn polar_imag_part(z: &Value) -> Result<Value, SicpError> {
     let r = as_real(&car(z)?)?;
     let a = as_real(&cdr(z)?)?;
     Ok(Value::real(r * a.sin()))
 }
 
-fn polar_magnitude(z: &Value) -> Result<Value, SchemeError> {
+fn polar_magnitude(z: &Value) -> Result<Value, SicpError> {
     car(z)
 }
 
-fn polar_angle(z: &Value) -> Result<Value, SchemeError> {
+fn polar_angle(z: &Value) -> Result<Value, SicpError> {
     cdr(z)
 }
 
@@ -237,15 +237,15 @@ pub fn polar_make_from_mag_ang_tagged(r: f64, a: f64) -> Value {
 /// design keeps its dispatch in its name.
 ///
 /// # Errors
-/// [`SchemeError::UserRaised`] with the book's message when `z` carries
+/// [`SicpError::UserRaised`] with the book's message when `z` carries
 /// neither tag.
-pub fn real_part_dispatch(z: &Value) -> Result<Value, SchemeError> {
+pub fn real_part_dispatch(z: &Value) -> Result<Value, SicpError> {
     if is_rectangular(z) {
         rect_real_part(&contents(z)?)
     } else if is_polar(z) {
         polar_real_part(&contents(z)?)
     } else {
-        Err(SchemeError::UserRaised {
+        Err(SicpError::UserRaised {
             message: "Unknown type: REAL-PART".into(),
             irritants: vec![z.clone()],
         })
@@ -255,14 +255,14 @@ pub fn real_part_dispatch(z: &Value) -> Result<Value, SchemeError> {
 /// The 2.4.2 generic `imag-part`, as above.
 ///
 /// # Errors
-/// [`SchemeError::UserRaised`] when `z` carries neither tag.
-pub fn imag_part_dispatch(z: &Value) -> Result<Value, SchemeError> {
+/// [`SicpError::UserRaised`] when `z` carries neither tag.
+pub fn imag_part_dispatch(z: &Value) -> Result<Value, SicpError> {
     if is_rectangular(z) {
         rect_imag_part(&contents(z)?)
     } else if is_polar(z) {
         polar_imag_part(&contents(z)?)
     } else {
-        Err(SchemeError::UserRaised {
+        Err(SicpError::UserRaised {
             message: "Unknown type: IMAG-PART".into(),
             irritants: vec![z.clone()],
         })
@@ -272,14 +272,14 @@ pub fn imag_part_dispatch(z: &Value) -> Result<Value, SchemeError> {
 /// The 2.4.2 generic `magnitude`, as above.
 ///
 /// # Errors
-/// [`SchemeError::UserRaised`] when `z` carries neither tag.
-pub fn magnitude_dispatch(z: &Value) -> Result<Value, SchemeError> {
+/// [`SicpError::UserRaised`] when `z` carries neither tag.
+pub fn magnitude_dispatch(z: &Value) -> Result<Value, SicpError> {
     if is_rectangular(z) {
         rect_magnitude(&contents(z)?)
     } else if is_polar(z) {
         polar_magnitude(&contents(z)?)
     } else {
-        Err(SchemeError::UserRaised {
+        Err(SicpError::UserRaised {
             message: "Unknown type: MAGNITUDE".into(),
             irritants: vec![z.clone()],
         })
@@ -289,14 +289,14 @@ pub fn magnitude_dispatch(z: &Value) -> Result<Value, SchemeError> {
 /// The 2.4.2 generic `angle`, as above.
 ///
 /// # Errors
-/// [`SchemeError::UserRaised`] when `z` carries neither tag.
-pub fn angle_dispatch(z: &Value) -> Result<Value, SchemeError> {
+/// [`SicpError::UserRaised`] when `z` carries neither tag.
+pub fn angle_dispatch(z: &Value) -> Result<Value, SicpError> {
     if is_rectangular(z) {
         rect_angle(&contents(z)?)
     } else if is_polar(z) {
         polar_angle(&contents(z)?)
     } else {
-        Err(SchemeError::UserRaised {
+        Err(SicpError::UserRaised {
             message: "Unknown type: ANGLE".into(),
             irritants: vec![z.clone()],
         })
@@ -328,7 +328,7 @@ fn key_tag_list(tags: &[Key]) -> Key {
 /// Adapts one of Ben's or Alyssa's selector procedures to the handler
 /// shape the table stores: peel the sole argument and hand the procedure
 /// the bare contents.
-fn selector_handler(f: fn(&Value) -> Result<Value, SchemeError>) -> Handler {
+fn selector_handler(f: fn(&Value) -> Result<Value, SicpError>) -> Handler {
     Rc::new(move |args| f(sole(args)?))
 }
 
@@ -413,9 +413,9 @@ pub fn install_polar_package(table: &OpTable) {
 /// returns the absent option.
 ///
 /// # Errors
-/// [`SchemeError::UserRaised`] with the book's message when no handler is
+/// [`SicpError::UserRaised`] with the book's message when no handler is
 /// installed for `(op, tags)`; whatever the handler raises otherwise.
-pub fn apply_generic(table: &OpTable, op: &str, args: &[Value]) -> Result<Value, SchemeError> {
+pub fn apply_generic(table: &OpTable, op: &str, args: &[Value]) -> Result<Value, SicpError> {
     let mut tag_keys = Vec::with_capacity(args.len());
     let mut tag_values = Vec::with_capacity(args.len());
     for arg in args {
@@ -424,7 +424,7 @@ pub fn apply_generic(table: &OpTable, op: &str, args: &[Value]) -> Result<Value,
         tag_keys.push(Key::Sym(tag));
     }
     let Some(handler) = table.get(&Key::sym(op), &key_tag_list(&tag_keys)) else {
-        return Err(SchemeError::UserRaised {
+        return Err(SicpError::UserRaised {
             message: "No method for these types: APPLY-GENERIC".into(),
             irritants: vec![Value::list(vec![Value::sym(op), Value::list(tag_values)])],
         });
@@ -438,7 +438,7 @@ pub fn apply_generic(table: &OpTable, op: &str, args: &[Value]) -> Result<Value,
 ///
 /// # Errors
 /// Whatever [`apply_generic`] raises.
-pub fn real_part(table: &OpTable, z: &Value) -> Result<Value, SchemeError> {
+pub fn real_part(table: &OpTable, z: &Value) -> Result<Value, SicpError> {
     apply_generic(table, "real-part", std::slice::from_ref(z))
 }
 
@@ -446,7 +446,7 @@ pub fn real_part(table: &OpTable, z: &Value) -> Result<Value, SchemeError> {
 ///
 /// # Errors
 /// Whatever [`apply_generic`] raises.
-pub fn imag_part(table: &OpTable, z: &Value) -> Result<Value, SchemeError> {
+pub fn imag_part(table: &OpTable, z: &Value) -> Result<Value, SicpError> {
     apply_generic(table, "imag-part", std::slice::from_ref(z))
 }
 
@@ -454,7 +454,7 @@ pub fn imag_part(table: &OpTable, z: &Value) -> Result<Value, SchemeError> {
 ///
 /// # Errors
 /// Whatever [`apply_generic`] raises.
-pub fn magnitude(table: &OpTable, z: &Value) -> Result<Value, SchemeError> {
+pub fn magnitude(table: &OpTable, z: &Value) -> Result<Value, SicpError> {
     apply_generic(table, "magnitude", std::slice::from_ref(z))
 }
 
@@ -462,7 +462,7 @@ pub fn magnitude(table: &OpTable, z: &Value) -> Result<Value, SchemeError> {
 ///
 /// # Errors
 /// Whatever [`apply_generic`] raises.
-pub fn angle(table: &OpTable, z: &Value) -> Result<Value, SchemeError> {
+pub fn angle(table: &OpTable, z: &Value) -> Result<Value, SicpError> {
     apply_generic(table, "angle", std::slice::from_ref(z))
 }
 
@@ -470,12 +470,12 @@ pub fn angle(table: &OpTable, z: &Value) -> Result<Value, SchemeError> {
 /// constructor from the table: rectangular, per the 2.4.3 choice.
 ///
 /// # Errors
-/// [`SchemeError::UserRaised`] when the rectangular constructor is not
+/// [`SicpError::UserRaised`] when the rectangular constructor is not
 /// installed.
-pub fn make_from_real_imag(table: &OpTable, x: f64, y: f64) -> Result<Value, SchemeError> {
+pub fn make_from_real_imag(table: &OpTable, x: f64, y: f64) -> Result<Value, SicpError> {
     let Some(handler) = table.get(&Key::sym("make-from-real-imag"), &Key::sym("rectangular"))
     else {
-        return Err(SchemeError::UserRaised {
+        return Err(SicpError::UserRaised {
             message: "make-from-real-imag is not installed for rectangular".into(),
             irritants: vec![],
         });
@@ -487,11 +487,11 @@ pub fn make_from_real_imag(table: &OpTable, x: f64, y: f64) -> Result<Value, Sch
 /// constructor from the table: polar, per the 2.4.3 choice.
 ///
 /// # Errors
-/// [`SchemeError::UserRaised`] when the polar constructor is not
+/// [`SicpError::UserRaised`] when the polar constructor is not
 /// installed.
-pub fn make_from_mag_ang(table: &OpTable, r: f64, a: f64) -> Result<Value, SchemeError> {
+pub fn make_from_mag_ang(table: &OpTable, r: f64, a: f64) -> Result<Value, SicpError> {
     let Some(handler) = table.get(&Key::sym("make-from-mag-ang"), &Key::sym("polar")) else {
-        return Err(SchemeError::UserRaised {
+        return Err(SicpError::UserRaised {
             message: "make-from-mag-ang is not installed for polar".into(),
             irritants: vec![],
         });
@@ -506,7 +506,7 @@ pub fn make_from_mag_ang(table: &OpTable, r: f64, a: f64) -> Result<Value, Schem
 ///
 /// # Errors
 /// Whatever the generic selectors raise.
-pub fn add_complex(table: &OpTable, z1: &Value, z2: &Value) -> Result<Value, SchemeError> {
+pub fn add_complex(table: &OpTable, z1: &Value, z2: &Value) -> Result<Value, SicpError> {
     let re = as_real(&real_part(table, z1)?)? + as_real(&real_part(table, z2)?)?;
     let im = as_real(&imag_part(table, z1)?)? + as_real(&imag_part(table, z2)?)?;
     make_from_real_imag(table, re, im)
@@ -516,7 +516,7 @@ pub fn add_complex(table: &OpTable, z1: &Value, z2: &Value) -> Result<Value, Sch
 ///
 /// # Errors
 /// Whatever the generic selectors raise.
-pub fn sub_complex(table: &OpTable, z1: &Value, z2: &Value) -> Result<Value, SchemeError> {
+pub fn sub_complex(table: &OpTable, z1: &Value, z2: &Value) -> Result<Value, SicpError> {
     let re = as_real(&real_part(table, z1)?)? - as_real(&real_part(table, z2)?)?;
     let im = as_real(&imag_part(table, z1)?)? - as_real(&imag_part(table, z2)?)?;
     make_from_real_imag(table, re, im)
@@ -526,7 +526,7 @@ pub fn sub_complex(table: &OpTable, z1: &Value, z2: &Value) -> Result<Value, Sch
 ///
 /// # Errors
 /// Whatever the generic selectors raise.
-pub fn mul_complex(table: &OpTable, z1: &Value, z2: &Value) -> Result<Value, SchemeError> {
+pub fn mul_complex(table: &OpTable, z1: &Value, z2: &Value) -> Result<Value, SicpError> {
     let r = as_real(&magnitude(table, z1)?)? * as_real(&magnitude(table, z2)?)?;
     let a = as_real(&angle(table, z1)?)? + as_real(&angle(table, z2)?)?;
     make_from_mag_ang(table, r, a)
@@ -536,7 +536,7 @@ pub fn mul_complex(table: &OpTable, z1: &Value, z2: &Value) -> Result<Value, Sch
 ///
 /// # Errors
 /// Whatever the generic selectors raise.
-pub fn div_complex(table: &OpTable, z1: &Value, z2: &Value) -> Result<Value, SchemeError> {
+pub fn div_complex(table: &OpTable, z1: &Value, z2: &Value) -> Result<Value, SicpError> {
     let r = as_real(&magnitude(table, z1)?)? / as_real(&magnitude(table, z2)?)?;
     let a = as_real(&angle(table, z1)?)? - as_real(&angle(table, z2)?)?;
     make_from_mag_ang(table, r, a)
@@ -549,7 +549,7 @@ pub fn div_complex(table: &OpTable, z1: &Value, z2: &Value) -> Result<Value, Sch
 /// A message-passing object: a closure that receives an operation name as
 /// a message and performs it. The book's footnote limitation holds — this
 /// organization permits only generic procedures of one argument.
-pub type MessageObject = Rc<dyn Fn(&str) -> Result<Value, SchemeError>>;
+pub type MessageObject = Rc<dyn Fn(&str) -> Result<Value, SicpError>>;
 
 /// The book's message-passing `make-from-real-imag`: the returned closure
 /// is the `dispatch` procedure, invoked when a generic operation requests
@@ -561,19 +561,19 @@ pub fn make_from_real_imag_message_passing(x: f64, y: f64) -> MessageObject {
         "imag-part" => Ok(Value::real(y)),
         "magnitude" => Ok(Value::real((x * x + y * y).sqrt())),
         "angle" => Ok(Value::real(y.atan2(x))),
-        other => Err(SchemeError::UserRaised {
+        other => Err(SicpError::UserRaised {
             message: "Unknown op: MAKE-FROM-REAL-IMAG".into(),
             irritants: vec![Value::sym(other)],
         }),
     })
 }
 
-/// The book's one-line `apply-generic` for message passing, `(arg op)`:
-/// feed the operation name to the object and let the object do the work.
+/// The book's one-line `apply-generic` for message passing: feed the
+/// operation name to the object and let the object do the work.
 ///
 /// # Errors
 /// Whatever the object raises for a message it does not answer.
-pub fn apply_generic_message_passing(op: &str, arg: &MessageObject) -> Result<Value, SchemeError> {
+pub fn apply_generic_message_passing(op: &str, arg: &MessageObject) -> Result<Value, SicpError> {
     arg(op)
 }
 
@@ -588,7 +588,7 @@ mod tests {
     }
 
     /// The real number a selector result carries.
-    fn real_of(v: Result<Value, SchemeError>) -> f64 {
+    fn real_of(v: Result<Value, SicpError>) -> f64 {
         as_real(&v.expect("selector")).expect("real component")
     }
 

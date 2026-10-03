@@ -1,0 +1,35 @@
+{
+  "build": [
+    [
+      "./gradlew",
+      "--console=plain",
+      "-q",
+      ":ch5:installDist"
+    ]
+  ],
+  "run": [
+    "ch5/build/install/ch5/bin/ch5",
+    "--case",
+    "{case}",
+    "--engine",
+    "{engine}",
+    "--source",
+    "{source}",
+    "--work",
+    "{work}"
+  ],
+  "native_compile": [
+    "ch5/build/install/ch5/bin/ch5",
+    "--native-compile",
+    "--source",
+    "{source}",
+    "--work",
+    "{work}"
+  ],
+  "native_run": [
+    "ch5/build/install/ch5/bin/ch5",
+    "--native-run",
+    "--work",
+    "{work}"
+  ]
+}

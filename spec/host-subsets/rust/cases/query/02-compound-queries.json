@@ -1,0 +1,5 @@
+{
+  "case_id": "query/02-compound-queries",
+  "constructor": "query_compound",
+  "observation": "driver-dispatched named case; no expected result is recorded here"
+}

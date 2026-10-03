@@ -12,6 +12,12 @@ public class E4_67Test :
         test("Exercise 4.67: the loop detector").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            loopDetectorDemos() shouldBe listOf("MEASURE")
+            loopDetectorDemos() shouldBe
+                listOf(
+                    "married Mickey ?who under the detector: loop bounded at depth 8, terminates",
+                    "distinct bindings: [?who = Minnie]",
+                    "wheel identical to stock as sets: true",
+                    "?boss = [Warbucks, Oliver]",
+                )
         }
     })

@@ -73,7 +73,7 @@ transformations of lists, our programs must construct and copy data structures
 
 To see why this is true, let us compare two programs for computing the sum of
 all the prime numbers in an interval.  The first program is written in standard
-iterative style:@footnote{Assume that we have a predicate @code{prime?} (e.g.,
+iterative style:@footnote{Assume that we have a predicate @code{isPrime} (e.g.,
 as in @ref{1.2.6}) that tests for primality.}
 
 @example typescript
@@ -105,7 +105,7 @@ function sumPrimes(a: number, b: number): number @{
 @noindent
 In carrying out the computation, the first program needs to store only the sum
 being accumulated.  In contrast, the filter in the second program cannot do any
-testing until @code{enumerate-interval} has constructed a complete list of the
+testing until @code{enumerateInterval} has constructed a complete list of the
 numbers in the interval.  The filter generates another list, which in turn is
 passed to @code{accumulate} before being collapsed to form a sum.  Such large
 intermediate storage is not needed by the first program, which we can think of
@@ -117,7 +117,14 @@ sequence paradigm to compute the second prime in the interval from 10,000 to
 1,000,000 by evaluating the expression
 
 @example typescript
-streamCar(streamCdr(streamFilter(isPrime, streamEnumerateInterval(10000, 1000000))));
+streamCar(
+  streamCdr(
+    streamFilter(
+      isPrime,
+      streamEnumerateInterval(10000, 1000000),
+    ),
+  ),
+);
 @end example
 
 @noindent
@@ -142,25 +149,25 @@ to automatically and transparently interleave the construction of the stream
 with its use.
 
 On the surface, streams are just lists with different names for the procedures
-that manipulate them.  There is a constructor, @code{cons-stream}, and two
-selectors, @code{stream-car} and @code{stream-cdr}, which satisfy the
+that manipulate them.  There is a constructor, @code{consStream}, and two
+selectors, @code{streamCar} and @code{streamCdr}, which satisfy the
 constraints
 
 @example
-(stream-car (cons-stream x y)) = x
-(stream-cdr (cons-stream x y)) = y
+streamCar(consStream(x, () => y)) = x
+streamCdr(consStream(x, () => y)) = y
 @end example
 
 @noindent
-There is a distinguishable object, @code{the-empty-stream}, which cannot be the
-result of any @code{cons-stream} operation, and which can be identified with
-the predicate @code{stream-null?}.@footnote{In the @abbr{MIT}
-implementation, @code{the-empty-stream} is the same as the empty list
-@code{'()}, and @code{stream-null?} is the same as @code{null?}.}  Thus we can
+There is a distinguishable object, @code{theEmptyStream}, which cannot be the
+result of any @code{consStream} operation, and which can be identified with
+the predicate @code{streamIsNull}.@footnote{The implementation the original
+describes identifies the empty stream with the empty list and the two null
+predicates with each other; this edition keeps the stream its own type.}  Thus we can
 make and use streams, in just the same way as we can make and use lists, to
 represent aggregate data arranged in a sequence.  In particular, we can build
 stream analogs of the list operations from @ref{Chapter 2}, such as
-@code{list-ref}, @code{map}, and @code{for-each}:@footnote{This should bother
+@code{listRef}, @code{map}, and @code{forEach}:@footnote{This should bother
 you.  The fact that we are defining such similar procedures for streams and
 lists indicates that we are missing some underlying abstraction.
 Unfortunately, in order to exploit this abstraction, we will need to exert
@@ -172,10 +179,21 @@ discuss this point further at the end of @ref{3.5.4}.  In
 export const streamRef = <A>(s: Stream<A>, n: number): A =>
   n === 0 ? streamCar(s) : streamRef(streamCdr(s), n - 1);
 
-export const streamMap = <A, B>(f: (a: A) => B, s: Stream<A>): Stream<B> =>
-  streamIsNull(s) ? null : consStream(f(streamCar(s)), () => streamMap(f, streamCdr(s)));
+export const streamMap = <A, B>(
+  f: (a: A) => B,
+  s: Stream<A>,
+): Stream<B> =>
+  streamIsNull(s)
+    ? null
+    : consStream(
+        f(streamCar(s)),
+        () => streamMap(f, streamCdr(s)),
+      );
 
-export const streamForEach = <A>(proc: (a: A) => void, s: Stream<A>): void => @{
+export const streamForEach = <A>(
+  proc: (a: A) => void,
+  s: Stream<A>,
+): void => @{
   if (streamIsNull(s)) @{
     return;
   @}
@@ -185,8 +203,8 @@ export const streamForEach = <A>(proc: (a: A) => void, s: Stream<A>): void => @{
 @end example
 
 @noindent
-@code{Stream-for-each} is useful for viewing streams.  The book's
-@code{display-line} prints a line and starts a new one; this edition renders
+@code{streamForEach} is useful for viewing streams.  The book's
+@code{displayLine} prints a line and starts a new one; this edition renders
 the line as a string, and the transcript arrays the exercises use collect
 exactly what the interpreter would print:
 
@@ -205,8 +223,8 @@ export const displayLine = <A>(x: A): string => String(x);
 @noindent
 To make the stream implementation automatically and transparently interleave
 the construction of a stream with its use, we will arrange for the @code{cdr}
-of a stream to be evaluated when it is accessed by the @code{stream-cdr}
-procedure rather than when the stream is constructed by @code{cons-stream}.
+of a stream to be evaluated when it is accessed by the @code{streamCdr}
+procedure rather than when the stream is constructed by @code{consStream}.
 This implementation choice is reminiscent of our discussion of rational numbers
 in @ref{2.1.2}, where we saw that we can choose to implement rational
 numbers so that the reduction of numerator and denominator to lowest terms is
@@ -230,7 +248,7 @@ evaluation, in effect forcing the @code{delay} to fulfill its promise.  We
 will see below how @code{delay} and @code{force} can be implemented, but first
 let us use these to construct streams.
 
-@code{Cons-stream} is a function of a head and a tail closure defined so that
+@code{consStream} is a function of a head and a tail closure defined so that
 
 @example typescript
 consStream(⟨@var{a}⟩, () => ⟨@var{b}⟩)
@@ -245,9 +263,9 @@ is equivalent to
 
 @noindent
 What this means is that we will construct streams using pairs.  However, rather
-than placing the value of the rest of the stream into the @code{cdr} of the
+than placing the value of the rest of the stream into the @code{tail} of the
 pair we will put there a promise to compute the rest if it is ever requested.
-@code{Stream-car} and @code{stream-cdr} can now be defined as procedures:
+@code{streamCar} and @code{streamCdr} can now be defined as procedures:
 
 @example typescript
 export const streamCar = <A>(s: Stream<A>): A => s.head;
@@ -256,10 +274,10 @@ export const streamCdr = <A>(s: Stream<A>): Stream<A> => force(s.tail);
 @end example
 
 @noindent
-@code{Stream-car} selects the @code{car} of the pair; @code{stream-cdr} selects
+@code{streamCar} selects the @code{car} of the pair; @code{streamCdr} selects
 the @code{cdr} of the pair and evaluates the delayed expression found there to
-obtain the rest of the stream.@footnote{Although @code{stream-car} and
-@code{stream-cdr} can be defined as plain functions, @code{cons-stream} must
+obtain the rest of the stream.@footnote{Although @code{streamCar} and
+@code{streamCdr} can be defined as plain functions, @code{consStream} must
 receive the tail as a closure.  If it received the tail stream directly, then,
 according to our
 model of evaluation, evaluating @code{consStream(a, tail)} would
@@ -274,73 +292,96 @@ computation we saw above, reformulated in terms of streams:
 
 @example typescript
 streamCar(
-  streamCdr(streamFilter(isPrimeStream, streamEnumerateInterval(10000, 1000000))),
+  streamCdr(
+    streamFilter(
+      isPrimeStream,
+      streamEnumerateInterval(10000, 1000000),
+    ),
+  ),
 );
 @end example
 
 @noindent
 We will see that it does indeed work efficiently.
 
-We begin by calling @code{stream-enumerate-interval} with the arguments 10,000
-and 1,000,000.  @code{Stream-enumerate-interval} is the stream analog of
-@code{enumerate-interval} (@ref{2.2.3}):
+We begin by calling @code{streamEnumerateInterval} with the arguments 10,000
+and 1,000,000.  @code{streamEnumerateInterval} is the stream analog of
+@code{enumerateInterval} (@ref{2.2.3}):
 
 @example typescript
-export const streamEnumerateInterval = (low: number, high: number): Stream<number> =>
+export const streamEnumerateInterval = (
+  low: number,
+  high: number,
+): Stream<number> =>
   low > high
     ? theEmptyStream
     : consStream(low, () => streamEnumerateInterval(low + 1, high));
 @end example
 
 @noindent
-and thus the result returned by @code{stream-enumerate-interval}, formed by the
-@code{cons-stream}, is@footnote{The numbers shown here do not really appear in
+and thus the result returned by @code{streamEnumerateInterval}, formed by the
+@code{consStream}, is@footnote{The numbers shown here do not really appear in
 the delayed expression.  What actually appears is the original expression, in
 an environment in which the variables are bound to the appropriate numbers.
-For example, @code{(+ low 1)} with @code{low} bound to 10,000 actually appears
+For example, @code{low + 1} with @code{low} bound to 10,000 actually appears
 where @code{10001} is shown.}
 
 @example typescript
-@{ head: 10000, tail: delay(() => streamEnumerateInterval(10001, 1000000)) @}
+@{
+  head: 10000,
+  tail: delay(() => streamEnumerateInterval(10001, 1000000)),
+@}
 @end example
 
 @noindent
-That is, @code{stream-enumerate-interval} returns a stream represented as a
-pair whose @code{car} is 10,000 and whose @code{cdr} is a promise to enumerate
+That is, @code{streamEnumerateInterval} returns a stream represented as a
+pair whose @code{head} is 10,000 and whose @code{tail} is a promise to enumerate
 more of the interval if so requested.  This stream is now filtered for primes,
 using the stream analog of the @code{filter} procedure (@ref{2.2.3}):
 
 @example typescript
-export const streamFilter = <A>(pred: (a: A) => boolean, s: Stream<A>): Stream<A> => @{
+export const streamFilter = <A>(
+  pred: (a: A) => boolean,
+  s: Stream<A>,
+): Stream<A> => @{
   if (streamIsNull(s)) @{
     return theEmptyStream;
   @}
   if (pred(streamCar(s))) @{
-    return consStream(streamCar(s), () => streamFilter(pred, streamCdr(s)));
+    return consStream(
+      streamCar(s),
+      () => streamFilter(pred, streamCdr(s)),
+    );
   @}
   return streamFilter(pred, streamCdr(s));
 @};
 @end example
 
 @noindent
-@code{Stream-filter} tests the @code{stream-car} of the stream (the @code{car}
-of the pair, which is 10,000).  Since this is not prime, @code{stream-filter}
-examines the @code{stream-cdr} of its input stream.  The call to
-@code{stream-cdr} forces evaluation of the delayed
-@code{stream-enumerate-interval}, which now returns
+@code{streamFilter} tests the @code{streamCar} of the stream (the @code{head}
+of the pair, which is 10,000).  Since this is not prime, @code{streamFilter}
+examines the @code{streamCdr} of its input stream.  The call to
+@code{streamCdr} forces evaluation of the delayed
+@code{streamEnumerateInterval}, which now returns
 
 @example typescript
-@{ head: 10001, tail: delay(() => streamEnumerateInterval(10002, 1000000)) @}
+@{
+  head: 10001,
+  tail: delay(() => streamEnumerateInterval(10002, 1000000)),
+@}
 @end example
 
 @noindent
-@code{Stream-filter} now looks at the @code{stream-car} of this stream, 10,001,
-sees that this is not prime either, forces another @code{stream-cdr}, and so
-on, until @code{stream-enumerate-interval} yields the prime 10,007, whereupon
-@code{stream-filter}, according to its definition, returns
+@code{streamFilter} now looks at the @code{streamCar} of this stream, 10,001,
+sees that this is not prime either, forces another @code{streamCdr}, and so
+on, until @code{streamEnumerateInterval} yields the prime 10,007, whereupon
+@code{streamFilter}, according to its definition, returns
 
 @example typescript
-consStream(streamCar(stream), () => streamFilter(pred, streamCdr(stream)));
+consStream(
+  streamCar(stream),
+  () => streamFilter(pred, streamCdr(stream)),
+);
 @end example
 
 @noindent
@@ -352,17 +393,20 @@ which in this case is
   tail: delay(() =>
     streamFilter(
       isPrimeStream,
-      @{ head: 10008, tail: delay(() => streamEnumerateInterval(10009, 1000000)) @},
+      @{
+        head: 10008,
+        tail: delay(() => streamEnumerateInterval(10009, 1000000)),
+      @},
     ),
   ),
 @}
 @end example
 
 @noindent
-This result is now passed to @code{stream-cdr} in our original expression.
-This forces the delayed @code{stream-filter}, which in turn keeps forcing the
-delayed @code{stream-enumerate-interval} until it finds the next prime, which
-is 10,009.  Finally, the result passed to @code{stream-car} in our original
+This result is now passed to @code{streamCdr} in our original expression.
+This forces the delayed @code{streamFilter}, which in turn keeps forcing the
+delayed @code{streamEnumerateInterval} until it finds the next prime, which
+is 10,009.  Finally, the result passed to @code{streamCar} in our original
 expression is
 
 @example typescript
@@ -371,14 +415,17 @@ expression is
   tail: delay(() =>
     streamFilter(
       isPrimeStream,
-      @{ head: 10010, tail: delay(() => streamEnumerateInterval(10011, 1000000)) @},
+      @{
+        head: 10010,
+        tail: delay(() => streamEnumerateInterval(10011, 1000000)),
+      @},
     ),
   ),
 @}
 @end example
 
 @noindent
-@code{Stream-car} returns 10,009, and the computation is complete.  Only as
+@code{streamCar} returns 10,009, and the computation is complete.  Only as
 many integers were tested for primality as were necessary to find the second
 prime, and the interval was enumerated only as far as was necessary to feed the
 prime filter.
@@ -415,7 +462,8 @@ is syntactic sugar for
 @code{delay}, so we can implement @code{force} as a procedure:
 
 @example typescript
-export const force = <A>(delayedObject: Delayed<A>): A => delayedObject();
+export const force = <A>(delayedObject: Delayed<A>): A =>
+  delayedObject();
 @end example
 
 @noindent
@@ -470,7 +518,7 @@ versions as @newterm{call-by-need thunks}.}
 
 @quotation
 @strong{@anchor{Exercise 3.50}Exercise 3.50:} Complete the following
-definition, which generalizes @code{stream-map} to allow procedures that take
+definition, which generalizes @code{streamMap} to allow procedures that take
 multiple arguments, analogous to @code{map} in @ref{2.2.1}, 
 @ref{Footnote 78}.
 
@@ -515,7 +563,10 @@ forces us to be concerned with time and change.}
 
 @example typescript
 const transcript: string[] = [];
-const x = streamMap((n) => show(n, transcript), streamEnumerateInterval(0, 10));
+const x = streamMap(
+  (n) => show(n, transcript),
+  streamEnumerateInterval(0, 10),
+);
 
 streamRef(x, 5);
 streamRef(x, 7);
@@ -549,10 +600,10 @@ displayStream(z);
 @end example
 
 What is the value of @code{sum} after each of the above expressions is
-evaluated?  What is the printed response to evaluating the @code{stream-ref}
-and @code{display-stream} expressions?  Would these responses differ if we had
-implemented @code{(delay ⟨@var{exp}⟩)} simply as @code{(lambda () ⟨@var{exp}⟩)}
-without using the optimization provided by @code{memo-proc}?  Explain.
+evaluated?  What is the printed response to evaluating the @code{streamRef}
+and @code{displayStream} expressions?  Would these responses differ if we had
+implemented @code{delay(() => ⟨@var{exp}⟩)} simply as @code{() => ⟨@var{exp}⟩}
+without using the optimization provided by @code{memoProc}?  Explain.
 @end quotation
 
 @node	3.5.2, 3.5.3, 3.5.1, 3.5
@@ -584,7 +635,8 @@ of integers that are not divisible by 7:
 
 @example typescript
 export const divisible = (x: number, y: number): boolean => x % y === 0;
-export const noSevens: Stream<number> = streamFilter((x) => !divisible(x, 7), integers);
+export const noSevens: Stream<number> =
+  streamFilter((x) => !divisible(x, 7), integers);
 @end example
 
 @noindent
@@ -607,13 +659,13 @@ export const fibs: StreamCell<number> = fibgen(0, 1);
 @end example
 
 @noindent
-@code{Fibs} is a pair whose @code{car} is 0 and whose @code{cdr} is a promise
-to evaluate @code{(fibgen 1 1)}.  When we evaluate this delayed @code{(fibgen 1
-1)}, it will produce a pair whose @code{car} is 1 and whose @code{cdr} is a
-promise to evaluate @code{(fibgen 1 2)}, and so on.
+@code{fibs} is a pair whose @code{head} is 0 and whose @code{tail} is a promise
+to evaluate @code{fibgen(1, 1)}.  When we evaluate this delayed
+@code{fibgen(1, 1)}, it will produce a pair whose @code{head} is 1 and whose
+@code{tail} is a promise to evaluate @code{fibgen(1, 2)}, and so on.
 
 For a look at a more exciting infinite stream, we can generalize the
-@code{no-sevens} example to construct the infinite stream of prime numbers,
+@code{noSevens} example to construct the infinite stream of prime numbers,
 using a method known as the @newterm{sieve of Eratosthenes}.@footnote{Eratosthenes, a third-century @abbr{B.C.}
 Alexandrian Greek philosopher, is famous for giving the first accurate estimate
 of the circumference of the Earth, which he computed by observing shadows cast
@@ -639,7 +691,10 @@ export const sieve = (stream: Stream<number>): Stream<number> =>
     streamCar(stream),
     () =>
       sieve(
-        streamFilter((x) => !divisible(x, streamCar(stream)), streamCdr(stream)),
+        streamFilter(
+          (x) => !divisible(x, streamCar(stream)),
+          streamCdr(stream),
+        ),
       ),
   );
 
@@ -696,7 +751,7 @@ infinite, because the sieve contains a sieve within it.
 @image{../../text/original/figures/chap3/Fig3.31a,,132mm,Figure 3.31: The prime sieve viewed as a signal-processing system.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.31a.std,,132mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.31a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.31:} The prime sieve viewed as a signal-processing system.}
@@ -721,12 +776,15 @@ pair whose @code{car} is 1 and whose @code{cdr} is a promise to evaluate
 evaluate @code{ones}, and so on.
 
 We can do more interesting things by manipulating streams with operations such
-as @code{add-streams}, which produces the elementwise sum of two given
-streams:@footnote{This uses the generalized version of @code{stream-map} from
+as @code{addStreams}, which produces the elementwise sum of two given
+streams:@footnote{This uses the generalized version of @code{streamMap} from
 @ref{Exercise 3.50}.}
 
 @example typescript
-export const addStreams = (s1: Stream<number>, s2: Stream<number>): Stream<number> =>
+export const addStreams = (
+  s1: Stream<number>,
+  s2: Stream<number>,
+): Stream<number> =>
   streamMap2((a, b) => a + b, s1, s2);
 @end example
 
@@ -734,7 +792,8 @@ export const addStreams = (s1: Stream<number>, s2: Stream<number>): Stream<numbe
 Now we can define the integers as follows:
 
 @example typescript
-export const integers: StreamCell<number> = consStream(1, () => addStreams(ones, integers));
+export const integers: StreamCell<number> =
+  consStream(1, () => addStreams(ones, integers));
 @end example
 
 @noindent
@@ -761,17 +820,20 @@ that the rest of the stream can be generated by adding @code{fibs} to itself
 shifted by one place:
 
 @example
-    1 1 2 3 5  8 13 21 @r{…} = @code{(stream-cdr fibs)}
+    1 1 2 3 5  8 13 21 @r{…} = @code{streamCdr(fibs)}
     0 1 1 2 3  5  8 13 @r{…} = @code{fibs}
 0 1 1 2 3 5 8 13 21 34 @r{…} = @code{fibs}
 @end example
 
 @noindent
-@code{Scale-stream} is another useful procedure in formulating such stream
+@code{scaleStream} is another useful procedure in formulating such stream
 definitions.  This multiplies each item in a stream by a given constant:
 
 @example typescript
-export const scaleStream = (s: Stream<number>, factor: number): Stream<number> =>
+export const scaleStream = (
+  s: Stream<number>,
+  factor: number,
+): Stream<number> =>
   streamMap((x) => x * factor, s);
 @end example
 
@@ -779,7 +841,8 @@ export const scaleStream = (s: Stream<number>, factor: number): Stream<number> =
 For example,
 
 @example typescript
-export const double: StreamCell<number> = consStream(1, () => scaleStream(double, 2));
+export const double: StreamCell<number> =
+  consStream(1, () => scaleStream(double, 2));
 @end example
 
 @noindent
@@ -812,14 +875,14 @@ export const isPrimeStream = (n: number): boolean => @{
     @}
     return iter(streamCdr(ps));
   @};
-  return iter(primes);
+  return iter(primesFiltered);
 @};
 @end example
 
 @noindent
-This is a recursive definition, since @code{primes} is defined in terms of the
-@code{prime?} predicate, which itself uses the @code{primes} stream.  The
-reason this procedure works is that, at any point, enough of the @code{primes}
+This is a recursive definition, since @code{primesFiltered} is defined in terms of
+@code{isPrimeStream}, which itself uses the @code{primesFiltered} stream.  The
+reason this procedure works is that, at any point, enough of the @code{primesFiltered}
 stream has been generated to test the primality of the numbers we need to check
 next.  That is, for every @math{n} we test for primality, either @math{n} is not
 prime (in which case there is a prime already generated that divides it) or
@@ -840,27 +903,29 @@ A proof can be found in section 22.3 of @ref{Hardy and Wright 1960}.}
 describe the elements of the stream defined by
 
 @example typescript
-const s: StreamCell<number> = consStream(1, () => addStreams(s, s));
+const s: StreamCell<number> =
+  consStream(1, () => addStreams(s, s));
 @end example
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.54}Exercise 3.54:} Define a procedure
-@code{mul-streams}, analogous to @code{add-streams}, that produces the
+@code{mulStreams}, analogous to @code{addStreams}, that produces the
 elementwise product of its two input streams.  Use this together with the
 stream of @code{integers} to complete the following definition of the stream
 whose @math{n^{\hbox{th}}} element (counting from 0) is @math{{n + 1}} factorial:
 
 @example typescript
-const factorials: Stream<number> = consStream(1, () => mulStreams(⟨??⟩, ⟨??⟩));
+const factorials: Stream<number> =
+  consStream(1, () => mulStreams(⟨??⟩, ⟨??⟩));
 @end example
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.55}Exercise 3.55:} Define a procedure
-@code{partial-sums} that takes as argument a stream @math{S} and returns the
+@code{partialSums} that takes as argument a stream @math{S} and returns the
 stream whose elements are @math{S_0}, @math{{S_0 + S_1}}, @math{{S_0 + S_1} + {S_2, \dots}}.  
-For example, @code{(partial-sums integers)} should be the
+For example, @code{partialSums(integers)} should be the
 stream 1, 3, 6, 10, 15, @dots{}.
 @end quotation
 
@@ -880,12 +945,12 @@ following facts about it.
 @code{S} begins with 1.
 
 @item
-The elements of @code{(scale-stream S 2)} are also
+The elements of @code{scaleStream(S, 2)} are also
 elements of @code{S}.
 
 @item
-The same is true for @code{(scale-stream S 3)}
-and @code{(scale-stream S 5)}.
+The same is true for @code{scaleStream(S, 3)}
+and @code{scaleStream(S, 5)}.
 
 @item
 These are all the elements of @code{S}.
@@ -897,7 +962,10 @@ define a procedure @code{merge} that combines two ordered streams into one
 ordered result stream, eliminating repetitions:
 
 @example typescript
-export const merge = (s1: Stream<number>, s2: Stream<number>): Stream<number> => @{
+export const merge = (
+  s1: Stream<number>,
+  s2: Stream<number>,
+): Stream<number> => @{
   if (streamIsNull(s1)) @{
     return s2;
   @}
@@ -912,14 +980,18 @@ export const merge = (s1: Stream<number>, s2: Stream<number>): Stream<number> =>
   if (s1car > s2car) @{
     return consStream(s2car, () => merge(s1, streamCdr(s2)));
   @}
-  return consStream(s1car, () => merge(streamCdr(s1), streamCdr(s2)));
+  return consStream(
+    s1car,
+    () => merge(streamCdr(s1), streamCdr(s2)),
+  );
 @};
 @end example
 
 Then the required stream may be constructed with @code{merge}, as follows:
 
 @example typescript
-const S: Stream<number> = consStream(1, () => merge(⟨??⟩, ⟨??⟩));
+const S: Stream<number> =
+  consStream(1, () => merge(⟨??⟩, ⟨??⟩));
 @end example
 
 Fill in the missing expressions in the places marked @code{⟨??⟩} above.
@@ -928,10 +1000,10 @@ Fill in the missing expressions in the places marked @code{⟨??⟩} above.
 @quotation
 @strong{@anchor{Exercise 3.57}Exercise 3.57:} How many additions are performed
 when we compute the @math{n^{\hbox{th}}} Fibonacci number using the definition of
-@code{fibs} based on the @code{add-streams} procedure?  Show that the number of
-additions would be exponentially greater if we had implemented @code{(delay ⟨@var{exp}⟩)} 
-simply as @code{(lambda () ⟨@var{exp}⟩)}, without using the
-optimization provided by the @code{memo-proc} procedure described in 
+@code{fibs} based on the @code{addStreams} procedure?  Show that the number of
+additions would be exponentially greater if we had implemented @code{delay(() => ⟨@var{exp}⟩)} 
+simply as @code{() => ⟨@var{exp}⟩}, without using the
+optimization provided by the @code{memoProc} procedure described in 
 @ref{3.5.1}.@footnote{This exercise shows how call-by-need is closely related
 to ordinary memoization as described in @ref{Exercise 3.27}.  In that exercise,
 we used assignment to explicitly construct a local table.  Our call-by-need
@@ -944,14 +1016,18 @@ values in the previously forced parts of the stream.}
 stream computed by the following procedure:
 
 @example typescript
-const expand = (num: number, den: number, radix: number): Stream<number> =>
+const expand = (
+  num: number,
+  den: number,
+  radix: number,
+): Stream<number> =>
   consStream(Math.trunc((num * radix) / den), () =>
     expand((num * radix) % den, den, radix));
 @end example
 
-(@code{Quotient} is a primitive that returns the integer quotient of two
-integers.)  What are the successive elements produced by @code{(expand 1 7
-10)}?  What is produced by @code{(expand 3 8 10)}?
+@code{Math.trunc} removes the fractional part of the quotient.
+What are the successive elements produced by @code{expand(1, 7, 10)}?
+What is produced by @code{expand(3, 8, 10)}?
 @end quotation
 
 @quotation
@@ -1004,12 +1080,12 @@ c + a_0 x + --- a_1 x^2 + --- a_2 x^3 + --- a_3 x^4 + ...
 
 @end ifinfo
 @noindent
-where @math{c} is any constant.  Define a procedure @code{integrate-series} that
+where @math{c} is any constant.  Define a procedure @code{integrateSeries} that
 takes as input a stream @math{a_0}, @math{a_1}, @math{a_2}, @dots{} representing a power
 series and returns the stream @math{a_0}, @math{{{1\over2}a_1}}, @math{{{1\over3}a_2}}, @dots{} of
 coefficients of the non-constant terms of the integral of the series.  (Since
 the result has no constant term, it doesn't represent a power series; when we
-use @code{integrate-series}, we will @code{cons} on the appropriate constant.)
+use @code{integrateSeries}, we will @code{cons} on the appropriate constant.)
 
 @item
 The function @math{{x \mapsto e^x}} is its own derivative.  This implies that
@@ -1018,7 +1094,8 @@ constant term, which is @math{{e^0 = 1}}.  Accordingly, we can generate the seri
 for @math{e^x} as
 
 @example typescript
-const expSeries: Stream<number> = consStream(1, () => integrateSeries(expSeries));
+const expSeries: Stream<number> =
+  consStream(1, () => integrateSeries(expSeries));
 @end example
 
 Show how to generate the series for sine and cosine, starting from the facts
@@ -1036,11 +1113,14 @@ const sineSeries: Stream<number> = consStream(0, ⟨??⟩);
 @quotation
 @strong{@anchor{Exercise 3.60}Exercise 3.60:} With power series represented as
 streams of coefficients as in @ref{Exercise 3.59}, adding series is implemented
-by @code{add-streams}.  Complete the definition of the following procedure for
+by @code{addStreams}.  Complete the definition of the following procedure for
 multiplying series:
 
 @example typescript
-const mulSeries = (s1: Stream<number>, s2: Stream<number>): Stream<number> =>
+const mulSeries = (
+  s1: Stream<number>,
+  s2: Stream<number>,
+): Stream<number> =>
   consStream(⟨??⟩, () => addStreams(⟨??⟩, ⟨??⟩));
 @end example
 
@@ -1074,18 +1154,18 @@ constant term.  Then we can solve for @math{X} as follows:
 @end ifinfo
 In other words, @math{X} is the power series whose constant term is 1 and whose
 higher-order terms are given by the negative of @math{S_R} times @math{X}.  Use
-this idea to write a procedure @code{invert-unit-series} that computes @math{{1 / S}}
+this idea to write a procedure @code{invertUnitSeries} that computes @math{{1 / S}}
 for a power series @math{S} with constant term 1.  You will need to use
-@code{mul-series} from @ref{Exercise 3.60}.
+@code{mulSeries} from @ref{Exercise 3.60}.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.62}Exercise 3.62:} Use the results of @ref{Exercise 3.60} 
-and @ref{Exercise 3.61} to define a procedure @code{div-series} that
-divides two power series.  @code{Div-series} should work for any two series,
+and @ref{Exercise 3.61} to define a procedure @code{divSeries} that
+divides two power series.  @code{divSeries} should work for any two series,
 provided that the denominator series begins with a nonzero constant term.  (If
-the denominator has a zero constant term, then @code{div-series} should signal
-an error.)  Show how to use @code{div-series} together with the result of
+the denominator has a zero constant term, then @code{divSeries} should signal
+an error.)  Show how to use @code{divSeries} together with the result of
 @ref{Exercise 3.59} to generate the power series for tangent.
 @end quotation
 
@@ -1115,7 +1195,8 @@ and better guesses for the square root of @math{x} by applying over and over aga
 the procedure that improves guesses:
 
 @example typescript
-const sqrtImprove = (guess: number, x: number): number => average(guess, x / guess);
+const sqrtImprove = (guess: number, x: number): number =>
+  average(guess, x / guess);
 @end example
 
 @noindent
@@ -1165,14 +1246,15 @@ approximation to @math{\pi}, based upon the alternating series that we saw in
 @end ifinfo
 We first generate the stream of summands of the series (the reciprocals of the
 odd integers, with alternating signs).  Then we take the stream of sums of more
-and more terms (using the @code{partial-sums} procedure of @ref{Exercise 3.55})
+and more terms (using the @code{partialSums} procedure of @ref{Exercise 3.55})
 and scale the result by 4:
 
 @example typescript
 export const piSummands = (n: number): StreamCell<number> =>
   consStream(1 / n, () => streamMap((x) => -x, piSummands(n + 2)));
 
-export const piStream: Stream<number> = scaleStream(partialSums(piSummands(1)), 4);
+export const piStream: Stream<number> =
+  scaleStream(partialSums(piSummands(1)), 4);
 
 displayStream(piStream);
 // => 4.
@@ -1287,7 +1369,8 @@ tableau:
 export const accelerateSequence = (
   transform: (s: Stream<number>) => Stream<number>,
   s: Stream<number>,
-): Stream<number> => streamMap((row) => streamCar(row), makeTableau(transform, s));
+): Stream<number> =>
+  streamMap((row) => streamCar(row), makeTableau(transform, s));
 @end example
 
 @noindent
@@ -1321,27 +1404,31 @@ manipulated with a uniform set of operations.
 
 @quotation
 @strong{@anchor{Exercise 3.63}Exercise 3.63:} Louis Reasoner asks why the
-@code{sqrt-stream} procedure was not written in the following more
+@code{sqrtStream} procedure was not written in the following more
 straightforward way, without the local variable @code{guesses}:
 
 @example typescript
 const sqrtStream = (x: number): StreamCell<number> =>
   consStream(
     1,
-    () => streamMap((guess) => sqrtImprove(guess, x), sqrtStream(x)),
+    () =>
+      streamMap(
+        (guess) => sqrtImprove(guess, x),
+        sqrtStream(x),
+      ),
   );
 @end example
 
 Alyssa P. Hacker replies that this version of the procedure is considerably
 less efficient because it performs redundant computation.  Explain Alyssa's
 answer.  Would the two versions still differ in efficiency if our
-implementation of @code{delay} used only @code{(lambda () ⟨@var{exp}⟩)} without
-using the optimization provided by @code{memo-proc} (@ref{3.5.1})?
+implementation of @code{delay} used only @code{() => ⟨@var{exp}⟩} without
+using the optimization provided by @code{memoProc} (@ref{3.5.1})?
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.64}Exercise 3.64:} Write a procedure
-@code{stream-limit} that takes as arguments a stream and a number (the
+@code{streamLimit} that takes as arguments a stream and a number (the
 tolerance).  It should examine the stream until it finds two successive
 elements that differ in absolute value by less than the tolerance, and return
 the second of the two elements.  Using this, we could compute square roots up
@@ -1380,10 +1467,10 @@ nested loops as processes defined on sequences of pairs.  If we generalize this
 technique to infinite streams, then we can write programs that are not easily
 represented as loops, because the ``looping'' must range over an infinite set.
 
-For example, suppose we want to generalize the @code{prime-sum-pairs} procedure
+For example, suppose we want to generalize the @code{primeSumPairs} procedure
 of @ref{2.2.3} to produce the stream of pairs of @emph{all} integers
 @math{{(i, j)}} with @math{{i \le j}} such that @math{{i + j}} is prime.  If
-@code{int-pairs} is the sequence of all pairs of integers @math{{(i, j)}} with
+@code{intPairs} is the sequence of all pairs of integers @math{{(i, j)}} with
 @math{{i \le j}}, then our required stream is simply@footnote{As in 
 @ref{2.2.3}, we represent a pair of integers as a two-element array rather
 than a cons pair.}
@@ -1396,7 +1483,7 @@ streamFilter(
 @end example
 
 @noindent
-Our problem, then, is to produce the stream @code{int-pairs}.  More generally,
+Our problem, then, is to produce the stream @code{intPairs}.  More generally,
 suppose we have two streams @math{{S = (S_i)}} and @math{{T = (T_j)}},
 and imagine the infinite rectangular array
 @displaymath
@@ -1439,9 +1526,9 @@ on or above the diagonal, i.e., the pairs
 @end ifinfo
 @noindent
 (If we take both @math{S} and @math{T} to be the stream of integers, then this will
-be our desired stream @code{int-pairs}.)
+be our desired stream @code{intPairs}.)
 
-Call the general stream of pairs @code{(pairs S T)}, and consider it to be
+Call the general stream of pairs @code{pairs(S, T)}, and consider it to be
 composed of three parts: the pair @math{{(S_0, T_0)}}, the rest of the pairs in
 the first row, and the remaining pairs:@footnote{See @ref{Exercise 3.68} for
 some insight into why we chose this decomposition.}
@@ -1466,19 +1553,25 @@ some insight into why we chose this decomposition.}
 
 @end ifinfo
 Observe that the third piece in this decomposition (pairs that are not in the
-first row) is (recursively) the pairs formed from @code{(stream-cdr S)} and
-@code{(stream-cdr T)}.  Also note that the second piece (the rest of the first
+first row) is (recursively) the pairs formed from @code{streamCdr(S)} and
+@code{streamCdr(T)}.  Also note that the second piece (the rest of the first
 row) is
 
 @example typescript
-streamMap((x: number): [number, number] => [streamCar(s), x], streamCdr(t));
+streamMap(
+  (x: number): [number, number] => [streamCar(s), x],
+  streamCdr(t),
+);
 @end example
 
 @noindent
 Thus we can form our stream of pairs as follows:
 
 @example typescript
-const pairs = <A>(s: Stream<A>, t: Stream<A>): Stream<[A, A]> =>
+const pairs = <A>(
+  s: Stream<A>,
+  t: Stream<A>,
+): Stream<[A, A]> =>
   consStream([streamCar(s), streamCar(t)], () =>
     ⟨@var{combineInSomeWay}⟩(
       streamMap((x: A): [A, A] => [streamCar(s), x], streamCdr(t)),
@@ -1524,7 +1617,10 @@ number @math{{f(i, j)}} of the output stream.  The trick of using
 employed it in the language KRC (@ref{Turner 1981}).}
 
 @example typescript
-export const interleave = <A>(s1: Stream<A>, s2: Stream<A>): Stream<A> =>
+export const interleave = <A>(
+  s1: Stream<A>,
+  s2: Stream<A>,
+): Stream<A> =>
   streamIsNull(s1)
     ? s2
     : consStream(streamCar(s1), () => interleave(s2, streamCdr(s1)));
@@ -1547,8 +1643,8 @@ export const pairs = <A>(s: Stream<A>, t: Stream<A>): Stream<[A, A]> =>
 @end example
 
 @quotation
-@strong{@anchor{Exercise 3.66}Exercise 3.66:} Examine the stream @code{(pairs
-integers integers)}. Can you make any general comments about the order in which
+@strong{@anchor{Exercise 3.66}Exercise 3.66:} Examine the stream @code{pairs(integers,
+integers)}. Can you make any general comments about the order in which
 the pairs are placed into the stream? For example, approximately how many pairs precede
 the pair (1, 100)?  the pair (99, 100)? the pair (100, 100)? (If you can make
 precise mathematical statements here, all the better. But feel free to give
@@ -1557,7 +1653,7 @@ more qualitative answers if you find yourself getting bogged down.)
 
 @quotation
 @strong{@anchor{Exercise 3.67}Exercise 3.67:} Modify the @code{pairs} procedure
-so that @code{(pairs integers integers)} will produce the stream of @emph{all}
+so that @code{pairs(integers, integers)} will produce the stream of @emph{all}
 pairs of integers @math{{(i, j)}} (without the condition @math{{i \le j}}).  Hint:
 You will need to mix in an additional stream.
 @end quotation
@@ -1569,14 +1665,17 @@ Instead of separating the pair @math{{(S_0, T_0)}} from the rest of the pairs in
 the first row, he proposes to work with the whole first row, as follows:
 
 @example typescript
-const pairs = <A>(s: Stream<A>, t: Stream<A>): Stream<[A, A]> =>
+const pairs = <A>(
+  s: Stream<A>,
+  t: Stream<A>,
+): Stream<[A, A]> =>
   interleave(
     streamMap((x: A): [A, A] => [streamCar(s), x], t),
     pairs(streamCdr(s), streamCdr(t)),
   );
 @end example
 
-Does this work?  Consider what happens if we evaluate @code{(pairs integers
+Does this work?  Consider what happens if we evaluate @code{pairs(integers,
 integers)} using Louis's definition of @code{pairs}.
 @end quotation
 
@@ -1598,14 +1697,14 @@ define a way to say that one pair of integers is ``less than'' another.  One
 way to do this is to define a ``weighting function'' @math{{W(i, j)}} and
 stipulate that @math{{(i_1, j_1)}} is less than @math{{(i_2, j_2)}} if
 @math{{W(i_1, j_1) <} {W(i_2, j_2)}}.  Write a procedure
-@code{merge-weighted} that is like @code{merge}, except that
-@code{merge-weighted} takes an additional argument @code{weight}, which is a
+@code{mergeWeighted} that is like @code{merge}, except that
+@code{mergeWeighted} takes an additional argument @code{weight}, which is a
 procedure that computes the weight of a pair, and is used to determine the
 order in which elements should appear in the resulting merged
 stream.@footnote{We will require that the weighting function be such that the
 weight of a pair increases as we move out along a row or down along a column of
 the array of pairs.}  Using this, generalize @code{pairs} to a procedure
-@code{weighted-pairs} that takes two streams, together with a procedure that
+@code{weightedPairs} that takes two streams, together with a procedure that
 computes a weighting function, and generates the stream of pairs, ordered
 according to weight.  Use your procedure to generate
 
@@ -1721,7 +1820,7 @@ input  |           |      |\__    +-->|   \_  integral
 @image{../../text/original/figures/chap3/Fig3.32a,,143mm,Figure 3.32: The integral procedure viewed as a signal-processing system.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.32a.std,,143mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.32a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.32:} The @code{integral} procedure viewed as a signal-processing system.}
@@ -1770,20 +1869,20 @@ accompanying signal-flow diagram.
 @image{../../text/original/figures/chap3/Fig3.33a,,125mm,Figure 3.33: An RC circuit and the associated signal-flow diagram.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.33a.std,,125mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.33a.std,120mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.33:} An RC circuit and the associated signal-flow diagram.}
 @end float
 
-Write a procedure @code{RC} that models this circuit.  @code{RC} should take as
+Write a procedure @code{rc} that models this circuit.  @code{rc} should take as
 inputs the values of @math{R}, @math{C}, and @math{{dt}} and should return a procedure
 that takes as inputs a stream representing the current @math{i} and an initial
 value for the capacitor voltage @math{v_0} and produces as output the stream of
-voltages @math{v}.  For example, you should be able to use @code{RC} to model an
+voltages @math{v}.  For example, you should be able to use @code{rc} to model an
 RC circuit with @math{R} = 5 ohms, @math{C} = 1 farad, and a 0.5-second time step by
-evaluating @code{(define RC1 (RC 5 1 0.5))}.  This defines @code{RC1} as a
-procedure that takes a stream representing the time sequence of currents and an
+evaluating @code{const rc1 = rc(5, 1, 0.5)}.  This binds @code{rc1} to a
+function that takes a stream representing the time sequence of currents and an
 initial capacitor voltage and produces the output stream of voltages.
 @end quotation
 
@@ -1803,9 +1902,9 @@ zero-crossing signal would be
 @end example
 
 In Alyssa's system, the signal from the sensor is represented as a stream
-@code{sense-data} and the stream @code{zero-crossings} is the corresponding
+@code{senseData} and the stream @code{zeroCrossings} is the corresponding
 stream of zero crossings.  Alyssa first writes a procedure
-@code{sign-change-detector} that takes two values as arguments and compares the
+@code{signChangeDetector} that takes two values as arguments and compares the
 signs of the values to produce an appropriate @math{0}, @math{1}, or @math{{-1}}.  She then
 constructs her zero-crossing stream as follows:
 
@@ -1816,7 +1915,10 @@ export const makeZeroCrossings = (
 ): Stream<number> =>
   consStream(
     signChangeDetector(streamCar(inputStream), lastValue),
-    () => makeZeroCrossings(streamCdr(inputStream), streamCar(inputStream)),
+    () => makeZeroCrossings(
+      streamCdr(inputStream),
+      streamCar(inputStream),
+    ),
   );
 
 const zeroCrossings = makeZeroCrossings(senseData, 0);
@@ -1824,7 +1926,7 @@ const zeroCrossings = makeZeroCrossings(senseData, 0);
 
 Alyssa's boss, Eva Lu Ator, walks by and suggests that this program is
 approximately equivalent to the following one, which uses the generalized
-version of @code{stream-map} from @ref{Exercise 3.50}:
+version of @code{streamMap} from @ref{Exercise 3.50}:
 
 @example typescript
 const zeroCrossings = streamMapN(
@@ -1863,7 +1965,7 @@ const makeZeroCrossings = (
 
 This does not correctly implement Alyssa's plan.  Find the bug that Louis has
 installed and fix it without changing the structure of the program.  (Hint: You
-will need to increase the number of arguments to @code{make-zero-crossings}.)
+will need to increase the number of arguments to @code{makeZeroCrossings}.)
 @end quotation
 
 @quotation
@@ -1895,7 +1997,7 @@ const int: StreamCell<number> = consStream(initialValue, () =>
 
 @noindent
 The ability to write such an implicit definition depends on
-the delayed tail that is incorporated into @code{cons-stream}.  Without this
+the delayed tail that is incorporated into @code{consStream}.  Without this
 delay, the closure's reference to @code{int} would run while @code{int} was
 still being initialized, which would require that @code{int}
 already be defined.  In general, @code{delay} is essential for using
@@ -1906,7 +2008,7 @@ would outlaw loops.
 
 @noindent
 Unfortunately, stream models of systems with loops may require uses of
-@code{delay} beyond the ``hidden'' @code{delay} supplied by @code{cons-stream}.
+@code{delay} beyond the ``hidden'' @code{delay} supplied by @code{consStream}.
 For instance, @ref{Figure 3.34} shows a signal-processing system for solving
 the differential equation @math{{dy / dt = f(y)}} where @math{f} is a given
 function.  The figure shows a mapping component, which applies @math{f} to its
@@ -1936,7 +2038,7 @@ such equations.
 @image{../../text/original/figures/chap3/Fig3.34,,110mm,Figure 3.34: An ``analog computer circuit'' that solves the equation dy / dt = f(y).,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.34.std,,110mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.34.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.34:} An ``analog computer circuit'' that solves the equation @math{{dy / dt = f(y)}}.}
@@ -1946,7 +2048,11 @@ Assuming we are given an initial value @math{y_0} for @math{y}, we could try to 
 this system using the procedure
 
 @example typescript
-const solve = (f: (y: number) => number, y0: number, dt: number): Stream<number> => @{
+const solve = (
+  f: (y: number) => number,
+  y0: number,
+  dt: number,
+): Stream<number> => @{
   const y = integral(dy, y0, dt);
   const dy = streamMap(f, y);
   return y;
@@ -1961,12 +2067,12 @@ does not happen until the second line of @code{solve}.
 On the other hand, the intent of our definition does make sense, because we
 can, in principle, begin to generate the @code{y} stream without knowing
 @code{dy}.  Indeed, @code{integral} and many other stream operations have
-properties similar to those of @code{cons-stream}, in that we can generate part
+properties similar to those of @code{consStream}, in that we can generate part
 of the answer given only partial information about the arguments.  For
 @code{integral}, the first element of the output stream is the specified
-@code{initial-value}.  Thus, we can generate the first element of the output
+@code{initialValue}.  Thus, we can generate the first element of the output
 stream without evaluating the integrand @code{dy}.  Once we know the first
-element of @code{y}, the @code{stream-map} in the second line of @code{solve}
+element of @code{y}, the @code{streamMap} in the second line of @code{solve}
 can begin working to generate the first element of @code{dy}, which will
 produce the next element of @code{y}, and so on.
 
@@ -1998,7 +2104,11 @@ do with subtle differences in the ways that Scheme implementations handle
 internal definitions.  (See @ref{4.1.6}.)}
 
 @example typescript
-const solve = (f: (y: number) => number, y0: number, dt: number): Stream<number> => @{
+const solve = (
+  f: (y: number) => number,
+  y0: number,
+  dt: number,
+): Stream<number> => @{
   const y = integral(() => dy, y0, dt);
   const dy = streamMap(f, y);
   return y;
@@ -2021,7 +2131,7 @@ streamRef(solve((y) => y, 1, 0.001), 1000);
 @strong{@anchor{Exercise 3.77}Exercise 3.77:} The @code{integral} procedure
 used above was analogous to the ``implicit'' definition of the infinite stream
 of integers in @ref{3.5.2}.  Alternatively, we can give a definition of
-@code{integral} that is more like @code{integers-starting-from} (also in
+@code{integral} that is more like @code{integersStartingFrom} (also in
 @ref{3.5.2}):
 
 @example typescript
@@ -2035,7 +2145,11 @@ const integral = (
     () =>
       streamIsNull(integrand)
         ? null
-        : integral(streamCdr(integrand), dt * streamCar(integrand) + initialValue, dt),
+        : integral(
+            streamCdr(integrand),
+            dt * streamCar(integrand) + initialValue,
+            dt,
+          ),
   );
 @end example
 
@@ -2137,7 +2251,7 @@ v_C -+- C                     _)  v_L
 @image{../../text/original/figures/chap3/Fig3.36,,102mm,Figure 3.36: A series RLC circuit.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.36.std,,102mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.36.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.36:} A series RLC circuit.}
@@ -2259,13 +2373,15 @@ shown in @ref{Figure 3.37}.
 @end float
 
 @quotation
-Write a procedure @code{RLC} that takes as arguments the parameters @math{R},
+Write a procedure @code{rlc} that takes as arguments the parameters @math{R},
 @math{L}, and @math{C} of the circuit and the time increment @math{{dt}}.  In a manner
-similar to that of the @code{RC} procedure of @ref{Exercise 3.73}, @code{RLC}
+similar to that of the @code{rc} procedure of @ref{Exercise 3.73}, @code{rlc}
 should produce a procedure that takes the initial values of the state
-variables, @math{v_{C_0}} and @math{i_{L_0}}, and produces a pair (using
-@code{cons}) of the streams of states @math{v_C} and @math{i_L}.  Using
-@code{RLC}, generate the pair of streams that models the behavior of a series
+variables, @math{v_{C_0}} and @math{i_{L_0}}, and answers the two streams of
+states @math{v_C} and @math{i_L} as one value: its @code{vC} field is the
+capacitor-voltage stream and its @code{iL} field is the inductor-current
+stream.  Using
+@code{rlc}, generate the two streams that model the behavior of a series
 RLC circuit with @math{R} = 1 ohm, @math{C} = 0.2 farad, @math{L} = 1 henry, @math{{dt}}
 = 0.1 second, and initial values @math{i_{L_0}} = 0 amps and @math{v_{C_0}} =
 10 volts.
@@ -2288,7 +2404,7 @@ higher-order procedures.  In such languages, the programmer must specify the
 data types of the arguments and the result of each procedure: number, logical
 value, sequence, and so on.  Consequently, we could not express an abstraction
 such as ``map a given procedure @code{proc} over all the elements in a
-sequence'' by a single higher-order procedure such as @code{stream-map}.
+sequence'' by a single higher-order procedure such as @code{streamMap}.
 Rather, we would need a different mapping procedure for each different
 combination of argument and result data types that might be specified for a
 @code{proc}.  Maintaining a practical notion of ``data type'' in the presence
@@ -2314,7 +2430,7 @@ studied the evaluator, we will see how to transform our language in just this
 way.  Unfortunately, including delays in procedure calls wreaks havoc with our
 ability to design programs that depend on the order of events, such as programs
 that use assignment, mutate data, or perform input or output.  Even the single
-@code{delay} in @code{cons-stream} can cause great confusion, as illustrated by
+@code{delay} in @code{consStream} can cause great confusion, as illustrated by
 @ref{Exercise 3.51} and @ref{Exercise 3.52}.  As far as anyone knows,
 mutability and delayed evaluation do not mix well in programming languages, and
 devising ways to deal with both of these at once is an active area of research.
@@ -2332,7 +2448,7 @@ stream-processing point of view.
 
 The key modularity issue was that we wished to hide the internal state of a
 random-number generator from programs that used random numbers.  We began with
-a procedure @code{rand-update}, whose successive values furnished our supply of
+a procedure @code{randUpdate}, whose successive values furnished our supply of
 random numbers, and used this to produce a random-number generator:
 
 @example typescript
@@ -2346,7 +2462,7 @@ const rand = (): number => @{
 @noindent
 In the stream formulation there is no random-number generator @emph{per se},
 just a stream of random numbers produced by successive calls to
-@code{rand-update}:
+@code{randUpdate}:
 
 @example typescript
 const randomNumbers: StreamCell<number> = consStream(randomInit, () =>
@@ -2356,7 +2472,7 @@ const randomNumbers: StreamCell<number> = consStream(randomInit, () =>
 
 @noindent
 We use this to construct the stream of outcomes of the Ces@`aro experiment
-performed on consecutive pairs in the @code{random-numbers} stream:
+performed on consecutive pairs in the @code{randomNumbers} stream:
 
 @example typescript
 const cesaroStream: Stream<boolean> = mapSuccessivePairs(
@@ -2364,13 +2480,16 @@ const cesaroStream: Stream<boolean> = mapSuccessivePairs(
   randomNumbers,
 );
 
-const mapSuccessivePairs = <A, B>(f: (a1: A, a2: A) => B, s: Stream<A>): Stream<B> =>
+const mapSuccessivePairs = <A, B>(
+  f: (a1: A, a2: A) => B,
+  s: Stream<A>,
+): Stream<B> =>
   consStream(f(streamCar(s), streamCar(streamCdr(s))), () =>
     mapSuccessivePairs(f, streamCdr(streamCdr(s))));
 @end example
 
 @noindent
-The @code{cesaro-stream} is now fed to a @code{monte-carlo} procedure, which
+The @code{cesaroStream} is now fed to a @code{monteCarlo} procedure, which
 produces a stream of estimates of probabilities.  The results are then
 converted into a stream of estimates of @math{\pi}.  This version of the program
 doesn't need a parameter telling how many trials to perform.  Better estimates
@@ -2386,15 +2505,18 @@ const monteCarlo = (
   const next = (passed: number, failed: number): Stream<number> =>
     consStream(passed / (passed + failed), () =>
       monteCarlo(streamCdr(experimentStream), passed, failed));
-  return streamCar(experimentStream) ? next(passed + 1, failed) : next(passed, failed + 1);
+  return streamCar(experimentStream)
+    ? next(passed + 1, failed)
+    : next(passed, failed + 1);
 @};
 
-const pi: Stream<number> = streamMap((p) => Math.sqrt(6 / p), monteCarlo(cesaroStream, 0, 0));
+const pi: Stream<number> =
+  streamMap((p) => Math.sqrt(6 / p), monteCarlo(cesaroStream, 0, 0));
 @end example
 
 @noindent
 There is considerable modularity in this approach, because we still can
-formulate a general @code{monte-carlo} procedure that can deal with arbitrary
+formulate a general @code{monteCarlo} procedure that can deal with arbitrary
 experiments.  Yet there is no assignment or local state.
 
 @quotation
@@ -2410,7 +2532,7 @@ stream of random numbers.  Don't use assignment in your solution.
 @quotation
 @strong{@anchor{Exercise 3.82}Exercise 3.82:} Redo @ref{Exercise 3.5} on Monte
 Carlo integration in terms of streams.  The stream version of
-@code{estimate-integral} will not have an argument telling how many trials to
+@code{estimateIntegral} will not have an argument telling how many trials to
 perform.  Instead, it will produce a stream of estimates based on successively
 more trials.
 @end quotation
@@ -2448,7 +2570,7 @@ const makeSimplifiedWithdraw = (initialBalance: number) => @{
 @end example
 
 @noindent
-Calls to @code{make-simplified-withdraw} produce computational objects, each
+Calls to @code{makeSimplifiedWithdraw} produce computational objects, each
 with a local state variable @code{balance} that is decremented by successive
 calls to the object.  The object takes an @code{amount} as an argument and
 returns the new balance.  We can imagine the user of a bank account typing a
@@ -2466,22 +2588,25 @@ export const streamWithdraw = (
 ): Stream<number> =>
   consStream(
     balance,
-    () => streamWithdraw(balance - streamCar(amountStream), streamCdr(amountStream)),
+    () => streamWithdraw(
+      balance - streamCar(amountStream),
+      streamCdr(amountStream),
+    ),
   );
 @end example
 
 @noindent
-@code{Stream-withdraw} implements a well-defined mathematical function whose
+@code{streamWithdraw} implements a well-defined mathematical function whose
 output is fully determined by its input.  Suppose, however, that the input
-@code{amount-stream} is the stream of successive values typed by the user and
+@code{amountStream} is the stream of successive values typed by the user and
 that the resulting stream of balances is displayed.  Then, from the perspective
 of the user who is typing values and watching results, the stream process has
-the same behavior as the object created by @code{make-simplified-withdraw}.
+the same behavior as the object created by @code{makeSimplifiedWithdraw}.
 However, with the stream version, there is no assignment, no local state
 variable, and consequently none of the theoretical difficulties that we
 encountered in @ref{3.1.3}.  Yet the system has state!
 
-This is really remarkable.  Even though @code{stream-withdraw} implements a
+This is really remarkable.  Even though @code{streamWithdraw} implements a
 well-defined mathematical function whose behavior does not change, the user's
 perception here is one of interacting with a system that has a changing state.
 One way to resolve this paradox is to realize that it is the user's temporal
@@ -2548,10 +2673,10 @@ Paul's requests    |  merge  |---->| bank    |---->
 @end example
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.38a,,143mm,Figure 3.38: A joint bank account@comma{} modeled by merging two streams of transaction requests.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.38a,147mm,,Figure 3.38: A joint bank account@comma{} modeled by merging two streams of transaction requests.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.38a.std,,143mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.38a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.38:} A joint bank account, modeled by merging two streams of transaction requests.}
@@ -2620,10 +2745,10 @@ the complexity of their designs with the same general techniques used by
 designers of all complex systems.  They combine primitive elements to form
 compound objects, they abstract compound objects to form higher-level building
 blocks, and they preserve modularity by adopting appropriate large-scale views
-of system structure.  In illustrating these techniques, we have used Lisp as a
+of system structure.  In illustrating these techniques, we have used TypeScript as a
 language for describing processes and for constructing computational data
 objects and processes to model complex phenomena in the real world.  However,
-as we confront increasingly complex problems, we will find that Lisp, or indeed
+as we confront increasingly complex problems, we will find that TypeScript, or indeed
 any fixed programming language, is not sufficient for our needs.  We must
 constantly turn to new languages in order to express our ideas more
 effectively.  Establishing new languages is a powerful strategy for controlling
@@ -2700,19 +2825,21 @@ itself becomes no more (and no less) than the discipline of constructing
 appropriate descriptive languages.
 
 We now embark on a tour of the technology by which languages are established in
-terms of other languages.  In this chapter we shall use Lisp as a base,
-implementing evaluators as Lisp procedures.  Lisp is particularly well suited
-to this task, because of its ability to represent and manipulate symbolic
-expressions.  We will take the first step in understanding how languages are
-implemented by building an evaluator for Lisp itself.  The language implemented
-by our evaluator will be a subset of the Scheme dialect of Lisp that we use in
-this book.  Although the evaluator described in this chapter is written for a
-particular dialect of Lisp, it contains the essential structure of an evaluator
+terms of other languages.  In this chapter we shall use TypeScript as a base,
+implementing evaluators as TypeScript functions.  TypeScript is well suited
+to this task, because a program in this edition is ordinary checked source that
+the reader lowers to a typed syntax tree the evaluator can manipulate as data.
+We will take the first step in understanding how languages are implemented by
+building an evaluator for a real subset of TypeScript: the language implemented
+by our evaluator is the edition's own guest language, admitted TypeScript
+source in the grammar this book uses throughout.  Although the evaluator
+described in this chapter is written for that typed subset, it contains the
+essential structure of an evaluator
 for any expression-oriented language designed for writing programs for a
 sequential machine.  (In fact, most language processors contain, deep within
-them, a little ``Lisp'' evaluator.)  The evaluator has been simplified for the
+them, a small core evaluator.)  The evaluator has been simplified for the
 purposes of illustration and discussion, and some features have been left out
-that would be important to include in a production-quality Lisp system.
+that would be important to include in a production-quality language system.
 Nevertheless, this simple evaluator is adequate to execute most of the programs
 in this book.@footnote{The most important features that our evaluator leaves
 out are mechanisms for handling errors and supporting debugging.  For a more
@@ -2720,16 +2847,16 @@ extensive discussion of evaluators, see @ref{Friedman et al. 1992}, which
 gives an exposition of programming languages that proceeds via a sequence of
 evaluators written in Scheme.}
 
-An important advantage of making the evaluator accessible as a Lisp program is
+An important advantage of making the evaluator accessible as a TypeScript program is
 that we can implement alternative evaluation rules by describing these as
 modifications to the evaluator program.  One place where we can use this power
 to good effect is to gain extra control over the ways in which computational
 models embody the notion of time, which was so central to the discussion in
 @ref{Chapter 3}.  There, we mitigated some of the complexities of state and
 assignment by using streams to decouple the representation of time in the world
-from time in the computer.  Our stream programs, however, were sometimes
-cumbersome, because they were constrained by the applicative-order evaluation
-of Scheme.  In @ref{4.2}, we'll change the underlying language to
+from time in a computer.  Our stream programs, however, were sometimes
+cumbersome, because they were constrained by the strict, applicative-order
+evaluation of the core language.  In @ref{4.2}, we'll change the underlying language to
 provide for a more elegant approach, by modifying the evaluator to provide for
 @newterm{normal-order evaluation}.
 
@@ -2746,14 +2873,14 @@ searches are handled automatically by the underlying mechanism of the language.
 In @ref{4.4} we implement a @newterm{logic-programming} language in
 which knowledge is expressed in terms of relations, rather than in terms of
 computations with inputs and outputs.  Even though this makes the language
-drastically different from Lisp, or indeed from any conventional language, we
+drastically different from TypeScript, or indeed from any conventional language, we
 will see that the logic-programming evaluator shares the essential structure of
-the Lisp evaluator.
+the evaluator of @ref{4.1}.
 
 @menu
 * 4.1::              The Metacircular Evaluator
-* 4.2::              Variations on a Scheme -- Lazy Evaluation
-* 4.3::              Variations on a Scheme -- Nondeterministic Computing
+* 4.2::              Variations on the Guest Language --- Lazy Evaluation
+* 4.3::              Variations on the Guest Language --- Nondeterministic Computing
 * 4.4::              Logic Programming
 @end menu
 

@@ -5,7 +5,7 @@ import {
   greatestCommonDivisor,
   makePoly,
   makePolynomial,
-  makeSchemeNumber,
+  makeTsNumber,
   remainderTerms,
   show,
   showError,
@@ -26,7 +26,7 @@ import {
 const poly94 = (terms: ReadonlyArray<readonly [bigint, bigint]>) =>
   makePolynomial(
     "x",
-    terms.map(([o, c]) => [o, makeSchemeNumber(c)] as const),
+    terms.map(([o, c]) => [o, makeTsNumber(c)] as const),
   );
 
 /** The book's p1: x^4 - x^3 - 2x^2 + 2x. */

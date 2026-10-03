@@ -1,61 +1,121 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-import { it } from "@effect/vitest";
-import { Effect } from "effect";
-import { describe, expect, test } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { setupEnvironment } from "../../packages/ch4/src/01-metacircular.js";
-import type { Env, Value } from "../../packages/ch4/src/core.js";
-import type { EvaluationError } from "../../packages/ch4/src/errors.js";
-import { format, read } from "../../packages/ch4/src/read.js";
-import { evalWithLetStar, letStarToNestedLets } from "./ex_4_07.js";
+import { Session } from "../../packages/ch4/src/01-metacircular.js";
+import { format } from "../../packages/ch4/src/read.js";
+import type { Env } from "../../packages/ch4/src/runtime/env.js";
+import type { Outcome } from "../../packages/ch4/src/runtime/errors.js";
+import {
+  bin,
+  call,
+  type Expr,
+  exprStmt,
+  ident,
+  lam,
+  num,
+  returnStmt,
+} from "../../packages/ch4/src/syntax/ast.js";
+import { noSpan } from "../../packages/ch4/src/syntax/diagnostics.js";
+import {
+  evalWithLetStar,
+  type LetStarBinding,
+  letNode,
+  letStarNode,
+  letToCall,
+  sequentialToNested,
+} from "./ex_4_07.js";
 
-const run = (source: string, env: Env): Effect.Effect<Value, EvaluationError> =>
-  evalWithLetStar(read(source), env);
+const envWith = (): { session: Session; env: Env } => {
+  const session = new Session("core");
+  return { session, env: session.globalEnv() };
+};
+
+/** The observable result: the rendered value, or the fault category. */
+const shown = (outcome: Outcome): string =>
+  outcome.tag === "ok" ? format(outcome.value) : `error:${outcome.error.tag}`;
+
+/** Erases spans so two constructed trees can be compared structurally. */
+const normalize = (value: unknown): unknown =>
+  JSON.parse(JSON.stringify(value, (key, item) => (key === "span" ? null : item)));
+
+const bindings = (...pairs: ReadonlyArray<readonly [string, Expr]>): LetStarBinding[] =>
+  pairs.map(([name, init]) => ({ name, init }));
 
 describe("exercise 4.7: let* as nested lets", () => {
-  it.effect("the book's example returns 39", () =>
-    Effect.gen(function* () {
-      const env = yield* setupEnvironment();
-      expect(yield* run("(let* ((x 3) (y (+ x 2)) (z (+ x y 5))) (* x z))", env)).toStrictEqual({
-        _tag: "Number",
-        n: 39,
-      });
-    }),
-  );
-
-  test("let*->nested-lets rewrites into one-binding lets", () => {
-    const starForm = read("(let* ((x 3) (y (+ x 2))) (* x y))");
-    if (starForm._tag !== "Cons") {
-      throw new Error("expected a let* form");
-    }
-    const expected = format(read("(let ((x 3)) (let ((y (+ x 2))) (* x y)))"));
-    expect(format(letStarToNestedLets(starForm))).toBe(expected);
+  it("the book's example returns 39", () => {
+    const { session, env } = envWith();
+    const node = letStarNode(
+      bindings(
+        ["x", num(3)],
+        ["y", bin("+", ident("x"), num(2))],
+        ["z", bin("+", bin("+", ident("x"), ident("y")), num(5))],
+      ),
+      [exprStmt(bin("*", ident("x"), ident("z")))],
+      noSpan,
+    );
+    expect(shown(evalWithLetStar(node, env, session))).toBe("39");
   });
 
-  it.effect("each initializer sees the previous bindings", () =>
-    Effect.gen(function* () {
-      const env = yield* setupEnvironment();
-      expect(yield* run("(let* ((x 3) (y (+ x 1))) (+ x y))", env)).toStrictEqual({
-        _tag: "Number",
-        n: 7,
-      });
-    }),
-  );
+  it("sequentialToNested peels an outer let and lowers its inner body to a call", () => {
+    const node = letStarNode(
+      bindings(["x", num(3)], ["y", bin("+", ident("x"), num(2))]),
+      [exprStmt(bin("*", ident("x"), ident("y")))],
+      noSpan,
+    );
+    const nested = letNode(
+      bindings(["x", num(3)]),
+      [
+        exprStmt(
+          letToCall(
+            letNode(
+              bindings(["y", bin("+", ident("x"), num(2))]),
+              [exprStmt(bin("*", ident("x"), ident("y")))],
+              noSpan,
+            ),
+          ),
+        ),
+      ],
+      noSpan,
+    );
+    expect(normalize(sequentialToNested(node))).toEqual(normalize(nested));
+  });
 
-  it.effect("empty bindings leave only the body", () =>
-    Effect.gen(function* () {
-      const env = yield* setupEnvironment();
-      expect(yield* run("(let* () 42)", env)).toStrictEqual({ _tag: "Number", n: 42 });
-    }),
-  );
+  it("each initializer sees the previous bindings", () => {
+    const { session, env } = envWith();
+    const node = letStarNode(
+      bindings(["x", num(3)], ["y", bin("+", ident("x"), num(1))]),
+      [exprStmt(bin("+", ident("x"), ident("y")))],
+      noSpan,
+    );
+    expect(shown(evalWithLetStar(node, env, session))).toBe("7");
+  });
 
-  it.effect("a let* inside a defined body evaluates through the rewrite", () =>
-    Effect.gen(function* () {
-      const env = yield* setupEnvironment();
-      yield* run("(define (g) (let* ((a 2) (b (* a 3))) (+ a b)))", env);
-      expect(yield* run("(g)", env)).toStrictEqual({ _tag: "Number", n: 8 });
-    }),
-  );
+  it("empty bindings leave only the body", () => {
+    const { session, env } = envWith();
+    const node = letStarNode([], [exprStmt(num(42))], noSpan);
+    expect(shown(evalWithLetStar(node, env, session))).toBe("42");
+  });
+
+  it("a sequential binding lowered to calls in a procedure body answers 8", () => {
+    const { session, env } = envWith();
+    const body = lam(
+      [],
+      [
+        returnStmt(
+          letToCall(
+            sequentialToNested(
+              letStarNode(
+                bindings(["a", num(2)], ["b", bin("*", ident("a"), num(3))]),
+                [exprStmt(bin("+", ident("a"), ident("b")))],
+                noSpan,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+    expect(shown(evalWithLetStar(call(body, []), env, session))).toBe("8");
+  });
 });

@@ -28,5 +28,5 @@ mod ex_4_19 {
 fn ex_4_19() {
     let (ben, alyssa) = ex_4_19::ex_4_19().expect("solved");
     assert_eq!(ben, "16");
-    assert!(alyssa.contains("before its define runs"));
+    assert!(alyssa.contains("definition"));
 }

@@ -80,7 +80,8 @@ result by @math{n}.  If we add the stipulation that 1! is equal to 1, this
 observation translates directly into a procedure:
 
 @example kotlin
-public fun factorialRecursive(n: Long): Long = if (n == 1L) 1L else n * factorialRecursive(n - 1L)
+public fun factorialRecursive(n: Long): Long =
+    if (n == 1L) 1L else n * factorialRecursive(n - 1L)
 @end example
 
 @noindent
@@ -93,7 +94,7 @@ procedure in action computing 6!, as shown in @ref{Figure 1.3}.
 @quotation
 @strong{Figure 1.3:} A linear recursive process for computing 6!.
 
-@example
+@smallexample
 factorialRecursive(6)                            ----------------
 6 * factorialRecursive(5)                                        \
 6 * (5 * factorialRecursive(4))                                    \
@@ -106,14 +107,14 @@ factorialRecursive(6)                            ----------------
 6 * (5 * 24)                                                       /
 6 * 120                                                          /
 720          <-------------------------------------------------
-@end example
+@end smallexample
 @end quotation
 @end ifinfo
 @ifhtml
 @image{../../text/original/figures/chap1/Fig1.3d,,139mm,Figure 1.3: A linear recursive process for computing 6!.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap1/Fig1.3d.std,,139mm,,.pdf}
+@image{../../text/original/figures/pdf/chap1/Fig1.3d.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 1.3:} A linear recursive process for computing 6!.}
@@ -147,7 +148,9 @@ public fun factorialBlockStructured(n: Long): Long @{
     tailrec fun iter(
         product: Long,
         counter: Long,
-    ): Long = if (counter > n) product else iter(product * counter, counter + 1L)
+    ): Long =
+        if (counter > n) product
+        else iter(product * counter, counter + 1L)
     return iter(1L, 1L)
 @}
 @end example
@@ -160,9 +163,15 @@ public tailrec fun factIter(
     product: Long,
     counter: Long,
     maxCount: Long,
-): Long = if (counter > maxCount) product else factIter(counter * product, counter + 1L, maxCount)
+): Long =
+    if (counter > maxCount) product
+    else factIter(counter * product,
+        counter + 1L,
+        maxCount)
 
-public fun factorialIterative(n: Long): Long = factIter(1L, 1L, n)
+public fun factorialIterative(n: Long): Long = factIter(1L,
+    1L,
+    n)
 @end example
 
 @noindent
@@ -309,12 +318,14 @@ one) and @code{Long.dec()} (subtract one).
 public fun plusRecursive(
     a: Long,
     b: Long,
-): Long = if (a == 0L) b else plusRecursive(a.dec(), b).inc()
+): Long = if (a == 0L) b else plusRecursive(a.dec(),
+    b).inc()
 
 public tailrec fun plusIterative(
     a: Long,
     b: Long,
-): Long = if (a == 0L) b else plusIterative(a.dec(), b.inc())
+): Long = if (a == 0L) b else plusIterative(a.dec(),
+    b.inc())
 @end example
 
 Using the substitution model, illustrate the process each generates in
@@ -442,10 +453,10 @@ V     /  . \   . 1  .  . 1  .  . 0  .  . 1  .  . 0  ..
 @end example
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap1/Fig1.5d,,147mm,Figure 1.5: The tree-recursive process generated in computing (fib 5).,.std.svg}
+@image{../../text/original/figures/chap1/Fig1.5d,,147mm,Figure 1.5: The tree-recursive process generated in computing fibRecursive(5).,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap1/Fig1.5d.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap1/Fig1.5d.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 1.5:} The tree-recursive process generated in computing @code{fibRecursive(5)}.}
@@ -521,9 +532,13 @@ private tailrec fun fibIter(
     a: Long,
     b: Long,
     count: Long,
-): Long = if (count == 0L) b else fibIter(a + b, a, count - 1L)
+): Long = if (count == 0L) b else fibIter(a + b,
+    a,
+    count - 1L)
 
-public fun fibIterative(n: Long): Long = fibIter(1L, 0L, n)
+public fun fibIterative(n: Long): Long = fibIter(1L,
+    0L,
+    n)
 @end example
 
 @noindent
@@ -612,7 +627,12 @@ private fun cc(
     when @{
         amount == 0L -> 1L
         amount < 0L || kindsOfCoins == 0 -> 0L
-        else -> cc(amount, kindsOfCoins - 1) + cc(amount - firstDenomination(kindsOfCoins), kindsOfCoins)
+        else ->
+            cc(amount, kindsOfCoins - 1) +
+                cc(
+                    amount - firstDenomination(kindsOfCoins),
+                    kindsOfCoins,
+                )
     @}
 
 private fun firstDenomination(kindsOfCoins: Int): Long =
@@ -633,7 +653,8 @@ order would do as well.)  We can now answer our original question about
 changing a dollar:
 
 @example kotlin
-public fun countChange(amount: Long): Long = cc(amount, 5)
+public fun countChange(amount: Long): Long = cc(amount,
+    5)
 
 countChange(100L)
 // => 292
@@ -796,7 +817,9 @@ procedures:
 @example kotlin
 private fun cube(x: Double): Double = x * x * x
 private fun p(x: Double): Double = 3.0 * x - 4.0 * cube(x)
-private fun sine(angle: Double): Double = if (!(abs(angle) > 0.1)) angle else p(sine(angle / 3.0))
+private fun sine(angle: Double): Double =
+    if (!(abs(angle) > 0.1)) angle
+    else p(sine(angle / 3.0))
 @end example
 
 @enumerate a
@@ -840,7 +863,8 @@ which translates readily into the procedure
 public fun exptRecursive(
     b: Long,
     n: Long,
-): Long = if (n == 0L) 1L else b * exptRecursive(b, n - 1L)
+): Long = if (n == 0L) 1L else b * exptRecursive(b,
+    n - 1L)
 @end example
 
 @noindent
@@ -853,7 +877,9 @@ private tailrec fun exptIter(
     b: Long,
     counter: Long,
     product: Long,
-): Long = if (counter == 0L) product else exptIter(b, counter - 1L, b * product)
+): Long =
+    if (counter == 0L) product
+    else exptIter(b, counter - 1L, b * product)
 
 public fun exptIterative(
     b: Long,
@@ -1039,11 +1065,32 @@ private tailrec fun fibIterLog(
 ): BigInteger =
     when @{
         count == 0L -> b
-        isEven(count) -> fibIterLog(a, b, TODO("compute p'"), TODO("compute q'"), count / 2L)
-        else -> fibIterLog(b * q + a * q + a * p, b * p + a * q, p, q, count - 1L)
+        isEven(count) ->
+            fibIterLog(
+                a,
+                b,
+                TODO("compute p'"),
+                TODO("compute q'"),
+                count / 2L,
+            )
+        else ->
+            fibIterLog(
+                b * q + a * q + a * p,
+                b * p + a * q,
+                p,
+                q,
+                count - 1L,
+            )
     @}
 
-public fun fibLog(n: Long): BigInteger = fibIterLog(BigInteger.ONE, BigInteger.ZERO, BigInteger.ZERO, BigInteger.ONE, n)
+public fun fibLog(n: Long): BigInteger =
+    fibIterLog(
+        BigInteger.ONE,
+        BigInteger.ZERO,
+        BigInteger.ZERO,
+        BigInteger.ONE,
+        n,
+    )
 @end example
 @end quotation
 
@@ -1166,9 +1213,9 @@ grows as the logarithm (to the base @math{\varphi}) of @math{n}.  Hence, the ord
 growth is @math{{\Theta(\log n)}}.
 
 @quotation
-@strong{@anchor{Exercise 1.20}Exercise 1.20:} @emph{SICP exercise 1.20 is about
-Scheme itself, so this edition replaces it; the exercise below keeps the
-number and teaches the same section material.} SICP's own exercise traces the iterative
+@strong{@anchor{Exercise 1.20}Exercise 1.20:} @emph{This edition replaces
+SICP exercise 1.20 with a host-language exercise that keeps its number and
+teaching objective.} SICP's own exercise traces the iterative
 @code{gcd} procedure under normal-order evaluation, contrasted with applicative
 order, and asks how many @code{remainder} operations each performs while
 evaluating @code{gcd(206, 40)}; the substitution model for normal order defers
@@ -1217,7 +1264,8 @@ private tailrec fun findDivisor(
         else -> findDivisor(n, testDivisor + 1L)
     @}
 
-public fun smallestDivisor(n: Long): Long = findDivisor(n, 2L)
+public fun smallestDivisor(n: Long): Long = findDivisor(n,
+    2L)
 @end example
 
 @noindent
@@ -1291,7 +1339,9 @@ public fun expmod(
 ): Long =
     when @{
         exp == 0L -> 1L
-        exp % 2L == 0L -> square(expmod(base, exp / 2L, m)) % m
+        exp % 2L == 0L -> square(expmod(base,
+                exp / 2L,
+            m)) % m
         else -> (base * expmod(base, exp - 1L, m)) % m
     @}
 @end example
@@ -1343,7 +1393,10 @@ public tailrec fun fastPrime(
 ): Boolean =
     when @{
         times == 0 -> true
-        fermatTest(n, rng) -> fastPrime(n, times - 1, rng)
+        fermatTest(n,
+            rng) -> fastPrime(n,
+            times - 1,
+            rng)
         else -> false
     @}
 @end example
@@ -1426,7 +1479,9 @@ public data class TimedPrimeResult(
 
 public fun timedPrimeTest(n: Long): TimedPrimeResult? @{
     val start = System.nanoTime()
-    return if (isPrime(n)) TimedPrimeResult(n, System.nanoTime() - start) else null
+    return if (isPrime(n)) @{
+        TimedPrimeResult(n, System.nanoTime() - start)
+    @} else null
 @}
 @end example
 
@@ -1504,8 +1559,12 @@ public fun expmodExplicit(
 ): Long =
     when @{
         exp == 0L -> 1L
-        exp % 2L == 0L -> (expmodExplicit(base, exp / 2L, m) * expmodExplicit(base, exp / 2L, m)) % m
-        else -> (base * expmodExplicit(base, exp - 1L, m)) % m
+        exp % 2L == 0L ->
+            (expmodExplicit(base, exp / 2L, m) *
+                expmodExplicit(base, exp / 2L, m)) % m
+        else -> (base * expmodExplicit(base,
+                exp - 1L,
+            m)) % m
     @}
 @end example
 

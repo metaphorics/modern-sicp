@@ -5,9 +5,6 @@ package sicp.ch5.solutions
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.ch5.getRegisterContents
-import sicp.ch5.setRegisterContents
-import sicp.runtime.VInt
 
 public class E5_07Test :
     FunSpec({
@@ -21,14 +18,6 @@ public class E5_07Test :
                 )
         }
         test("Exercise 5.7: the book's gcd machine of 5.2 answers 2") {
-            val answer =
-                machineRun {
-                    val machine = gcdMachine()
-                    machine.setRegisterContents("a", VInt(206))
-                    machine.setRegisterContents("b", VInt(40))
-                    machine.start()
-                    machine.getRegisterContents("a")
-                }
-            (answer as VInt).n shouldBe 2L
+            runGcd(206, 40) shouldBe 2L
         }
     })

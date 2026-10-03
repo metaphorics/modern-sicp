@@ -11,12 +11,12 @@ public class E4_61Test :
         test("Exercise 4.61: the next-to queries") {
             nextToQueries() shouldBe
                 listOf(
-                    "query: (?x next-to ?y in (1 (2 3) 4))",
-                    "(1 next-to (2 3) in (1 (2 3) 4))",
-                    "((2 3) next-to 4 in (1 (2 3) 4))",
-                    "query: (?x next-to 1 in (2 1 3 1))",
-                    "(2 next-to 1 in (2 1 3 1))",
-                    "(3 next-to 1 in (2 1 3 1))",
+                    "?x = 1",
+                    "?y = [2, 3]",
+                    "?x = [2, 3]",
+                    "?y = 4",
+                    "?x = 2",
+                    "?x = 3",
                 )
         }
     })

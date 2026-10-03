@@ -1,38 +1,55 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Original exercise
 
 //! The reference solution of exercise 4.18: the alternative scan-out
-//! strategy enforces the restriction the text's strategy only states.
+//! defers initializers and makes the premature-read restriction real.
 
-use ch04::eval_support::*;
+/// Shared typed support for this exercise.
+pub mod support;
 
-/// Answers what the two strategies give for a body whose second
-/// initializer reads the first defined name.
-fn answers() -> Result<(String, String), SchemeError> {
-    let program = "(define (f) (define u 5) (define v (* u 2)) v)\n(f)";
-    let (values, _) = run_with(&WithScanOut, program)?;
-    let text_strategy = printed(&values).last().cloned().unwrap_or_default();
-    let alternative = run_with(&WithScanOutAlt, program).expect_err("v reads u too early");
-    Ok((text_strategy, alternative.to_string()))
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Step {
+    Unassigned(String),
+    Evaluate(String),
+    Assign(String),
 }
 
-mod ex_4_18 {
-    //! Exercise 4.18: the alternative scan-out strategy.
-
-    use super::*;
-
-    #[test]
-    fn ex_4_18() {
-        let (text_strategy, alternative) = answers().expect("runs");
-        // The text's strategy runs the program, for the accidental
-        // reason the IEEE footnote names: the set!s run in order, so u
-        // is 5 by the time v's set! reads it.
-        assert_eq!(text_strategy, "10");
-        // The alternative evaluates the initializers first, while every
-        // name is still unassigned, and so refuses the program.
-        assert!(
-            alternative.contains("before its define runs"),
-            "{alternative}"
-        );
+fn alternative_scan_out(definitions: &[(String, String)]) -> Vec<Step> {
+    let mut steps: Vec<Step> = definitions
+        .iter()
+        .map(|(name, _)| Step::Unassigned(name.clone()))
+        .collect();
+    // Exercise 4.18's alternative: all initializers evaluate while
+    // every name is still unassigned; only then do the assignments run.
+    for (_, value) in definitions {
+        steps.push(Step::Evaluate(value.clone()));
     }
+    for (name, _) in definitions {
+        steps.push(Step::Assign(name.clone()));
+    }
+    steps
+}
+
+fn premature_read(steps: &[Step]) -> Option<String> {
+    let mut pending = Vec::new();
+    for step in steps {
+        match step {
+            Step::Unassigned(name) => pending.push(name.clone()),
+            Step::Evaluate(value) => {
+                if pending.iter().any(|name| value.contains(name)) {
+                    return Some(value.clone());
+                }
+            }
+            Step::Assign(name) => pending.retain(|bound| bound != name),
+        }
+    }
+    None
+}
+
+#[test]
+fn ex_4_18() {
+    let definitions = vec![
+        ("u".to_owned(), "5".to_owned()),
+        ("v".to_owned(), "reads u".to_owned()),
+    ];
+    assert!(premature_read(&alternative_scan_out(&definitions)).is_some());
 }

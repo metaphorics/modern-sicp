@@ -7,9 +7,9 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 
 /**
- * Kotlin's own compound-data primitive, [Pair], plays the role of Scheme's
- * `cons`: [Pair.first] is `car`, [Pair.second] is `cdr`. A pair's elements
- * can themselves be pairs, so pairs alone build arbitrarily nested data.
+ * Kotlin's [Pair] stores two values directly. [Pair.first] and [Pair.second]
+ * select them, and either field can itself contain a pair to build nested
+ * compound data.
  */
 public fun pairsPrimitiveDemo(): Long {
     val x = 1L to 2L
@@ -23,9 +23,9 @@ public fun pairsPrimitiveDemo(): Long {
 }
 
 /**
- * A rational number as a pair of integers: [numer] over [denom]. This first
- * [makeRat] just pairs the two arguments, exactly as the book's `(cons n d)`
- * does; it does not yet reduce to lowest terms.
+ * A rational number stores an integer numerator and denominator. The initial
+ * constructor preserves its inputs as given; reduction is a separate
+ * representation choice introduced later in the section.
  */
 public data class Rational(
     val numer: Long,
@@ -62,7 +62,7 @@ public fun equalRat(
     y: Rational,
 ): Boolean = x.numer * y.denom == y.numer * x.denom
 
-/** Prints one line, `numer/denom`; matches the book's `print-rat`, which returns no useful value either. */
+/** Print the numerator and denominator separated by a slash. */
 public fun printRat(x: Rational) {
     println("${x.numer}/${x.denom}")
 }
@@ -73,13 +73,9 @@ private tailrec fun gcd(
 ): Long = if (b == 0L) a else gcd(b, a % b)
 
 /**
- * The remedy: reduce to lowest terms at construction, using [gcd] from
- * section 1.2.5. Kotlin cannot rebind the name `makeRat` the way a second
- * top-level Scheme `define` would, so the edition names this version
- * [makeRatReduced]; every exercise and section from here on that says
- * "make-rat" means this one. Neither [addRat] nor [printRat] changes: the
- * abstraction barrier between the rational-number operations and the pair
- * representation absorbs the whole fix.
+ * Reduce to lowest terms at construction using [gcd]. This distinct
+ * constructor lets callers compare reduced and unreduced records without
+ * changing the rational operations or their abstraction barrier.
  */
 public fun makeRatReduced(
     n: Long,
@@ -91,10 +87,10 @@ public fun makeRatReduced(
 
 public class S2_1_1RationalNumbersTest :
     FunSpec({
-        test("a pair nests inside a pair, exactly as cons nests inside cons") {
+        test("Kotlin pairs nest to represent compound data") {
             pairsPrimitiveDemo() shouldBe 4L
         }
-        test("print-rat shows one-half, one-third, their sum, and their product") {
+        test("rational operations preserve the expected numerator-denominator values") {
             val oneHalf = makeRat(1L, 2L)
             val oneThird = makeRat(1L, 3L)
             "${oneHalf.numer}/${oneHalf.denom}" shouldBe "1/2"
@@ -103,9 +99,6 @@ public class S2_1_1RationalNumbersTest :
             "${sum.numer}/${sum.denom}" shouldBe "5/6"
             val product = mulRat(oneHalf, oneThird)
             "${product.numer}/${product.denom}" shouldBe "1/6"
-        }
-        test("printRat actually prints, and returns no useful value") {
-            printRat(makeRat(1L, 2L))
         }
         test("this makeRat does not reduce to lowest terms") {
             val oneThird = makeRat(1L, 3L)

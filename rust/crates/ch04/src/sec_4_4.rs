@@ -1,1443 +1,1474 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Adapted from the Scheme programs in SICP section 4.4
+//
+// Section 4.4: the query system over the explicit data language of
+// grammar §7. Queries, terms, and substitutions are Rust values;
+// unification carries its stated occurs-check policy (enabled); answers
+// come from a delayed, interleaved stream, so recursive and infinite
+// rules answer fairly and a finite prefix is observable (the 4.71/4.72
+// fairness lessons). Ground queries answer their empty substitution.
+// Rule applications rename their variables apart deterministically
+// (`name#n`); `HashMap` is only an index and never decides answer
+// order.
 
-//! Section 4.4: the query system over the chapter's [`Value`] domain.
-//!
-//! The port keeps the book's four layers. The driver ([`QueryEngine::session`],
-//! [`QueryEngine::answers_upto`]) reads one input, files an `assert!` body, or
-//! runs [`qeval`] over a stream holding one empty frame and instantiates the
-//! answers. The evaluator ([`qeval`]) classifies a query by the symbol in its
-//! `car` and dispatches through the data-directed table — the book's
-//! `put`/`get` keyed `(type, 'qeval)` — with any untagged pattern falling to
-//! the simple-query processor. The matcher ([`pattern_match`]) and unifier
-//! ([`unify_match`]) walk `Value` pairs exactly as the book's 4.4.4.3 and
-//! 4.4.4.4 walk list structure, and the stream layer ([`stream_flatmap`],
-//! [`stream_append_delayed`], [`interleave_delayed`]) combines frame streams.
-//!
-//! # One stream choice
-//!
-//! Every `delay`/`force` in the book's listings is the chapter 3 memoized
-//! stream: [`Stream`] over [`Frame`], so `cons-stream`'s thunk is
-//! [`Stream::cons_stream`]'s tail closure and `stream-append-delayed`'s
-//! delayed argument is a plain `FnOnce` tail. The plain (undelayed) twins
-//! [`stream_append`] and [`interleave`] are exported too, because exercises
-//! 4.71 to 4.73 are about exactly the difference between the two.
-//!
-//! # Frames and the unmarked-inhabitant rule
-//!
-//! A [`Frame`] is an immutable association structure: a chain of
-//! variable-value pairs built only through [`Frame::extend`], read through
-//! [`Frame::binding_in_frame`]. Failure never inhabits a frame — the
-//! book's `failed` symbol left the data, and the matcher's failure is
-//! `None`. The frame variables are the internal `(? name)` list values
-//! produced by [`query_syntax_process`], and renamed rule variables are
-//! `(? id name)` ([`make_new_variable`]); both are list values distinct
-//! from every data symbol, so a renamed rule variable cannot collide with
-//! an explicitly written one.
-//!
-//! # The data base is chronological
-//!
-//! The book's `add-assertion!` conses the newest entry in front, yet every
-//! sample interaction the book pins lists answers in insertion order. This
-//! port stores assertions and rules as appended vectors behind the stream
-//! interface, indexed by the leading symbol exactly as 4.4.4.5 describes
-//! (plus the `?` bucket for rules whose conclusion starts with a
-//! variable); each fetch answers a stream of the stored items in
-//! insertion order, and installation binds the old collection before the
-//! new one lands — the discipline the book's `let` enforces (exercise
-//! 4.70 models what goes wrong without it).
-//!
-//! # Reading queries
-//!
-//! The driver reads query input with the shared `sicp_runtime::read`. The
-//! OCaml edition needed a private data-language scanner because its shared
-//! reader rejects `()`, dotted patterns, and reads `9am` as a bad number;
-//! this edition's reader already accepts all three — `()` is `Nil`,
-//! `(computer . ?type)` is a dotted pair, and `9am` classifies as a symbol
-//! — so no separate scanner exists here and the lexical conventions are
-//! the shared reader's.
-//!
-//! # Object errors
-//!
-//! `lisp-value` on an unbound pattern variable raises the book's `Unknown
-//! pat var` error. A raised error lands in the engine's error slot
-//! ([`QueryEngine::take_error`]) because a stream cannot carry a `Result`;
-//! the driver turns a raised error into the transcript's `Error:` line,
-//! the way the other drivers in this chapter report.
-//!
-//! # The two seams
-//!
-//! Exercise extensions install through data, not edits. The dispatch table
-//! is open: [`QueryEngine::put`] registers a processor for any type symbol
-//! (4.75's `unique`, 4.76's merging `and`, 4.77's promised filters,
-//! 4.72's appending `or`). The simple-query fallback is replaceable:
-//! [`QueryEngine::set_fallback`] swaps the processor untagged patterns
-//! take (4.71a's undelayed simple query, 4.74's simple-flatmap evaluator,
-//! 4.67's loop detector, 4.79's scoped rule application). Nothing in the
-//! engine routes through an installed extension, and a fresh engine is
-//! plain book behavior.
-
-use std::cell::RefCell;
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use sicp_runtime::{Handler, SchemeError, Stream, Value, cons_cell, print_value};
+pub use sicp_runtime::host::query::{Predicate, Query, Substitution, Term, extend};
 
-use crate::sec_4_1::{OutputSink, is_true, primitive_table};
-
-/// One evaluation's answer in the object language.
-pub type EvalResult = Result<Value, SchemeError>;
-
-/// An engine handle: the recursive layer closes over this, because a
-/// stream's tail must be `'static` and the evaluator recurses inside
-/// stream tails.
-pub type Engine = Rc<QueryEngine>;
-
-/// A query processor: the book's entry in the `(type 'qeval)` table. It
-/// receives the engine, the contents of the tagged query (or the whole
-/// pattern, when the processor is the simple-query fallback), and the
-/// input frame stream.
-pub type QProc = Rc<dyn Fn(&Engine, &Value, Stream<Frame>) -> Stream<Frame>>;
-
-/// The per-element step a flatmap maps over a stream of `A`.
-pub type StepFn<A, B> = Rc<dyn Fn(&A) -> Stream<B>>;
-
-/// The book's `stream-flatmap`: the one frame combinator the evaluator
-/// uses. The default combines by interleaving; exercise 4.74 swaps in a
-/// combiner with the same two duties.
-pub trait Combiner {
-    /// Maps `proc` over the frame stream and combines the inner streams.
-    fn combine_frames(&self, proc: StepFn<Frame, Frame>, s: Stream<Frame>) -> Stream<Frame>;
-
-    /// The same combination when the mapped stream carries data values,
-    /// the shape `find-assertions` maps over.
-    fn combine_values(&self, proc: StepFn<Value, Frame>, s: Stream<Value>) -> Stream<Frame>;
+/// One rule: a conclusion and its conditions.
+#[derive(Debug, Clone)]
+pub struct Rule {
+    /// The rule's conclusion pattern.
+    pub conclusion: Term,
+    /// The rule's conditions, in order.
+    pub conditions: Vec<Query>,
 }
 
-/// The book's combinator: `stream-flatmap`, interleaving the inner
-/// streams.
-#[derive(Debug, Default)]
-pub struct Interleaved;
+/// The query database: chronological assertions and rules. Fetching
+/// preserves insertion order, which is the production order of the
+/// answer stream.
+#[derive(Debug, Clone, Default)]
+pub struct Database {
+    /// The asserted terms, in insertion order.
+    pub assertions: Vec<Term>,
+    /// The rules, in insertion order.
+    pub rules: Vec<Rule>,
+}
 
-impl Combiner for Interleaved {
-    fn combine_frames(&self, proc: StepFn<Frame, Frame>, s: Stream<Frame>) -> Stream<Frame> {
-        stream_flatmap(proc, s)
+impl Database {
+    /// Builds an empty database.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    fn combine_values(&self, proc: StepFn<Value, Frame>, s: Stream<Value>) -> Stream<Frame> {
-        stream_flatmap(proc, s)
+    /// Files one assertion.
+    pub fn assert(&mut self, term: Term) {
+        self.assertions.push(term);
+    }
+
+    /// Files one rule.
+    pub fn add_rule(&mut self, rule: Rule) {
+        self.rules.push(rule);
     }
 }
 
-// ---------------------------------------------------------------------------
-// Frames (4.4.4.8).
-// ---------------------------------------------------------------------------
-
-/// One binding of the chain: the book's `(cons variable value)` pair.
-#[derive(Debug)]
-struct FrameNode {
-    variable: Value,
-    value: Value,
-    next: Frame,
+/// One query run's ordered answers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueryOutcome {
+    /// The answer substitutions, in production order; a ground query
+    /// answers its empty substitution exactly once.
+    pub answers: Vec<Substitution>,
 }
 
-/// The frame of 4.4.4.8: an immutable association list of variable-value
-/// pairs. `extend` conses a binding, cloning a pointer; `binding_in_frame`
-/// is the book's `assoc` under `equal?`. Nothing here stores a sentinel:
-/// an absent binding is `None`, never a marker value.
-#[derive(Clone, Debug, Default)]
-pub struct Frame(Option<Rc<FrameNode>>);
+/// The delayed answer stream: a first answer and a delayed rest, the
+/// discipline of the section's `stream-append-delayed` and
+/// `interleave-delayed`.
+enum Stream {
+    /// No further answers.
+    Nil,
+    /// One answer and a delayed rest.
+    Cons(Substitution, Box<dyn FnOnce() -> Stream>),
+    /// A computation not yet forced.
+    Delay(Box<dyn FnOnce() -> Stream>),
+}
 
-impl Frame {
-    /// The book's empty frame, the singleton the driver starts from.
-    #[must_use]
-    pub fn new() -> Frame {
-        Frame(None)
+/// Forces one layer of delay.
+fn force(stream: Stream) -> Stream {
+    match stream {
+        Stream::Delay(thunk) => force(thunk()),
+        other => other,
     }
+}
 
-    /// The book's `extend`: one more binding in front of the chain.
-    #[must_use]
-    pub fn extend(&self, variable: Value, value: Value) -> Frame {
-        Frame(Some(Rc::new(FrameNode {
-            variable,
-            value,
-            next: self.clone(),
-        })))
-    }
-
-    /// The book's `binding-in-frame`, answering the binding's value
-    /// directly; `None` is the absence the book's `false` named.
-    #[must_use]
-    pub fn binding_in_frame(&self, variable: &Value) -> Option<Value> {
-        let mut node = self.0.as_ref();
-        while let Some(n) = node {
-            if &n.variable == variable {
-                return Some(n.value.clone());
-            }
-            node = n.next.0.as_ref();
+/// Round-robin combination of two streams: the fairness discipline of
+/// `interleave-delayed`.
+fn interleave(left: Stream, right: Stream) -> Stream {
+    match force(left) {
+        Stream::Nil => right,
+        Stream::Cons(answer, rest) => {
+            Stream::Cons(answer, Box::new(move || interleave(right, rest())))
         }
-        None
+        Stream::Delay(_) => unreachable!("force resolves delays"),
     }
+}
 
-    /// Whether the frame holds no bindings.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.0.is_none()
-    }
-
-    /// The bindings, newest first (the chain's cons order).
-    #[must_use]
-    pub fn bindings(&self) -> Vec<(Value, Value)> {
-        let mut out = Vec::new();
-        let mut node = self.0.as_ref();
-        while let Some(n) = node {
-            out.push((n.variable.clone(), n.value.clone()));
-            node = n.next.0.as_ref();
+/// Stream monadic bind with a delayed rest: the discipline of
+/// `stream-flatmap-delayed`.
+fn flatmap(stream: Stream, project: &Rc<dyn Fn(Substitution) -> Stream>) -> Stream {
+    match force(stream) {
+        Stream::Nil => Stream::Nil,
+        Stream::Cons(answer, rest) => {
+            let project = Rc::clone(project);
+            interleave(
+                project(answer),
+                Stream::Delay(Box::new(move || flatmap(rest(), &project))),
+            )
         }
-        out
+        Stream::Delay(_) => unreachable!("force resolves delays"),
     }
 }
 
-// ---------------------------------------------------------------------------
-// Query syntax procedures (4.4.4.7).
-// ---------------------------------------------------------------------------
-
-/// The book's `var?`: an internal variable is the list `(? name)`.
-#[must_use]
-pub fn is_var(exp: &Value) -> bool {
-    matches!(exp, Value::Pair(cell) if matches!(&*cell.car.borrow(), Value::Sym(s) if &**s == "?"))
-}
-
-/// The book's `constant-symbol?`: the data symbols a pattern can start with.
-#[must_use]
-pub fn constant_symbol(exp: &Value) -> bool {
-    matches!(exp, Value::Sym(_))
-}
-
-/// The book's `query-syntax-process`: every `?x` symbol becomes the list
-/// `(? x)`, walking pairs including dotted tails.
-#[must_use]
-pub fn query_syntax_process(exp: &Value) -> Value {
-    map_over_symbols(exp, &expand_question_mark)
-}
-
-fn map_over_symbols(exp: &Value, proc: &dyn Fn(&str) -> Value) -> Value {
-    match exp {
-        Value::Pair(cell) => Value::Pair(cons_cell(
-            map_over_symbols(&cell.car.borrow(), proc),
-            map_over_symbols(&cell.cdr.borrow(), proc),
-        )),
-        Value::Sym(s) => proc(s),
-        other => other.clone(),
-    }
-}
-
-fn expand_question_mark(symbol: &str) -> Value {
-    match symbol.strip_prefix('?') {
-        Some(name) => Value::list(vec![Value::sym("?"), Value::sym(name)]),
-        None => Value::sym(symbol),
-    }
-}
-
-/// The book's `contract-question-mark`: the printed form of an internal
-/// variable, `?name` or the renamed `?name-id`.
-#[must_use]
-pub fn contract_question_mark(variable: &Value) -> Value {
-    let Ok(items) = variable.list_items() else {
-        return variable.clone();
-    };
-    match items.as_slice() {
-        [_, Value::Sym(name)] => Value::sym(&format!("?{name}")),
-        [_, Value::Int(id), Value::Sym(name)] => Value::sym(&format!("?{name}-{id}")),
-        _ => variable.clone(),
-    }
-}
-
-/// The book's `make-new-variable`: `(? name)` becomes `(? id name)` so two
-/// applications of one rule never confuse their variables.
-#[must_use]
-pub fn make_new_variable(var: &Value, rule_application_id: u64) -> Value {
-    let Value::Pair(cell) = var else {
-        return var.clone();
-    };
-    let Value::Pair(rest) = cell.cdr.borrow().clone() else {
-        return var.clone();
-    };
-    let name = rest.car.borrow().clone();
-    Value::list(vec![
-        Value::sym("?"),
-        Value::int(i128::from(rule_application_id)),
-        name,
-    ])
-}
-
-/// The book's `rename-variables-in`, with the application id the caller
-/// drew from the engine's counter.
-#[must_use]
-pub fn rename_variables_in(rule: &Value, rule_application_id: u64) -> Value {
-    fn tree_walk(exp: &Value, id: u64) -> Value {
-        if is_var(exp) {
-            return make_new_variable(exp, id);
-        }
-        if let Value::Pair(cell) = exp {
-            return Value::Pair(cons_cell(
-                tree_walk(&cell.car.borrow(), id),
-                tree_walk(&cell.cdr.borrow(), id),
-            ));
-        }
-        exp.clone()
-    }
-    tree_walk(rule, rule_application_id)
-}
-
-/// The book's `rule?`.
-#[must_use]
-pub fn is_rule(statement: &Value) -> bool {
-    matches!(statement, Value::Pair(cell)
-        if matches!(&*cell.car.borrow(), Value::Sym(s) if &**s == "rule"))
-}
-
-/// The book's `conclusion`: the `cadr` of a rule.
-/// # Panics
-/// Panics on a rule too short to have a conclusion, which only a broken
-/// program causes.
-#[must_use]
-pub fn conclusion(rule: &Value) -> Value {
-    let Value::Pair(cell) = rule else {
-        return Value::Nil;
-    };
-    let Value::Pair(rest) = cell.cdr.borrow().clone() else {
-        return Value::Nil;
-    };
-    rest.car.borrow().clone()
-}
-
-/// The book's `rule-body`: the `caddr`, or `(always-true)` for a rule
-/// without a body.
-/// # Panics
-/// Panics on a rule too short to have a body slot, which only a broken
-/// program causes.
-#[must_use]
-pub fn rule_body(rule: &Value) -> Value {
-    let Value::Pair(cell) = rule else {
-        return Value::list(vec![Value::sym("always-true")]);
-    };
-    let Value::Pair(rest) = cell.cdr.borrow().clone() else {
-        return Value::list(vec![Value::sym("always-true")]);
-    };
-    match rest.cdr.borrow().clone() {
-        Value::Pair(tail) => tail.car.borrow().clone(),
-        _ => Value::list(vec![Value::sym("always-true")]),
-    }
-}
-
-/// The book's `assertion-to-be-added?`: a tagged `assert!` form.
-#[must_use]
-pub fn assertion_to_be_added(exp: &Value) -> bool {
-    matches!(exp, Value::Pair(cell)
-        if matches!(&*cell.car.borrow(), Value::Sym(s) if &**s == "assert!"))
-}
-
-/// The book's `add-assertion-body`: the datum inside an `assert!` form.
-#[must_use]
-pub fn add_assertion_body(exp: &Value) -> Value {
-    match exp {
-        Value::Pair(cell) => match &*cell.cdr.borrow() {
-            Value::Pair(rest) => rest.car.borrow().clone(),
-            tail => tail.clone(),
+/// Runs one query to its answer stream.
+fn qeval_stream(engine: &Rc<Engine>, query: &Query, frame: Substitution) -> Stream {
+    match query {
+        Query::Unify(left, right) => match unify(left, right, &frame) {
+            Some(extended) => Stream::Cons(extended, Box::new(|| Stream::Nil)),
+            None => Stream::Nil,
         },
-        other => other.clone(),
-    }
-}
-
-// ---------------------------------------------------------------------------
-// The matcher (4.4.4.3).
-// ---------------------------------------------------------------------------
-
-/// The book's `pattern-match`: `None` is the book's `failed`, never a
-/// value any frame carries.
-#[must_use]
-pub fn pattern_match(pat: &Value, dat: &Value, frame: &Frame) -> Option<Frame> {
-    if pat == dat {
-        return Some(frame.clone());
-    }
-    if is_var(pat) {
-        return extend_if_consistent(pat, dat, frame);
-    }
-    if let (Value::Pair(p), Value::Pair(d)) = (pat, dat) {
-        let car_frame = pattern_match(&p.car.borrow(), &d.car.borrow(), frame)?;
-        return pattern_match(&p.cdr.borrow(), &d.cdr.borrow(), &car_frame);
-    }
-    None
-}
-
-/// The book's `extend-if-consistent`: a bound variable re-matches its
-/// stored value (which unification may have left a pattern), an unbound
-/// one takes the datum.
-#[must_use]
-pub fn extend_if_consistent(var: &Value, dat: &Value, frame: &Frame) -> Option<Frame> {
-    match frame.binding_in_frame(var) {
-        Some(stored) => pattern_match(&stored, dat, frame),
-        None => Some(frame.extend(var.clone(), dat.clone())),
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Unification (4.4.4.4).
-// ---------------------------------------------------------------------------
-
-/// The book's `unify-match`: the matcher made symmetrical — variables on
-/// both sides.
-#[must_use]
-pub fn unify_match(p1: &Value, p2: &Value, frame: &Frame) -> Option<Frame> {
-    if p1 == p2 {
-        return Some(frame.clone());
-    }
-    if is_var(p1) {
-        return extend_if_possible(p1, p2, frame);
-    }
-    if is_var(p2) {
-        return extend_if_possible(p2, p1, frame);
-    }
-    if let (Value::Pair(a), Value::Pair(b)) = (p1, p2) {
-        let car_frame = unify_match(&a.car.borrow(), &b.car.borrow(), frame)?;
-        return unify_match(&a.cdr.borrow(), &b.cdr.borrow(), &car_frame);
-    }
-    None
-}
-
-/// The book's `extend-if-possible`, with the two `***` checks: a value
-/// that is itself a variable is looked through first, and a binding that
-/// would make an expression depend on itself is rejected.
-#[must_use]
-pub fn extend_if_possible(var: &Value, val: &Value, frame: &Frame) -> Option<Frame> {
-    if let Some(stored) = frame.binding_in_frame(var) {
-        return unify_match(&stored, val, frame);
-    }
-    if is_var(val) {
-        return match frame.binding_in_frame(val) {
-            Some(stored) => unify_match(var, &stored, frame),
-            None => Some(frame.extend(var.clone(), val.clone())),
-        };
-    }
-    if depends_on(val, var, frame) {
-        return None;
-    }
-    Some(frame.extend(var.clone(), val.clone()))
-}
-
-/// The book's `depends-on?`: whether `exp`, under `frame`'s bindings,
-/// mentions `var`.
-#[must_use]
-pub fn depends_on(exp: &Value, var: &Value, frame: &Frame) -> bool {
-    fn tree_walk(e: &Value, var: &Value, frame: &Frame) -> bool {
-        if is_var(e) {
-            if e == var {
-                return true;
-            }
-            return frame
-                .binding_in_frame(e)
-                .is_some_and(|value| tree_walk(&value, var, frame));
-        }
-        if let Value::Pair(cell) = e {
-            return tree_walk(&cell.car.borrow(), var, frame)
-                || tree_walk(&cell.cdr.borrow(), var, frame);
-        }
-        false
-    }
-    tree_walk(exp, var, frame)
-}
-
-/// The book's `instantiate`: a copy of `exp` with every variable replaced
-/// by its frame value; unbound variables go to `unbound`.
-#[must_use]
-pub fn instantiate(exp: &Value, frame: &Frame, unbound: &dyn Fn(&Value) -> Value) -> Value {
-    fn copy(exp: &Value, frame: &Frame, unbound: &dyn Fn(&Value) -> Value) -> Value {
-        if is_var(exp) {
-            return match frame.binding_in_frame(exp) {
-                Some(value) => copy(&value, frame, unbound),
-                None => unbound(exp),
-            };
-        }
-        if let Value::Pair(cell) = exp {
-            let car = copy(&cell.car.borrow(), frame, unbound);
-            let cdr = copy(&cell.cdr.borrow(), frame, unbound);
-            return Value::Pair(cons_cell(car, cdr));
-        }
-        exp.clone()
-    }
-    copy(exp, frame, unbound)
-}
-
-// ---------------------------------------------------------------------------
-// Stream operations (4.4.4.6).
-// ---------------------------------------------------------------------------
-
-/// The book's `singleton-stream`.
-#[must_use]
-pub fn singleton_stream(x: Frame) -> Stream<Frame> {
-    Stream::cons_stream(x, || Stream::Empty)
-}
-
-/// The chapter 3 `stream-map`, lifting a step over a frame stream.
-#[must_use]
-pub fn stream_map<T, U>(f: Rc<dyn Fn(T) -> U>, s: Stream<T>) -> Stream<U>
-where
-    T: Clone + 'static,
-    U: Clone + 'static,
-{
-    if s.is_empty() {
-        return Stream::Empty;
-    }
-    let head = f(s.head().clone());
-    let rest = s;
-    Stream::cons_stream(head, move || stream_map(Rc::clone(&f), rest.tail()))
-}
-
-/// The chapter 3 `stream-append`: both operands are values before the
-/// first element is produced, which is exactly the eagerness the book's
-/// 4.71 listings remove.
-#[must_use]
-pub fn stream_append<T: Clone + 'static>(s1: Stream<T>, s2: Stream<T>) -> Stream<T> {
-    if s1.is_empty() {
-        return s2;
-    }
-    let head = s1.head().clone();
-    let rest = s1;
-    Stream::cons_stream(head, move || stream_append(rest.tail(), s2.clone()))
-}
-
-/// The chapter 3 `interleave`: alternates, swapping the operands.
-#[must_use]
-pub fn interleave<T: Clone + 'static>(s1: Stream<T>, s2: Stream<T>) -> Stream<T> {
-    if s1.is_empty() {
-        return s2;
-    }
-    let head = s1.head().clone();
-    let rest = s1;
-    Stream::cons_stream(head, move || interleave(s2.clone(), rest.tail()))
-}
-
-/// The book's `delay`ed stream argument: a thunk, the book's delayed
-/// data. Type-erased so the recursive combinations share one shape.
-pub type Thunk<B> = Box<dyn FnOnce() -> Stream<B>>;
-
-/// The book's `stream-append-delayed`: `s2`'s construction waits until the
-/// append walks past `s1`'s elements.
-pub fn stream_append_delayed<B: Clone + 'static>(s1: Stream<B>, delayed_s2: Thunk<B>) -> Stream<B> {
-    if s1.is_empty() {
-        return delayed_s2();
-    }
-    let head = s1.head().clone();
-    let rest = s1;
-    Stream::cons_stream(head, move || stream_append_delayed(rest.tail(), delayed_s2))
-}
-
-/// The book's `interleave-delayed`: forces `delayed-s2` only after `s1`'s
-/// first element, which is what keeps recursive rules answerable.
-pub fn interleave_delayed<B: Clone + 'static>(s1: Stream<B>, delayed_s2: Thunk<B>) -> Stream<B> {
-    if s1.is_empty() {
-        return delayed_s2();
-    }
-    let head = s1.head().clone();
-    let rest = s1;
-    Stream::cons_stream(head, move || {
-        interleave_delayed(delayed_s2(), Box::new(move || rest.tail()))
-    })
-}
-
-/// The book's `flatten-stream`: combines the mapped inner streams with
-/// `interleave-delayed`, the `delay` guarding the rest of the walk.
-#[must_use]
-pub fn flatten_stream<B: Clone + 'static>(stream: Stream<Stream<B>>) -> Stream<B> {
-    if stream.is_empty() {
-        return Stream::Empty;
-    }
-    let inner = stream.head().clone();
-    let rest = stream;
-    interleave_delayed(inner, Box::new(move || flatten_stream(rest.tail())))
-}
-
-/// The book's `stream-flatmap`: map, then interleave the inner streams.
-#[must_use]
-pub fn stream_flatmap<A: Clone + 'static, B: Clone + 'static>(
-    proc: StepFn<A, B>,
-    s: Stream<A>,
-) -> Stream<B> {
-    flatten_stream(stream_map(Rc::new(move |a: A| proc(&a)), s))
-}
-
-/// The book's undelayed `flatten-stream` of exercise 4.73, for the
-/// comparison probes: it must construct every inner stream before the
-/// first element emerges.
-#[must_use]
-pub fn flatten_stream_undelayed<B: Clone + 'static>(stream: Stream<Stream<B>>) -> Stream<B> {
-    if stream.is_empty() {
-        return Stream::Empty;
-    }
-    let inner = stream.head().clone();
-    let rest = stream;
-    interleave(inner, flatten_stream_undelayed(rest.tail()))
-}
-
-// ---------------------------------------------------------------------------
-// The engine.
-// ---------------------------------------------------------------------------
-
-/// The book's `get-stream`: the stored bucket as a stream.
-fn get_bucket(index: &RefCell<HashMap<String, Vec<Value>>>, pattern: &Value) -> Stream<Value> {
-    stream_of_values(&get_bucket_items(index, pattern))
-}
-
-/// The index bucket for `pattern`, if any.
-fn get_bucket_items(index: &RefCell<HashMap<String, Vec<Value>>>, pattern: &Value) -> Vec<Value> {
-    match index_key_of(pattern) {
-        Some(key) => index.borrow().get(&key).cloned().unwrap_or_default(),
-        None => Vec::new(),
-    }
-}
-
-/// Builds a proper-list stream from stored items, in order.
-fn stream_of_values(items: &[Value]) -> Stream<Value> {
-    fn build(items: Rc<[Value]>, index: usize) -> Stream<Value> {
-        match items.get(index) {
-            None => Stream::Empty,
-            Some(head) => {
-                let head = head.clone();
-                Stream::cons_stream(head, move || build(Rc::clone(&items), index + 1))
+        Query::Value(predicate, arguments) => {
+            if holds(predicate, arguments, &frame) {
+                Stream::Cons(frame, Box::new(|| Stream::Nil))
+            } else {
+                Stream::Nil
             }
         }
-    }
-    build(Rc::from(items), 0)
-}
-
-/// The query engine: the data base, the dispatch table, the rule counter,
-/// and the host procedures `lisp-value` applies — the book's driver loop,
-/// `qeval` dispatch, and table of 4.4.4.5 in one structure.
-pub struct QueryEngine {
-    /// The `(type 'qeval)` table of 4.4.4.2, keyed by the type symbol.
-    procs: RefCell<HashMap<String, QProc>>,
-    /// The processor untagged patterns take; `None` is the standard
-    /// simple query of 4.4.4.2. Exercises that redefine simple query
-    /// install theirs here.
-    fallback: RefCell<Option<QProc>>,
-    /// The frame combinator, the book's `stream-flatmap`; 4.74 swaps it.
-    combiner: RefCell<Rc<dyn Combiner>>,
-    /// All assertions, in insertion order (see the module docs).
-    assertions: RefCell<Vec<Value>>,
-    /// All rules, in insertion order.
-    rules: RefCell<Vec<Value>>,
-    /// The assertion index, keyed by the leading symbol or `?`.
-    assertion_index: RefCell<HashMap<String, Vec<Value>>>,
-    /// The rule index, keyed by the conclusion's leading symbol or `?`.
-    rule_index: RefCell<HashMap<String, Vec<Value>>>,
-    /// The book's `rule-counter`, one id per rule application.
-    rule_counter: std::cell::Cell<u64>,
-    /// The host procedures `lisp-value` applies: the shared subset's
-    /// primitives, the edition's stand-in for the underlying Lisp.
-    predicates: RefCell<HashMap<String, Handler>>,
-    /// The slot a raised object error lands in, read by the driver.
-    error: RefCell<Option<SchemeError>>,
-}
-
-impl QueryEngine {
-    /// One engine with the standard dispatch table installed: `and`,
-    /// `or`, `not`, `lisp-value`, and `always-true` (the book's five
-    /// `put`s).
-    #[must_use]
-    pub fn new() -> Engine {
-        let (sink, _cell) = OutputSink::buffer();
-        let predicates: HashMap<String, Handler> = primitive_table(&sink)
-            .into_iter()
-            .map(|(name, handler)| (name.to_string(), handler))
-            .collect();
-        let engine = Rc::new(QueryEngine {
-            procs: RefCell::new(HashMap::new()),
-            fallback: RefCell::new(None),
-            combiner: RefCell::new(Rc::new(Interleaved)),
-            assertions: RefCell::new(Vec::new()),
-            rules: RefCell::new(Vec::new()),
-            assertion_index: RefCell::new(HashMap::new()),
-            rule_index: RefCell::new(HashMap::new()),
-            rule_counter: std::cell::Cell::new(0),
-            predicates: RefCell::new(predicates),
-            error: RefCell::new(None),
-        });
-        engine.put("and", conjoin_proc());
-        engine.put("or", disjoin_proc());
-        engine.put("not", negate_proc());
-        engine.put("lisp-value", lisp_value_proc());
-        engine.put("always-true", always_true_proc());
-        engine
-    }
-
-    /// The book's `put`: registers the processor for one type symbol.
-    pub fn put(&self, name: &str, proc: QProc) {
-        self.procs.borrow_mut().insert(name.to_string(), proc);
-    }
-
-    /// The book's `get`: the installed processor for one type symbol.
-    #[must_use]
-    pub fn get(&self, name: &str) -> Option<QProc> {
-        self.procs.borrow().get(name).cloned()
-    }
-
-    /// Swaps the simple-query fallback (see the module docs).
-    pub fn set_fallback(&self, proc: Option<QProc>) {
-        *self.fallback.borrow_mut() = proc;
-    }
-
-    /// The standard simple-query processor, as a table-shaped value the
-    /// wrappers of 4.67 and 4.79 delegate to.
-    #[must_use]
-    pub fn simple_query_proc(self: &Rc<Self>) -> QProc {
-        let engine = Rc::clone(self);
-        Rc::new(move |_eng, pattern, frames| engine.standard_simple_query(pattern, frames))
-    }
-
-    /// Swaps the frame combinator (4.74's simple flatmap).
-    pub fn set_combiner(&self, combiner: Rc<dyn Combiner>) {
-        *self.combiner.borrow_mut() = combiner;
-    }
-
-    /// Runs the engine's combinator over frames.
-    pub fn flatmap(&self, proc: StepFn<Frame, Frame>, s: Stream<Frame>) -> Stream<Frame> {
-        self.combiner.borrow().combine_frames(proc, s)
-    }
-
-    /// Runs the engine's combinator over data values, `find-assertions`'s
-    /// shape; `apply-rules` stays on the book combinator (4.74).
-    pub fn flatmap_values(&self, proc: StepFn<Value, Frame>, s: Stream<Value>) -> Stream<Frame> {
-        self.combiner.borrow().combine_values(proc, s)
-    }
-
-    /// Installs a host predicate `lisp-value` can apply, beside the
-    /// shared subset's primitives (4.60's name comparison).
-    pub fn install_predicate(&self, name: &str, handler: Handler) {
-        self.predicates
-            .borrow_mut()
-            .insert(name.to_string(), handler);
-    }
-
-    /// One rule-application id, the book's `new-rule-application-id`.
-    fn next_rule_id(&self) -> u64 {
-        self.rule_counter.set(self.rule_counter.get() + 1);
-        self.rule_counter.get()
-    }
-
-    /// The error a raised object error left, if any, clearing the slot.
-    #[must_use]
-    pub fn take_error(&self) -> Option<SchemeError> {
-        self.error.borrow_mut().take()
-    }
-
-    /// Records a raised object error for the driver.
-    fn raise(&self, error: SchemeError) {
-        *self.error.borrow_mut() = Some(error);
-    }
-
-    // -- The data base (4.4.4.5). ------------------------------------------
-
-    /// The book's `add-rule-or-assertion!`, filing by shape.
-    pub fn add_rule_or_assertion(&self, assertion: &Value) {
-        if is_rule(assertion) {
-            self.add_rule(assertion);
-        } else {
-            self.add_assertion(assertion);
-        }
-    }
-
-    /// Reads and files each line of a program of `assert!`-free data:
-    /// every form is an assertion or a rule. Parse errors panic; the
-    /// callers feed checked constants.
-    /// # Panics
-    /// Panics when a line does not parse, which only a broken constant
-    /// table causes.
-    pub fn load(&self, lines: &[&str]) {
-        for line in lines {
-            let form = sicp_runtime::read(line).expect("the data base line parses");
-            self.add_rule_or_assertion(&query_syntax_process(&form));
-        }
-    }
-
-    fn add_assertion(&self, assertion: &Value) {
-        self.store_assertion_in_index(assertion);
-        self.assertions.borrow_mut().push(assertion.clone());
-    }
-
-    fn add_rule(&self, rule: &Value) {
-        self.store_rule_in_index(rule);
-        self.rules.borrow_mut().push(rule.clone());
-    }
-
-    fn store_assertion_in_index(&self, assertion: &Value) {
-        if let Some(key) = index_key_of(assertion) {
-            self.assertion_index
-                .borrow_mut()
-                .entry(key)
-                .or_default()
-                .push(assertion.clone());
-        }
-    }
-
-    fn store_rule_in_index(&self, rule: &Value) {
-        if let Some(key) = index_key_of(&conclusion(rule)) {
-            self.rule_index
-                .borrow_mut()
-                .entry(key)
-                .or_default()
-                .push(rule.clone());
-        }
-    }
-
-    /// The book's `fetch-assertions`: the indexed bucket when the pattern
-    /// starts with a constant symbol, everything otherwise.
-    #[must_use]
-    pub fn fetch_assertions(&self, pattern: &Value) -> Stream<Value> {
-        if use_index(pattern) {
-            get_bucket(&self.assertion_index, pattern)
-        } else {
-            stream_of_values(&self.assertions.borrow())
-        }
-    }
-
-    /// The book's `fetch-rules`: the bucket for the pattern's leading
-    /// symbol plus the `?` bucket of variable-led conclusions.
-    #[must_use]
-    pub fn fetch_rules(&self, pattern: &Value) -> Stream<Value> {
-        if use_index(pattern) {
-            let mut items = get_bucket_items(&self.rule_index, pattern);
-            items.extend(get_bucket_items(&self.rule_index, &var_key()));
-            stream_of_values(&items)
-        } else {
-            stream_of_values(&self.rules.borrow())
-        }
-    }
-
-    // -- The evaluator (4.4.4.2). ------------------------------------------
-
-    /// The book's `qeval`: dispatch on the type symbol through the table,
-    /// then the fallback, then the standard simple query. Engine-recursive
-    /// helpers close over [`Engine`] handles because stream tails must be
-    /// `'static`.
-    pub fn qeval(self: &Rc<Self>, query: &Value, frames: Stream<Frame>) -> Stream<Frame> {
-        #[allow(
-            clippy::collapsible_if,
-            reason = "the three dispatch stages read best nested"
-        )]
-        {
-            if let Value::Pair(cell) = query {
-                if let Value::Sym(name) = &*cell.car.borrow() {
-                    if let Some(proc) = self.get(name) {
-                        let contents = cell.cdr.borrow().clone();
-                        return proc(self, &contents, frames);
-                    }
-                }
+        Query::Relation { name, arguments } => relation_stream(engine, name, arguments, &frame),
+        Query::And(subs) => {
+            let mut stream = Stream::Cons(frame, Box::new(|| Stream::Nil));
+            for sub in subs {
+                let sub = sub.clone();
+                let engine = Rc::clone(engine);
+                let project: Rc<dyn Fn(Substitution) -> Stream> =
+                    Rc::new(move |frame| qeval_stream(&engine, &sub, frame));
+                stream = flatmap(stream, &project);
             }
+            stream
         }
-        if let Some(fallback) = self.fallback.borrow().clone() {
-            return fallback(self, query, frames);
-        }
-        self.standard_simple_query(query, frames)
-    }
-
-    /// The book's `simple-query`: for each frame, the assertion matches
-    /// then the rule applications, the assertions' stream first and the
-    /// rules' construction delayed behind it.
-    #[must_use]
-    pub fn standard_simple_query(
-        self: &Rc<Self>,
-        query_pattern: &Value,
-        frame_stream: Stream<Frame>,
-    ) -> Stream<Frame> {
-        let engine = Rc::clone(self);
-        let pattern = query_pattern.clone();
-        self.flatmap(
-            Rc::new(move |frame: &Frame| {
+        Query::Or(subs) => {
+            // `disjoin`: the first disjunct's stream interleaved with
+            // the delayed disjunction of the rest, in source order.
+            let mut stream = Stream::Nil;
+            for sub in subs.iter().rev() {
+                let engine = Rc::clone(engine);
+                let sub = sub.clone();
                 let frame = frame.clone();
-                let engine2 = Rc::clone(&engine);
-                let pattern2 = pattern.clone();
-                stream_append_delayed(
-                    engine.find_assertions_in(&pattern, &frame),
-                    Box::new(move || engine2.apply_rules(&pattern2, &frame)),
-                )
-            }),
-            frame_stream,
-        )
-    }
-
-    /// The book's `find-assertions`: every data-base match of the pattern
-    /// in the frame.
-    #[must_use]
-    pub fn find_assertions_in(self: &Rc<Self>, pattern: &Value, frame: &Frame) -> Stream<Frame> {
-        let engine = Rc::clone(self);
-        let pattern = pattern.clone();
-        let frame = frame.clone();
-        let assertions = engine.fetch_assertions(&pattern);
-        self.flatmap_values(
-            Rc::new(
-                move |datum: &Value| match check_an_assertion(datum, &pattern, &frame) {
-                    Some(extended) => singleton_stream(extended),
-                    None => Stream::Empty,
-                },
-            ),
-            assertions,
-        )
-    }
-
-    /// The book's `apply-rules` over the fetched rules. The book composes
-    /// it with the plain `stream-flatmap`: a rule application's inner
-    /// stream is the rule body's whole answer stream, neither empty nor
-    /// singleton, so 4.74's simple combiner must not serve it (it would
-    /// keep only the first frame per rule and its eager collection
-    /// diverges on recursive rules).
-    #[must_use]
-    pub fn apply_rules(self: &Rc<Self>, pattern: &Value, frame: &Frame) -> Stream<Frame> {
-        let engine = Rc::clone(self);
-        let pattern = pattern.clone();
-        let frame = frame.clone();
-        let rules = engine.fetch_rules(&pattern);
-        Interleaved.combine_values(
-            Rc::new(move |rule: &Value| engine.apply_a_rule(rule, &pattern, &frame)),
-            rules,
-        )
-    }
-
-    /// The book's `apply-a-rule`: rename, unify the conclusion with the
-    /// pattern in the frame, evaluate the body in the extension.
-    #[must_use]
-    pub fn apply_a_rule(
-        self: &Rc<Self>,
-        rule: &Value,
-        query_pattern: &Value,
-        query_frame: &Frame,
-    ) -> Stream<Frame> {
-        let clean_rule = rename_variables_in(rule, self.next_rule_id());
-        match unify_match(query_pattern, &conclusion(&clean_rule), query_frame) {
-            None => Stream::Empty,
-            Some(unify_result) => {
-                self.qeval(&rule_body(&clean_rule), singleton_stream(unify_result))
+                let later = stream;
+                stream = Stream::Delay(Box::new(move || {
+                    interleave(qeval_stream(&engine, &sub, frame), later)
+                }));
+            }
+            stream
+        }
+        Query::Not(sub) => {
+            let probe = collect(qeval_stream(engine, sub, frame.clone()), 1);
+            if probe.is_empty() {
+                Stream::Cons(frame, Box::new(|| Stream::Nil))
+            } else {
+                Stream::Nil
             }
         }
-    }
-
-    /// The book's `execute`: applies the named host predicate to the
-    /// already-actual arguments.
-    ///
-    /// # Errors
-    /// [`SchemeError::UnboundVariable`] when the predicate names no host
-    /// procedure; whatever the procedure raises.
-    #[allow(
-        clippy::similar_names,
-        reason = "call/cell are the call form and its cell, one field apart"
-    )]
-    pub fn execute(&self, call: &Value) -> EvalResult {
-        let Value::Pair(cell) = call else {
-            return Err(SchemeError::TypeMismatch(format!(
-                "lisp-value: not a call: {call}"
-            )));
-        };
-        let Value::Sym(name) = &*cell.car.borrow() else {
-            return Err(SchemeError::TypeMismatch(format!(
-                "lisp-value: no predicate: {call}"
-            )));
-        };
-        let handler = self
-            .predicates
-            .borrow()
-            .get(&**name)
-            .cloned()
-            .ok_or_else(|| SchemeError::UnboundVariable(name.to_string()))?;
-        let args = cell.cdr.borrow().list_items()?;
-        handler(&args)
-    }
-
-    // -- The driver loop (4.4.4.1). ----------------------------------------
-
-    /// The frame stream one query produces, from the singleton empty
-    /// frame — the [`qeval`] entry the driver uses.
-    #[must_use]
-    pub fn query_frames(self: &Rc<Self>, query: &Value) -> Stream<Frame> {
-        self.qeval(query, singleton_stream(Frame::new()))
-    }
-
-    fn answer_stream(self: &Rc<Self>, processed: &Value) -> Vec<String> {
-        let frames = self.query_frames(processed);
-        let mut out = Vec::new();
-        for frame in &frames {
-            out.push(print_value(&instantiate_query(processed, &frame)));
-        }
-        out
-    }
-
-    /// Every answer of a query string, instantiated and printed. The
-    /// query must terminate; sample infinite streams with
-    /// [`QueryEngine::answers_upto`].
-    ///
-    /// # Panics
-    /// Panics when the query does not parse, which the exercise strings
-    /// never do.
-    #[must_use]
-    pub fn answers(self: &Rc<Self>, query: &str) -> Vec<String> {
-        self.answers_from(&read_query(query), usize::MAX).0
-    }
-
-    /// The first `n` answers of a query string, for the infinite streams
-    /// recursive rules generate.
-    /// # Panics
-    /// As [`QueryEngine::answers`].
-    #[must_use]
-    pub fn answers_upto(self: &Rc<Self>, query: &str, n: usize) -> Vec<String> {
-        self.answers_from(&read_query(query), n).0
-    }
-
-    /// [`QueryEngine::answers_upto`] that also reports a raised error.
-    /// # Panics
-    /// As [`QueryEngine::answers`].
-    #[must_use]
-    pub fn answers_checked(
-        self: &Rc<Self>,
-        query: &str,
-        n: usize,
-    ) -> (Vec<String>, Option<SchemeError>) {
-        self.answers_from(&read_query(query), n)
-    }
-
-    fn answers_from(
-        self: &Rc<Self>,
-        processed: &Value,
-        n: usize,
-    ) -> (Vec<String>, Option<SchemeError>) {
-        let frames = self.query_frames(processed);
-        let mut out = Vec::new();
-        for frame in &frames {
-            out.push(print_value(&instantiate_query(processed, &frame)));
-            if out.len() >= n {
-                return (out, self.take_error());
+        Query::Unique(sub) => {
+            let mut probe = collect(qeval_stream(engine, sub, frame.clone()), 1);
+            match probe.pop() {
+                Some(first) => Stream::Cons(first, Box::new(|| Stream::Nil)),
+                None => Stream::Nil,
             }
         }
-        (out, self.take_error())
-    }
-
-    /// The book's driver session over `lines`: one `;;; Query input:`
-    /// line each, `Assertion added to data base.` after a filing, and the
-    /// `;;; Query results:` block with each instantiated answer; a raised
-    /// object error or a parse error ends the transcript with one `Error:`
-    /// line. Only terminating queries belong here.
-    ///
-    /// # Panics
-    /// Panics only through [`QueryEngine::answers`]'s parse rule, which
-    /// the exercise strings never trip.
-    #[must_use]
-    pub fn session(self: &Rc<Self>, lines: &[&str]) -> String {
-        let mut out = String::new();
-        for line in lines {
-            out.push_str(";;; Query input: ");
-            out.push_str(line);
-            out.push('\n');
-            let form = match sicp_runtime::read(line) {
-                Ok(form) => form,
-                Err(error) => {
-                    out.push_str("Error: ");
-                    out.push_str(&error.to_string());
-                    out.push('\n');
-                    return out;
+        Query::UniqueBy(variables, sub) => {
+            // The first answer for each projection survives, in the
+            // sub-query's production order.
+            let mut seen: Vec<Vec<Term>> = Vec::new();
+            let mut kept = Vec::new();
+            for answer in collect(qeval_stream(engine, sub, frame.clone()), usize::MAX) {
+                let projection: Vec<Term> = variables
+                    .iter()
+                    .map(|name| walk(&Term::Variable(name.clone()), &answer).clone())
+                    .collect();
+                if seen.contains(&projection) {
+                    continue;
                 }
-            };
-            let processed = query_syntax_process(&form);
-            if assertion_to_be_added(&processed) {
-                let body = add_assertion_body(&processed);
-                self.add_rule_or_assertion(&body);
-                out.push_str("Assertion added to data base.\n");
-                continue;
+                seen.push(projection);
+                kept.push(answer);
             }
-            out.push_str(";;; Query results:\n");
-            for answer in self.answer_stream(&processed) {
-                out.push_str(&answer);
-                out.push('\n');
-            }
-            if let Some(error) = self.take_error() {
-                out.push_str("Error: ");
-                out.push_str(&error.to_string());
-                out.push('\n');
-                return out;
-            }
+            kept.into_iter().rev().fold(Stream::Nil, |rest, answer| {
+                Stream::Cons(answer, Box::new(move || rest))
+            })
         }
-        out
     }
 }
 
-/// The book's `instantiate` with the driver's unbound-variable handler:
-/// a printed `?name`, the book's `contract-question-mark`.
-#[must_use]
-pub fn instantiate_query(pattern: &Value, frame: &Frame) -> Value {
-    instantiate(pattern, frame, &|var| contract_question_mark(var))
+/// One data-base entry a simple query may match: an assertion, or the
+/// rule at an index of the rule store.
+#[derive(Clone)]
+enum Candidate {
+    Assertion(Term),
+    Rule(usize),
 }
 
-/// Reads one query and expands its pattern variables.
-/// # Panics
-/// Panics on a parse error, which the exercise strings never contain.
-#[must_use]
-pub fn read_query(query: &str) -> Value {
-    let form = sicp_runtime::read(query).expect("the query parses");
-    query_syntax_process(&form)
+/// A simple query against one frame: every assertion and then every
+/// rule of the relation, in insertion order, each contributing a
+/// delayed stream; the streams combine as the right-nested interleave
+/// `flatmap` builds, so the first candidate answers first and no
+/// candidate's stream can starve the rest.
+fn relation_stream(
+    engine: &Rc<Engine>,
+    name: &str,
+    arguments: &[Term],
+    frame: &Substitution,
+) -> Stream {
+    let assertions = engine
+        .db
+        .assertions
+        .iter()
+        .filter(|assertion| relation_named(assertion, name))
+        .map(|assertion| Candidate::Assertion(assertion.clone()));
+    let rules = engine
+        .db
+        .rules
+        .iter()
+        .enumerate()
+        .filter(|(_, rule)| relation_named(&rule.conclusion, name))
+        .map(|(index, _)| Candidate::Rule(index));
+    let candidates: Vec<Candidate> = assertions.chain(rules).collect();
+    let mut stream = Stream::Nil;
+    for candidate in candidates.into_iter().rev() {
+        let engine = Rc::clone(engine);
+        let arguments = arguments.to_vec();
+        let frame = frame.clone();
+        let later = stream;
+        stream = Stream::Delay(Box::new(move || {
+            interleave(
+                candidate_stream(&engine, &arguments, candidate, frame),
+                later,
+            )
+        }));
+    }
+    stream
 }
 
-/// The `?` key the rule index stores variable-led conclusions under.
-fn var_key() -> Value {
-    Value::sym("?")
-}
-
-/// The book's `indexable?`: a pattern starts with a variable or a
-/// constant symbol.
-#[must_use]
-pub fn is_indexable(pat: &Value) -> bool {
-    match pat {
-        Value::Pair(cell) => {
-            let head = cell.car.borrow();
-            is_var(&head) || constant_symbol(&head)
+fn candidate_stream(
+    engine: &Rc<Engine>,
+    arguments: &[Term],
+    candidate: Candidate,
+    frame: Substitution,
+) -> Stream {
+    let (head, conditions) = match candidate {
+        Candidate::Assertion(assertion) => (assertion, Vec::new()),
+        // A rule application renames the rule apart with a fresh
+        // application number (`apply-a-rule`), then continues with
+        // its conditions.
+        Candidate::Rule(index) => {
+            let fresh = engine.next_var.get();
+            engine.next_var.set(fresh + 1);
+            rename_rule(&engine.db.rules[index], fresh)
         }
+    };
+    let head_args = relation_arguments(&head);
+    if head_args.len() != arguments.len() {
+        return Stream::Nil;
+    }
+    let mut current = frame;
+    for (pattern, datum) in arguments.iter().zip(head_args) {
+        match unify(pattern, &datum, &current) {
+            Some(extended) => current = extended,
+            None => return Stream::Nil,
+        }
+    }
+    let mut stream = Stream::Cons(current, Box::new(|| Stream::Nil));
+    for condition in conditions {
+        let engine = Rc::clone(engine);
+        let project: Rc<dyn Fn(Substitution) -> Stream> =
+            Rc::new(move |frame| qeval_stream(&engine, &condition, frame));
+        stream = flatmap(stream, &project);
+    }
+    stream
+}
+
+fn relation_named(term: &Term, name: &str) -> bool {
+    match term {
+        Term::Atom(head) => head == name,
+        Term::Pair(head, _) => matches!(head.as_ref(), Term::Atom(head) if head == name),
         _ => false,
     }
 }
 
-/// The book's `index-key-of`: `?` for a variable-led pattern, the leading
-/// symbol otherwise; `None` when the pattern is not indexable.
+fn relation_arguments(term: &Term) -> Vec<Term> {
+    let mut args = Vec::new();
+    let mut cursor = term.clone();
+    loop {
+        match cursor {
+            Term::Pair(head, tail) => {
+                args.push(*head);
+                cursor = *tail;
+            }
+            Term::Empty => break,
+            other => {
+                args.push(other);
+                break;
+            }
+        }
+    }
+    if matches!(args.first(), Some(Term::Atom(_))) {
+        args.remove(0);
+    }
+    args
+}
+
+fn rename_rule(rule: &Rule, fresh: usize) -> (Term, Vec<Query>) {
+    let mut seen: HashMap<String, String> = HashMap::new();
+    let conclusion = rename_term(&rule.conclusion, &mut seen, fresh);
+    let conditions = rule
+        .conditions
+        .iter()
+        .map(|query| rename_query(query, &mut seen, fresh))
+        .collect();
+    (conclusion, conditions)
+}
+
+fn rename_term(term: &Term, seen: &mut HashMap<String, String>, fresh: usize) -> Term {
+    match term {
+        Term::Variable(name) => {
+            let renamed = seen
+                .entry(name.clone())
+                .or_insert_with(|| format!("{name}#{fresh}"));
+            Term::Variable(renamed.clone())
+        }
+        Term::Pair(left, right) => Term::Pair(
+            Box::new(rename_term(left, seen, fresh)),
+            Box::new(rename_term(right, seen, fresh)),
+        ),
+        other => other.clone(),
+    }
+}
+
+/// Renames every variable a host predicate names: term positions
+/// through [`rename_term`], binding-name positions through the same
+/// table, so a renamed rule's `Value` condition reads the renamed
+/// frame (SICP's `rename-variables-in` renames the whole rule).
+fn rename_predicate(
+    predicate: &Predicate,
+    seen: &mut HashMap<String, String>,
+    fresh: usize,
+) -> Predicate {
+    let renamed = |name: &String, seen: &mut HashMap<String, String>| {
+        seen.entry(name.clone())
+            .or_insert_with(|| format!("{name}#{fresh}"))
+            .clone()
+    };
+    match predicate {
+        Predicate::Eq(a, b) => {
+            Predicate::Eq(rename_term(a, seen, fresh), rename_term(b, seen, fresh))
+        }
+        Predicate::Ne(a, b) => {
+            Predicate::Ne(rename_term(a, seen, fresh), rename_term(b, seen, fresh))
+        }
+        Predicate::Lt(a, b) => {
+            Predicate::Lt(rename_term(a, seen, fresh), rename_term(b, seen, fresh))
+        }
+        Predicate::Le(a, b) => {
+            Predicate::Le(rename_term(a, seen, fresh), rename_term(b, seen, fresh))
+        }
+        Predicate::Gt(a, b) => {
+            Predicate::Gt(rename_term(a, seen, fresh), rename_term(b, seen, fresh))
+        }
+        Predicate::Ge(a, b) => {
+            Predicate::Ge(rename_term(a, seen, fresh), rename_term(b, seen, fresh))
+        }
+        Predicate::TextLt(a, b) => {
+            Predicate::TextLt(rename_term(a, seen, fresh), rename_term(b, seen, fresh))
+        }
+        Predicate::SumEq(terms, bound) => Predicate::SumEq(
+            terms
+                .iter()
+                .map(|term| rename_term(term, seen, fresh))
+                .collect(),
+            *bound,
+        ),
+        Predicate::Bound(term) => Predicate::Bound(rename_term(term, seen, fresh)),
+        Predicate::Or(items) => Predicate::Or(
+            items
+                .iter()
+                .map(|item| rename_predicate(item, seen, fresh))
+                .collect(),
+        ),
+        Predicate::DiffEq(a, b, c, d) => Predicate::DiffEq(
+            renamed(a, seen),
+            renamed(b, seen),
+            renamed(c, seen),
+            renamed(d, seen),
+        ),
+        Predicate::Pythagorean(a, b, c) => {
+            Predicate::Pythagorean(renamed(a, seen), renamed(b, seen), renamed(c, seen))
+        }
+    }
+}
+
+fn rename_query(query: &Query, seen: &mut HashMap<String, String>, fresh: usize) -> Query {
+    match query {
+        Query::Unify(left, right) => Query::Unify(
+            rename_term(left, seen, fresh),
+            rename_term(right, seen, fresh),
+        ),
+        Query::Relation { name, arguments } => Query::Relation {
+            name: name.clone(),
+            arguments: arguments
+                .iter()
+                .map(|term| rename_term(term, seen, fresh))
+                .collect(),
+        },
+        Query::And(subs) => Query::And(
+            subs.iter()
+                .map(|sub| rename_query(sub, seen, fresh))
+                .collect(),
+        ),
+        Query::Or(subs) => Query::Or(
+            subs.iter()
+                .map(|sub| rename_query(sub, seen, fresh))
+                .collect(),
+        ),
+        Query::Not(sub) => Query::Not(Box::new(rename_query(sub, seen, fresh))),
+        Query::Unique(sub) => Query::Unique(Box::new(rename_query(sub, seen, fresh))),
+        Query::Value(predicate, arguments) => Query::Value(
+            rename_predicate(predicate, seen, fresh),
+            arguments
+                .iter()
+                .map(|term| rename_term(term, seen, fresh))
+                .collect(),
+        ),
+        Query::UniqueBy(variables, sub) => Query::UniqueBy(
+            variables
+                .iter()
+                .map(|name| {
+                    seen.entry(name.clone())
+                        .or_insert_with(|| format!("{name}#{fresh}"))
+                        .clone()
+                })
+                .collect(),
+            Box::new(rename_query(sub, seen, fresh)),
+        ),
+    }
+}
+
+/// Evaluates one host predicate against the current frame (the
+/// `lisp-value` discipline: an unbound pattern variable fails the
+/// frame rather than raising).
+fn holds(predicate: &Predicate, arguments: &[Term], frame: &Substitution) -> bool {
+    for argument in arguments {
+        if !is_ground(argument, frame) {
+            return false;
+        }
+    }
+    let value = |term: &Term| -> Option<i64> {
+        match ground(term, frame)? {
+            Term::Integer(value) => Some(value),
+            _ => None,
+        }
+    };
+    let text = |term: &Term| -> Option<String> {
+        Some(match ground(term, frame)? {
+            Term::Text(text) | Term::Atom(text) => text,
+            Term::Integer(value) => value.to_string(),
+            other => format!("{other:?}"),
+        })
+    };
+    let operands = |a: &Term, b: &Term| Some((value(a)?, value(b)?));
+    let text_operands = |a: &Term, b: &Term| Some((text(a)?, text(b)?));
+    // Equality compares any two fully resolved terms, including nested
+    // pairs; an unbound variable anywhere in either term fails the frame.
+    let resolved = |a: &Term, b: &Term| -> Option<(Term, Term)> {
+        Some((ground(a, frame)?, ground(b, frame)?))
+    };
+    match predicate {
+        Predicate::Eq(a, b) => resolved(a, b).is_some_and(|(a, b)| a == b),
+        Predicate::Ne(a, b) => resolved(a, b).is_some_and(|(a, b)| a != b),
+        Predicate::Lt(a, b) => operands(a, b).is_some_and(|(a, b)| a < b),
+        Predicate::Le(a, b) => operands(a, b).is_some_and(|(a, b)| a <= b),
+        Predicate::Gt(a, b) => operands(a, b).is_some_and(|(a, b)| a > b),
+        Predicate::Ge(a, b) => operands(a, b).is_some_and(|(a, b)| a >= b),
+        Predicate::TextLt(a, b) => text_operands(a, b).is_some_and(|(a, b)| a < b),
+        Predicate::SumEq(terms, bound_total) => {
+            let mut total = 0_i64;
+            for term in terms {
+                match value(term).and_then(|term_value| total.checked_add(term_value)) {
+                    Some(next) => total = next,
+                    None => return false,
+                }
+            }
+            total == *bound_total
+        }
+        Predicate::Bound(term) => is_ground(term, frame),
+        Predicate::Or(items) => items.iter().any(|item| holds(item, arguments, frame)),
+        Predicate::DiffEq(a, b, c, d) => {
+            let named = |name: &String| -> Option<i64> { value(&Term::Variable(name.clone())) };
+            match (named(a), named(b), named(c), named(d)) {
+                (Some(a), Some(b), Some(c), Some(d)) => a
+                    .checked_sub(b)
+                    .zip(c.checked_sub(d))
+                    .is_some_and(|(l, r)| l == r),
+                _ => false,
+            }
+        }
+        Predicate::Pythagorean(a, b, c) => {
+            let named = |name: &String| -> Option<i64> { value(&Term::Variable(name.clone())) };
+            match (named(a), named(b), named(c)) {
+                (Some(a), Some(b), Some(c)) => {
+                    match (a.checked_mul(a), b.checked_mul(b), c.checked_mul(c)) {
+                        (Some(aa), Some(bb), Some(cc)) => aa.checked_add(bb) == Some(cc),
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+    }
+}
+
+fn collect(mut stream: Stream, limit: usize) -> Vec<Substitution> {
+    let mut answers = Vec::new();
+    while answers.len() < limit {
+        match force(stream) {
+            Stream::Nil => break,
+            Stream::Cons(answer, rest) => {
+                answers.push(answer);
+                stream = rest();
+            }
+            Stream::Delay(_) => unreachable!("force resolves delays"),
+        }
+    }
+    answers
+}
+
+/// One bounded query run: the first answers in production order plus
+/// whether the stream exhausted before the fuel ran out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueryRunReport {
+    /// The first answers, in production order.
+    pub answers: Vec<Substitution>,
+    /// Whether the answer stream exhausted within budget.
+    pub exhausted: bool,
+    /// The evaluation operations this run consumed: forced answer
+    /// cells on the delayed engine, unification attempts and candidate
+    /// expansions on the undelayed engine.
+    pub steps: u64,
+}
+
+fn collect_bounded(mut stream: Stream, fuel: u64) -> QueryRunReport {
+    let mut answers = Vec::new();
+    let mut steps = 0_u64;
+    let mut remaining = fuel;
+    loop {
+        match force(stream) {
+            Stream::Nil => {
+                return QueryRunReport {
+                    answers,
+                    exhausted: true,
+                    steps,
+                };
+            }
+            Stream::Cons(answer, rest) => {
+                if remaining == 0 {
+                    return QueryRunReport {
+                        answers,
+                        exhausted: false,
+                        steps,
+                    };
+                }
+                remaining -= 1;
+                steps += 1;
+                answers.push(answer);
+                stream = rest();
+            }
+            Stream::Delay(_) => unreachable!("force resolves delays"),
+        }
+    }
+}
+
+/// Runs one query under a step budget on the delayed engine: each
+/// forced answer cell consumes one unit of fuel.
 #[must_use]
-pub fn index_key_of(pat: &Value) -> Option<String> {
-    if !is_indexable(pat) {
-        return None;
+pub fn qeval_bounded(database: &Database, query: &Query, fuel: u64) -> QueryRunReport {
+    let engine = Rc::new(Engine {
+        db: database.clone(),
+        next_var: Cell::new(0),
+    });
+    collect_bounded(qeval_stream(&engine, query, Substitution::new()), fuel)
+}
+
+struct EagerEngine {
+    db: Database,
+    next_var: Cell<usize>,
+}
+
+struct EagerRun {
+    fuel: u64,
+    steps: u64,
+    truncated: bool,
+}
+
+fn eager_spend(run: &mut EagerRun) -> bool {
+    if run.fuel == 0 {
+        run.truncated = true;
+        return false;
     }
-    let Value::Pair(cell) = pat else { return None };
-    let head = cell.car.borrow();
-    if is_var(&head) {
-        return Some("?".to_string());
+    run.fuel -= 1;
+    run.steps += 1;
+    true
+}
+
+fn eager_conditions(
+    engine: &EagerEngine,
+    probe: &Rc<Engine>,
+    conditions: &[Query],
+    frame: &Substitution,
+    run: &mut EagerRun,
+    out: &mut Vec<Substitution>,
+) {
+    let Some((first, rest)) = conditions.split_first() else {
+        out.push(frame.clone());
+        return;
+    };
+    let mut here = Vec::new();
+    eager_query(engine, probe, first, frame, run, &mut here);
+    for next in here {
+        eager_conditions(engine, probe, rest, &next, run, out);
     }
-    match &*head {
-        Value::Sym(s) => Some(s.to_string()),
+}
+
+// This exhaustive Query match keeps the undelayed evaluation rules adjacent.
+#[allow(clippy::too_many_lines)]
+fn eager_query(
+    engine: &EagerEngine,
+    probe: &Rc<Engine>,
+    query: &Query,
+    frame: &Substitution,
+    run: &mut EagerRun,
+    out: &mut Vec<Substitution>,
+) {
+    if run.truncated {
+        return;
+    }
+    match query {
+        Query::Unify(left, right) => {
+            if !eager_spend(run) {
+                return;
+            }
+            if let Some(next) = unify(left, right, frame) {
+                out.push(next);
+            }
+        }
+        Query::Value(predicate, arguments) => {
+            if !eager_spend(run) {
+                return;
+            }
+            if holds(predicate, arguments, frame) {
+                out.push(frame.clone());
+            }
+        }
+        Query::Relation { name, arguments } => {
+            for assertion in &engine.db.assertions {
+                if !relation_named(assertion, name) {
+                    continue;
+                }
+                if !eager_spend(run) {
+                    return;
+                }
+                let candidate_args = relation_arguments(assertion);
+                if candidate_args.len() != arguments.len() {
+                    continue;
+                }
+                let mut current = frame.clone();
+                let mut matched = true;
+                for (pattern, datum) in arguments.iter().zip(candidate_args.iter()) {
+                    if let Some(extended) = unify(pattern, datum, &current) {
+                        current = extended;
+                    } else {
+                        matched = false;
+                        break;
+                    }
+                }
+                if matched {
+                    out.push(current);
+                }
+            }
+            for rule in &engine.db.rules {
+                if !relation_named(&rule.conclusion, name) {
+                    continue;
+                }
+                if !eager_spend(run) {
+                    return;
+                }
+                let fresh = engine.next_var.get();
+                engine.next_var.set(fresh + 1);
+                let (conclusion, conditions) = rename_rule(rule, fresh);
+                let mut current = frame.clone();
+                let mut matched = true;
+                for (pattern, datum) in arguments.iter().zip(relation_arguments(&conclusion).iter())
+                {
+                    if let Some(extended) = unify(pattern, datum, &current) {
+                        current = extended;
+                    } else {
+                        matched = false;
+                        break;
+                    }
+                }
+                if !matched {
+                    continue;
+                }
+                eager_conditions(engine, probe, &conditions, &current, run, out);
+            }
+        }
+        Query::And(subs) => {
+            eager_conditions(engine, probe, subs, frame, run, out);
+        }
+        Query::Or(subs) => {
+            for sub in subs {
+                eager_query(engine, probe, sub, frame, run, out);
+            }
+        }
+        Query::Not(sub) => {
+            let mut probe_out = Vec::new();
+            eager_query(engine, probe, sub, frame, run, &mut probe_out);
+            if probe_out.is_empty() && !run.truncated {
+                out.push(frame.clone());
+            }
+        }
+        Query::Unique(sub) => {
+            let mut probe_out = Vec::new();
+            eager_query(engine, probe, sub, frame, run, &mut probe_out);
+            if let Some(first) = probe_out.into_iter().next() {
+                out.push(first);
+            }
+        }
+        Query::UniqueBy(variables, sub) => {
+            let mut probe_out = Vec::new();
+            eager_query(engine, probe, sub, frame, run, &mut probe_out);
+            let mut seen: Vec<Vec<Term>> = Vec::new();
+            for answer in probe_out {
+                let projection: Vec<Term> = variables
+                    .iter()
+                    .map(|name| walk(&Term::Variable(name.clone()), &answer).clone())
+                    .collect();
+                if seen.contains(&projection) {
+                    continue;
+                }
+                seen.push(projection);
+                out.push(answer);
+            }
+        }
+    }
+}
+
+/// Runs one query under a step budget on the eager, undelayed engine:
+/// the same database and unification with depth-first concatenation
+/// instead of fair delayed streams, so 4.71a can compare which
+/// strategy yields the first answer within equal fuel.
+#[must_use]
+pub fn qeval_undelayed_bounded(database: &Database, query: &Query, fuel: u64) -> QueryRunReport {
+    let engine = EagerEngine {
+        db: database.clone(),
+        next_var: Cell::new(0),
+    };
+    let probe = Rc::new(Engine {
+        db: database.clone(),
+        next_var: Cell::new(0),
+    });
+    let mut run = EagerRun {
+        fuel,
+        steps: 0,
+        truncated: false,
+    };
+    let mut answers = Vec::new();
+    eager_query(
+        &engine,
+        &probe,
+        query,
+        &Substitution::new(),
+        &mut run,
+        &mut answers,
+    );
+    QueryRunReport {
+        answers,
+        exhausted: !run.truncated,
+        steps: run.steps,
+    }
+}
+
+/// Runs one query over one database, answering every substitution in
+/// fair, delayed production order. A ground query answers its empty
+/// substitution exactly once.
+#[must_use]
+pub fn qeval(database: &Database, query: &Query) -> QueryOutcome {
+    qeval_prefix(database, query, usize::MAX)
+}
+
+/// Runs one query for at most `n` answers: the observable prefix
+/// discipline for recursive and infinite rule sets.
+#[must_use]
+pub fn qeval_prefix(database: &Database, query: &Query, n: usize) -> QueryOutcome {
+    let engine = Rc::new(Engine {
+        db: database.clone(),
+        next_var: Cell::new(0),
+    });
+    let stream = qeval_stream(&engine, query, Substitution::new());
+    QueryOutcome {
+        answers: collect(stream, n),
+    }
+}
+
+struct Engine {
+    db: Database,
+    next_var: Cell<usize>,
+}
+
+/// The unifier: explicit substitution extension with its stated
+/// occurs-check policy (enabled), so `?x = (?x . ?y)` never binds.
+#[must_use]
+pub fn unify(left: &Term, right: &Term, frame: &Substitution) -> Option<Substitution> {
+    let left_walked = walk(left, frame).clone();
+    let right_walked = walk(right, frame).clone();
+    let left = &left_walked;
+    let right = &right_walked;
+    match (left, right) {
+        (Term::Variable(a), Term::Variable(b)) if a == b => Some(frame.clone()),
+        (Term::Variable(name), other) | (other, Term::Variable(name)) => {
+            if occurs(name, other, frame) {
+                return None;
+            }
+            Some(extend(frame, name, other.clone()))
+        }
+        (Term::Pair(a_left, a_right), Term::Pair(b_left, b_right)) => {
+            let first = unify(a_left, b_left, frame)?;
+            unify(a_right, b_right, &first)
+        }
+        (Term::Empty, Term::Empty) => Some(frame.clone()),
+        (Term::Integer(a), Term::Integer(b)) if a == b => Some(frame.clone()),
+        (Term::Text(a), Term::Text(b)) if a == b => Some(frame.clone()),
+        (Term::Atom(a), Term::Atom(b)) if a == b => Some(frame.clone()),
         _ => None,
     }
 }
 
-/// The book's `use-index?`: only constant-led patterns fetch by index.
-#[must_use]
-pub fn use_index(pat: &Value) -> bool {
-    match pat {
-        Value::Pair(cell) => constant_symbol(&cell.car.borrow()),
+fn walk(term: &Term, frame: &Substitution) -> Term {
+    match term {
+        Term::Variable(name) => match frame.get(name) {
+            Some(bound) => walk(bound, frame),
+            None => term.clone(),
+        },
+        other => other.clone(),
+    }
+}
+fn is_ground(term: &Term, frame: &Substitution) -> bool {
+    match term {
+        Term::Variable(name) => frame.get(name).is_some_and(|bound| is_ground(bound, frame)),
+        Term::Pair(left, right) => is_ground(left, frame) && is_ground(right, frame),
+        _ => true,
+    }
+}
+
+fn ground(term: &Term, frame: &Substitution) -> Option<Term> {
+    match term {
+        Term::Variable(name) => ground(frame.get(name)?, frame),
+        Term::Pair(left, right) => Some(Term::Pair(
+            Box::new(ground(left, frame)?),
+            Box::new(ground(right, frame)?),
+        )),
+        other => Some(other.clone()),
+    }
+}
+
+fn occurs(name: &str, term: &Term, frame: &Substitution) -> bool {
+    match walk(term, frame) {
+        Term::Variable(other) => other == name,
+        Term::Pair(left, right) => occurs(name, &left, frame) || occurs(name, &right, frame),
         _ => false,
     }
 }
 
-/// The book's `check-an-assertion`: the match's extension, or no frame.
-#[must_use]
-pub fn check_an_assertion(
-    assertion: &Value,
-    query_pat: &Value,
-    query_frame: &Frame,
-) -> Option<Frame> {
-    pattern_match(query_pat, assertion, query_frame)
-}
-
-// ---------------------------------------------------------------------------
-// The standard processors: the book's five `put`s plus the compound
-// helpers, as table-shaped values.
-// ---------------------------------------------------------------------------
-
-/// The book's `conjoin`: each conjunct filters the previous one's frames.
-#[must_use]
-pub fn conjoin_proc() -> QProc {
-    Rc::new(conjoin)
-}
-
-/// The book's `conjoin` body, callable by the merging `and` of 4.76.
-pub fn conjoin(engine: &Engine, conjuncts: &Value, frames: Stream<Frame>) -> Stream<Frame> {
-    if conjuncts.is_nil() {
-        return frames;
+fn list_term(items: &[Term]) -> Term {
+    let mut list = Term::Empty;
+    for item in items.iter().rev() {
+        list = Term::Pair(Box::new(item.clone()), Box::new(list));
     }
-    let (first, rest) = split_list(conjuncts);
-    conjoin(engine, &rest, qeval_engine(engine, &first, frames))
+    list
 }
 
-/// The book's `disjoin`: the disjuncts' streams merged with
-/// `interleave-delayed`.
+fn atom(name: &str) -> Term {
+    Term::Atom(name.to_owned())
+}
+
+fn var(name: &str) -> Term {
+    Term::Variable(name.to_owned())
+}
+
+/// Case `query/01-basic-personnel`: ground facts and one open query;
+/// ordered answers.
 #[must_use]
-pub fn disjoin_proc() -> QProc {
-    Rc::new(disjoin)
+pub fn query_personnel() -> (Database, Query) {
+    let mut database = Database::default();
+    database.assert(list_term(&[
+        atom("job"),
+        list_term(&[atom("Bitdiddle"), atom("Ben")]),
+        list_term(&[atom("computer"), atom("wizard")]),
+    ]));
+    database.assert(list_term(&[
+        atom("job"),
+        list_term(&[atom("Hacker"), atom("Alyssa")]),
+        list_term(&[atom("computer"), atom("programmer")]),
+    ]));
+    database.assert(list_term(&[
+        atom("job"),
+        list_term(&[atom("Tweakit"), atom("Louis")]),
+        list_term(&[atom("computer"), atom("technician")]),
+    ]));
+    let query = Query::Relation {
+        name: "job".to_owned(),
+        arguments: vec![var("person"), var("title")],
+    };
+    (database, query)
 }
 
-/// The book's `disjoin` body, callable by the appending `or` of 4.72.
-pub fn disjoin(engine: &Engine, disjuncts: &Value, frames: Stream<Frame>) -> Stream<Frame> {
-    if disjuncts.is_nil() {
-        return Stream::Empty;
+/// Case `query/02-compound-queries`: `and`, `or`, and `not`
+/// composition over the personnel facts.
+#[must_use]
+pub fn query_compound() -> (Database, Query) {
+    let (database, _) = query_personnel();
+    let query = Query::And(vec![
+        Query::Relation {
+            name: "job".to_owned(),
+            arguments: vec![var("person"), list_term(&[atom("computer"), var("role")])],
+        },
+        Query::Not(Box::new(Query::Unify(var("role"), atom("technician")))),
+    ]);
+    (database, query)
+}
+
+/// Case `query/03-rules`: rule application with renamed rule
+/// variables.
+#[must_use]
+pub fn query_rules() -> (Database, Query) {
+    let (mut database, _) = query_personnel();
+    database.assert(list_term(&[
+        atom("supervisor"),
+        list_term(&[atom("Hacker"), atom("Alyssa")]),
+        list_term(&[atom("Bitdiddle"), atom("Ben")]),
+    ]));
+    database.assert(list_term(&[
+        atom("supervisor"),
+        list_term(&[atom("Tweakit"), atom("Louis")]),
+        list_term(&[atom("Bitdiddle"), atom("Ben")]),
+    ]));
+    database.add_rule(Rule {
+        conclusion: list_term(&[atom("boss"), var("x"), var("y")]),
+        conditions: vec![Query::Relation {
+            name: "supervisor".to_owned(),
+            arguments: vec![var("x"), var("y")],
+        }],
+    });
+    let query = Query::Relation {
+        name: "boss".to_owned(),
+        arguments: vec![var("worker"), var("chief")],
+    };
+    (database, query)
+}
+
+/// Case `query/04-append-form`: one recursive rule over `Pair` terms;
+/// the five splits of a four-element list.
+#[must_use]
+pub fn query_append() -> (Database, Query) {
+    let mut database = Database::default();
+    database.add_rule(Rule {
+        conclusion: list_term(&[atom("append-to-form"), Term::Empty, var("y"), var("y")]),
+        conditions: Vec::new(),
+    });
+    database.add_rule(Rule {
+        conclusion: list_term(&[
+            atom("append-to-form"),
+            Term::Pair(Box::new(var("u")), Box::new(var("v"))),
+            var("y"),
+            Term::Pair(Box::new(var("u")), Box::new(var("z"))),
+        ]),
+        conditions: vec![Query::Relation {
+            name: "append-to-form".to_owned(),
+            arguments: vec![var("v"), var("y"), var("z")],
+        }],
+    });
+    let query = Query::Relation {
+        name: "append-to-form".to_owned(),
+        arguments: vec![
+            var("x"),
+            var("y"),
+            list_term(&[atom("a"), atom("b"), atom("c"), atom("d")]),
+        ],
+    };
+    (database, query)
+}
+
+/// The independent finite reference for grammar §7 query semantics:
+/// a fresh naive evaluator with its own walk/unify and an independent
+/// interleave/flatmap answer production, so answer sets and their fair
+/// production order can be checked against the teaching engine without
+/// calling it.
+#[must_use]
+pub fn reference_answers(database: &Database, query: &Query) -> Vec<Substitution> {
+    let mut fresh = 0_usize;
+    reference_stream(database, query, &Substitution::new(), 0, &mut fresh)
+}
+
+fn reference_interleave(
+    mut left: Vec<Substitution>,
+    mut right: Vec<Substitution>,
+) -> Vec<Substitution> {
+    let mut out = Vec::with_capacity(left.len() + right.len());
+    while !left.is_empty() || !right.is_empty() {
+        if let Some(first) = left.first().cloned() {
+            out.push(first);
+            left.remove(0);
+        }
+        if let Some(next) = right.first().cloned() {
+            out.push(next);
+            right.remove(0);
+        }
     }
-    let (first, rest) = split_list(disjuncts);
-    let engine2 = Rc::clone(engine);
-    let frames2 = frames.clone();
-    interleave_delayed(
-        qeval_engine(engine, &first, frames),
-        Box::new(move || disjoin(&engine2, &rest, frames2)),
+    out
+}
+
+/// Combines streams the way `flatmap` does: the first stream
+/// interleaved with the combination of the rest (a right fold).
+fn reference_flatten(streams: Vec<Vec<Substitution>>) -> Vec<Substitution> {
+    streams.into_iter().rev().fold(Vec::new(), |later, stream| {
+        reference_interleave(stream, later)
+    })
+}
+
+/// One query over a finite frame stream: each frame's answers, in
+/// frame order, flattened.
+fn reference_over_frames(
+    database: &Database,
+    query: &Query,
+    frames: &[Substitution],
+    depth: usize,
+    fresh: &mut usize,
+) -> Vec<Substitution> {
+    let streams = frames
+        .iter()
+        .map(|frame| reference_stream(database, query, frame, depth, fresh))
+        .collect();
+    reference_flatten(streams)
+}
+
+/// A conjunction: each condition runs over the frames the previous
+/// conditions produced.
+fn reference_conjoin(
+    database: &Database,
+    conditions: &[Query],
+    frame: Substitution,
+    depth: usize,
+    fresh: &mut usize,
+) -> Vec<Substitution> {
+    conditions.iter().fold(vec![frame], |frames, condition| {
+        reference_over_frames(database, condition, &frames, depth, fresh)
+    })
+}
+
+fn reference_stream(
+    database: &Database,
+    query: &Query,
+    frame: &Substitution,
+    depth: usize,
+    fresh: &mut usize,
+) -> Vec<Substitution> {
+    if depth > 32 {
+        return Vec::new();
+    }
+    match query {
+        Query::Unify(left, right) => reference_unify(left, right, frame).into_iter().collect(),
+        Query::Relation { name, arguments } => {
+            let mut head_items = vec![Term::Atom(name.clone())];
+            head_items.extend(arguments.iter().cloned());
+            let pattern = list_term(&head_items);
+            // Every assertion, then every rule, in insertion order.
+            let mut streams: Vec<Vec<Substitution>> = database
+                .assertions
+                .iter()
+                .map(|assertion| {
+                    reference_unify(&pattern, assertion, frame)
+                        .into_iter()
+                        .collect()
+                })
+                .collect();
+            for rule in &database.rules {
+                let (conclusion, conditions) = reference_rename(rule, fresh);
+                streams.push(match reference_unify(&pattern, &conclusion, frame) {
+                    Some(next) => reference_conjoin(database, &conditions, next, depth + 1, fresh),
+                    None => Vec::new(),
+                });
+            }
+            reference_flatten(streams)
+        }
+        Query::And(conditions) => {
+            reference_conjoin(database, conditions, frame.clone(), depth, fresh)
+        }
+        Query::Or(branches) => reference_flatten(
+            branches
+                .iter()
+                .map(|branch| reference_stream(database, branch, frame, depth, fresh))
+                .collect(),
+        ),
+        Query::Not(sub) => {
+            if reference_stream(database, sub, frame, depth, fresh).is_empty() {
+                vec![frame.clone()]
+            } else {
+                Vec::new()
+            }
+        }
+        Query::Unique(sub) => reference_stream(database, sub, frame, depth, fresh)
+            .into_iter()
+            .next()
+            .into_iter()
+            .collect(),
+        Query::Value(predicate, terms) => {
+            if reference_holds(predicate, terms, frame) {
+                vec![frame.clone()]
+            } else {
+                Vec::new()
+            }
+        }
+        Query::UniqueBy(names, sub) => {
+            let mut seen: Vec<Vec<Term>> = Vec::new();
+            let mut out = Vec::new();
+            for answer in reference_stream(database, sub, frame, depth, fresh) {
+                let key: Vec<Term> = names
+                    .iter()
+                    .map(|name| reference_walk(&Term::Variable(name.clone()), &answer))
+                    .collect();
+                if !seen.contains(&key) {
+                    seen.push(key);
+                    out.push(answer);
+                }
+            }
+            out
+        }
+    }
+}
+
+fn reference_rename(rule: &Rule, fresh: &mut usize) -> (Term, Vec<Query>) {
+    *fresh += 1;
+    let suffix = *fresh;
+    let mut names = std::collections::HashMap::new();
+    (
+        reference_rename_term(&rule.conclusion, suffix, &mut names),
+        rule.conditions
+            .iter()
+            .map(|condition| reference_rename_query(condition, suffix, &mut names))
+            .collect(),
     )
 }
 
-/// The book's `negate`: keeps the frames the negated query cannot extend.
-#[must_use]
-pub fn negate_proc() -> QProc {
-    Rc::new(|engine, operands, frames| {
-        let (negated, _) = split_list(operands);
-        let engine2 = Rc::clone(engine);
-        let negated = negated.clone();
-        engine.flatmap(
-            Rc::new(move |frame: &Frame| {
-                if engine2
-                    .qeval(&negated, singleton_stream(frame.clone()))
-                    .is_empty()
-                {
-                    singleton_stream(frame.clone())
-                } else {
-                    Stream::Empty
-                }
-            }),
-            frames,
-        )
-    })
-}
-
-/// The book's `lisp-value`: keeps the frames whose instantiated call
-/// holds; an unbound pattern variable raises (the engine's error slot).
-#[must_use]
-pub fn lisp_value_proc() -> QProc {
-    Rc::new(|engine, call, frames| {
-        let engine2 = Rc::clone(engine);
-        let call = call.clone();
-        engine.flatmap(
-            Rc::new(move |frame: &Frame| {
-                let instantiated = instantiate(&call, frame, &|var: &Value| {
-                    engine2.raise(SchemeError::TypeMismatch(format!(
-                        "Unknown pat var -- LISP-VALUE: {}",
-                        contract_question_mark(var)
-                    )));
-                    contract_question_mark(var)
-                });
-                let holds = engine2.execute(&instantiated).is_ok_and(|v| is_true(&v));
-                if holds {
-                    singleton_stream(frame.clone())
-                } else {
-                    Stream::Empty
-                }
-            }),
-            frames,
-        )
-    })
-}
-
-/// The book's `always-true`: every frame passes.
-#[must_use]
-pub fn always_true_proc() -> QProc {
-    Rc::new(|_engine, _ignore, frames| frames)
-}
-
-/// [`QueryEngine::qeval`] over an [`Engine`] handle, for the helpers the
-/// engine recursion threads.
-pub fn qeval_engine(engine: &Engine, query: &Value, frames: Stream<Frame>) -> Stream<Frame> {
-    engine.qeval(query, frames)
-}
-
-/// Splits a proper list value into its head and tail.
-/// # Panics
-/// Panics on an atom where a list is required, which only a broken
-/// program causes.
-#[must_use]
-pub fn split_list(exps: &Value) -> (Value, Value) {
-    match exps {
-        Value::Pair(cell) => (cell.car.borrow().clone(), cell.cdr.borrow().clone()),
-        other => (other.clone(), Value::Nil),
+fn reference_rename_term(
+    term: &Term,
+    suffix: usize,
+    names: &mut std::collections::HashMap<String, String>,
+) -> Term {
+    match term {
+        Term::Variable(name) => {
+            let renamed = names
+                .entry(name.clone())
+                .or_insert_with(|| format!("{name}#{suffix}"))
+                .clone();
+            Term::Variable(renamed)
+        }
+        Term::Pair(left, right) => Term::Pair(
+            Box::new(reference_rename_term(left, suffix, names)),
+            Box::new(reference_rename_term(right, suffix, names)),
+        ),
+        other => other.clone(),
     }
 }
 
-// ---------------------------------------------------------------------------
-// The Microshaft data base of 4.4.1.
-// ---------------------------------------------------------------------------
-
-/// The personnel data base of 4.4.1, exactly as the book lists it.
-pub const MICROSHAFT: &[&str] = &[
-    "(address (Bitdiddle Ben) (Slumerville (Ridge Road) 10))",
-    "(job (Bitdiddle Ben) (computer wizard))",
-    "(salary (Bitdiddle Ben) 60000)",
-    "(address (Hacker Alyssa P) (Cambridge (Mass Ave) 78))",
-    "(job (Hacker Alyssa P) (computer programmer))",
-    "(salary (Hacker Alyssa P) 40000)",
-    "(supervisor (Hacker Alyssa P) (Bitdiddle Ben))",
-    "(address (Fect Cy D) (Cambridge (Ames Street) 3))",
-    "(job (Fect Cy D) (computer programmer))",
-    "(salary (Fect Cy D) 35000)",
-    "(supervisor (Fect Cy D) (Bitdiddle Ben))",
-    "(address (Tweakit Lem E) (Boston (Bay State Road) 22))",
-    "(job (Tweakit Lem E) (computer technician))",
-    "(salary (Tweakit Lem E) 25000)",
-    "(supervisor (Tweakit Lem E) (Bitdiddle Ben))",
-    "(address (Reasoner Louis) (Slumerville (Pine Tree Road) 80))",
-    "(job (Reasoner Louis) (computer programmer trainee))",
-    "(salary (Reasoner Louis) 30000)",
-    "(supervisor (Reasoner Louis) (Hacker Alyssa P))",
-    "(supervisor (Bitdiddle Ben) (Warbucks Oliver))",
-    "(address (Warbucks Oliver) (Swellesley (Top Heap Road)))",
-    "(job (Warbucks Oliver) (administration big wheel))",
-    "(salary (Warbucks Oliver) 150000)",
-    "(address (Scrooge Eben) (Weston (Shady Lane) 10))",
-    "(job (Scrooge Eben) (accounting chief accountant))",
-    "(salary (Scrooge Eben) 75000)",
-    "(supervisor (Scrooge Eben) (Warbucks Oliver))",
-    "(address (Cratchet Robert) (Allston (N Harvard Street) 16))",
-    "(job (Cratchet Robert) (accounting scrivener))",
-    "(salary (Cratchet Robert) 18000)",
-    "(supervisor (Cratchet Robert) (Scrooge Eben))",
-    "(address (Aull DeWitt) (Slumerville (Onion Square) 5))",
-    "(job (Aull DeWitt) (administration secretary))",
-    "(salary (Aull DeWitt) 25000)",
-    "(supervisor (Aull DeWitt) (Warbucks Oliver))",
-    "(can-do-job (computer wizard) (computer programmer))",
-    "(can-do-job (computer wizard) (computer technician))",
-    "(can-do-job (computer programmer) (computer programmer trainee))",
-    "(can-do-job (administration secretary) (administration big wheel))",
-];
-
-/// One engine over the 4.4.1 data base: the shared fixture every
-/// Microshaft exercise and example runs on.
-#[must_use]
-pub fn microshaft() -> Engine {
-    let engine = QueryEngine::new();
-    engine.load(MICROSHAFT);
-    engine
+fn reference_rename_query(
+    query: &Query,
+    suffix: usize,
+    names: &mut std::collections::HashMap<String, String>,
+) -> Query {
+    match query {
+        Query::Unify(left, right) => Query::Unify(
+            reference_rename_term(left, suffix, names),
+            reference_rename_term(right, suffix, names),
+        ),
+        Query::Relation { name, arguments } => Query::Relation {
+            name: name.clone(),
+            arguments: arguments
+                .iter()
+                .map(|argument| reference_rename_term(argument, suffix, names))
+                .collect(),
+        },
+        Query::And(items) => Query::And(
+            items
+                .iter()
+                .map(|item| reference_rename_query(item, suffix, names))
+                .collect(),
+        ),
+        Query::Or(items) => Query::Or(
+            items
+                .iter()
+                .map(|item| reference_rename_query(item, suffix, names))
+                .collect(),
+        ),
+        Query::Not(sub) => Query::Not(Box::new(reference_rename_query(sub, suffix, names))),
+        Query::Unique(sub) => Query::Unique(Box::new(reference_rename_query(sub, suffix, names))),
+        Query::UniqueBy(vars, sub) => Query::UniqueBy(
+            vars.iter()
+                .map(|name| {
+                    names
+                        .entry(name.clone())
+                        .or_insert_with(|| format!("{name}#{suffix}"))
+                        .clone()
+                })
+                .collect(),
+            Box::new(reference_rename_query(sub, suffix, names)),
+        ),
+        Query::Value(predicate, arguments) => Query::Value(
+            reference_rename_predicate(predicate, suffix, names),
+            arguments
+                .iter()
+                .map(|argument| reference_rename_term(argument, suffix, names))
+                .collect(),
+        ),
+    }
 }
 
+fn reference_rename_predicate(
+    predicate: &Predicate,
+    suffix: usize,
+    names: &mut std::collections::HashMap<String, String>,
+) -> Predicate {
+    let renamed = |name: &String, names: &mut std::collections::HashMap<String, String>| {
+        names
+            .entry(name.clone())
+            .or_insert_with(|| format!("{name}#{suffix}"))
+            .clone()
+    };
+    match predicate {
+        Predicate::Eq(a, b) => Predicate::Eq(
+            reference_rename_term(a, suffix, names),
+            reference_rename_term(b, suffix, names),
+        ),
+        Predicate::Ne(a, b) => Predicate::Ne(
+            reference_rename_term(a, suffix, names),
+            reference_rename_term(b, suffix, names),
+        ),
+        Predicate::Lt(a, b) => Predicate::Lt(
+            reference_rename_term(a, suffix, names),
+            reference_rename_term(b, suffix, names),
+        ),
+        Predicate::Le(a, b) => Predicate::Le(
+            reference_rename_term(a, suffix, names),
+            reference_rename_term(b, suffix, names),
+        ),
+        Predicate::Gt(a, b) => Predicate::Gt(
+            reference_rename_term(a, suffix, names),
+            reference_rename_term(b, suffix, names),
+        ),
+        Predicate::Ge(a, b) => Predicate::Ge(
+            reference_rename_term(a, suffix, names),
+            reference_rename_term(b, suffix, names),
+        ),
+        Predicate::TextLt(a, b) => Predicate::TextLt(
+            reference_rename_term(a, suffix, names),
+            reference_rename_term(b, suffix, names),
+        ),
+        Predicate::SumEq(terms, bound) => Predicate::SumEq(
+            terms
+                .iter()
+                .map(|term| reference_rename_term(term, suffix, names))
+                .collect(),
+            *bound,
+        ),
+        Predicate::Bound(term) => Predicate::Bound(reference_rename_term(term, suffix, names)),
+        Predicate::Or(items) => Predicate::Or(
+            items
+                .iter()
+                .map(|item| reference_rename_predicate(item, suffix, names))
+                .collect(),
+        ),
+        Predicate::DiffEq(a, b, c, d) => Predicate::DiffEq(
+            renamed(a, names),
+            renamed(b, names),
+            renamed(c, names),
+            renamed(d, names),
+        ),
+        Predicate::Pythagorean(a, b, c) => {
+            Predicate::Pythagorean(renamed(a, names), renamed(b, names), renamed(c, names))
+        }
+    }
+}
+
+fn reference_walk(term: &Term, frame: &Substitution) -> Term {
+    match term {
+        Term::Variable(name) => match frame.get(name) {
+            Some(bound) => reference_walk(bound, frame),
+            None => term.clone(),
+        },
+        _ => term.clone(),
+    }
+}
+fn reference_is_ground(term: &Term, frame: &Substitution) -> bool {
+    match term {
+        Term::Variable(name) => frame
+            .get(name)
+            .is_some_and(|bound| reference_is_ground(bound, frame)),
+        Term::Pair(left, right) => {
+            reference_is_ground(left, frame) && reference_is_ground(right, frame)
+        }
+        _ => true,
+    }
+}
+
+fn reference_ground(term: &Term, frame: &Substitution) -> Option<Term> {
+    match term {
+        Term::Variable(name) => reference_ground(frame.get(name)?, frame),
+        Term::Pair(left, right) => Some(Term::Pair(
+            Box::new(reference_ground(left, frame)?),
+            Box::new(reference_ground(right, frame)?),
+        )),
+        other => Some(other.clone()),
+    }
+}
+
+fn reference_occurs(name: &str, term: &Term, frame: &Substitution) -> bool {
+    match reference_walk(term, frame) {
+        Term::Variable(other) => other == name,
+        Term::Pair(left, right) => {
+            reference_occurs(name, &left, frame) || reference_occurs(name, &right, frame)
+        }
+        _ => false,
+    }
+}
+
+fn reference_unify(left: &Term, right: &Term, frame: &Substitution) -> Option<Substitution> {
+    let left = reference_walk(left, frame);
+    let right = reference_walk(right, frame);
+    match (&left, &right) {
+        (Term::Variable(a), Term::Variable(b)) if a == b => Some(frame.clone()),
+        (Term::Variable(name), other) | (other, Term::Variable(name)) => {
+            if reference_occurs(name, other, frame) {
+                None
+            } else {
+                let mut next = frame.clone();
+                next.insert(name.clone(), other.clone());
+                Some(next)
+            }
+        }
+        (Term::Integer(a), Term::Integer(b)) if a == b => Some(frame.clone()),
+        (Term::Text(a), Term::Text(b)) if a == b => Some(frame.clone()),
+        (Term::Atom(a), Term::Atom(b)) if a == b => Some(frame.clone()),
+        (Term::Empty, Term::Empty) => Some(frame.clone()),
+        (Term::Pair(a1, a2), Term::Pair(b1, b2)) => {
+            let next = reference_unify(a1, b1, frame)?;
+            reference_unify(a2, b2, &next)
+        }
+        _ => None,
+    }
+}
+
+fn reference_holds(predicate: &Predicate, terms: &[Term], frame: &Substitution) -> bool {
+    use Predicate::{Bound, DiffEq, Eq, Ge, Gt, Le, Lt, Ne, Or, Pythagorean, SumEq, TextLt};
+    if terms.iter().any(|term| !reference_is_ground(term, frame)) {
+        return false;
+    }
+    let value = |name: &String| -> Option<i64> {
+        match reference_walk(&Term::Variable(name.clone()), frame) {
+            Term::Integer(value) => Some(value),
+            _ => None,
+        }
+    };
+    match predicate {
+        Eq(a, b) => match (reference_ground(a, frame), reference_ground(b, frame)) {
+            (Some(a), Some(b)) => a == b,
+            _ => false,
+        },
+        Ne(a, b) => match (reference_ground(a, frame), reference_ground(b, frame)) {
+            (Some(a), Some(b)) => a != b,
+            _ => false,
+        },
+        Lt(a, b) | Le(a, b) | Gt(a, b) | Ge(a, b) | TextLt(a, b) => {
+            let (Some(a), Some(b)) = (reference_ground(a, frame), reference_ground(b, frame))
+            else {
+                return false;
+            };
+            match (&a, &b) {
+                (Term::Integer(a), Term::Integer(b)) => match predicate {
+                    Lt(..) => a < b,
+                    Le(..) => a <= b,
+                    Gt(..) => a > b,
+                    Ge(..) => a >= b,
+                    _ => false,
+                },
+                (Term::Text(a), Term::Text(b)) => match predicate {
+                    TextLt(..) | Lt(..) => a < b,
+                    Le(..) => a <= b,
+                    Gt(..) => a > b,
+                    Ge(..) => a >= b,
+                    _ => false,
+                },
+                _ => false,
+            }
+        }
+        SumEq(items, bound) => {
+            let mut sum = 0_i64;
+            for item in items {
+                match reference_walk(item, frame) {
+                    Term::Integer(value) => match sum.checked_add(value) {
+                        Some(next) => sum = next,
+                        None => return false,
+                    },
+                    _ => return false,
+                }
+            }
+            sum == *bound
+        }
+        Bound(term) => reference_is_ground(term, frame),
+        Or(items) => items.iter().any(|item| reference_holds(item, terms, frame)),
+        DiffEq(a, b, c, d) => match (value(a), value(b), value(c), value(d)) {
+            (Some(a), Some(b), Some(c), Some(d)) => a
+                .checked_sub(b)
+                .zip(c.checked_sub(d))
+                .is_some_and(|(l, r)| l == r),
+            _ => false,
+        },
+        Pythagorean(a, b, c) => match (value(a), value(b), value(c)) {
+            (Some(a), Some(b), Some(c)) => {
+                match (a.checked_mul(a), b.checked_mul(b), c.checked_mul(c)) {
+                    (Some(aa), Some(bb), Some(cc)) => aa.checked_add(bb) == Some(cc),
+                    _ => false,
+                }
+            }
+            _ => false,
+        },
+    }
+}
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    fn q(text: &str) -> Value {
-        query_syntax_process(&sicp_runtime::read(text).expect("parses"))
-    }
-
-    fn frame_of(pairs: &[(&str, &str)]) -> Frame {
-        let mut frame = Frame::new();
-        for (var, value) in pairs {
-            let var = q(var);
-            let value = q(value);
-            frame = frame.extend(var, value);
-        }
-        frame
-    }
+    use super::{Database, Predicate, Query, Term, qeval, reference_answers};
 
     #[test]
-    fn pattern_match_examples_agree_with_the_book() {
-        let data = q("((a b) c (a b))");
-        let hit = pattern_match(&q("(?x c ?x)"), &data, &Frame::new());
-        assert_eq!(
-            hit.as_ref().map(|f| instantiate_query(&q("(?x c ?x)"), f)),
-            Some(q("((a b) c (a b))"))
-        );
-        assert!(pattern_match(&q("(?x a ?y)"), &data, &Frame::new()).is_none());
-        // ?y bound to b, ?x free: the frame gains only ?x.
-        let frame = frame_of(&[("?y", "b")]);
-        let extended = pattern_match(&q("(?x ?y ?x)"), &q("(a b a)"), &frame).expect("matches");
-        assert_eq!(instantiate_query(&q("(?x ?y ?x)"), &extended), q("(a b a)"));
-        // ?y bound to a fails.
-        let frame = frame_of(&[("?y", "a")]);
-        assert!(pattern_match(&q("(?x ?y ?x)"), &q("(a b a)"), &frame).is_none());
-    }
+    fn host_equality_resolves_nested_pairs_and_rejects_unbound_variables() {
+        let variable = |name: &str| Term::Variable(name.to_owned());
+        let pair = |head| Term::Pair(Box::new(head), Box::new(Term::Empty));
+        let database = Database::new();
 
-    /// The frame's view of one variable, chased through bindings — the
-    /// book presents unified variables as their final values.
-    fn resolved(frame: &Frame, var: &str) -> Option<Value> {
-        let var = &q(var);
-        frame
-            .binding_in_frame(var)
-            .map(|value| instantiate(&value, frame, &|v| contract_question_mark(v)))
-    }
-
-    #[test]
-    fn unification_examples_agree_with_the_book() {
-        let frame = unify_match(&q("(?x a ?y)"), &q("(?y ?z a)"), &Frame::new()).expect("unifies");
-        for var in ["?x", "?y", "?z"] {
-            assert_eq!(resolved(&frame, var), Some(q("a")), "{var}");
-        }
-        assert!(unify_match(&q("(?x ?y a)"), &q("(?x b ?y)"), &Frame::new()).is_none());
-        // (?x ?x) against ((a ?y c) (a b ?z)): ?x becomes (a b c).
-        let frame =
-            unify_match(&q("(?x ?x)"), &q("((a ?y c) (a b ?z))"), &Frame::new()).expect("unifies");
-        assert_eq!(resolved(&frame, "?x"), Some(q("(a b c)")));
-        // Partial: ?x is bound to a pattern still containing ?y.
-        let frame = unify_match(&q("(?x a)"), &q("((b ?y) ?z)"), &Frame::new()).expect("unifies");
-        assert_eq!(frame.binding_in_frame(&q("?x")), Some(q("(b ?y)")));
-        assert_eq!(frame.binding_in_frame(&q("?y")), None);
-        assert_eq!(resolved(&frame, "?z"), Some(q("a")));
-        // A binding that would depend on itself is rejected.
-        assert!(unify_match(&q("?x"), &q("(f ?x)"), &Frame::new()).is_none());
-    }
-
-    #[test]
-    fn microshaft_answers_the_book_transcripts() {
-        let engine = microshaft();
-        assert_eq!(
-            engine.answers("(job ?x (computer programmer))"),
-            [
-                "(job (Hacker Alyssa P) (computer programmer))",
-                "(job (Fect Cy D) (computer programmer))",
-            ]
-        );
-        assert_eq!(
-            engine.answers("(job ?x (computer . ?type))"),
-            [
-                "(job (Bitdiddle Ben) (computer wizard))",
-                "(job (Hacker Alyssa P) (computer programmer))",
-                "(job (Fect Cy D) (computer programmer))",
-                "(job (Tweakit Lem E) (computer technician))",
-                "(job (Reasoner Louis) (computer programmer trainee))",
-            ]
-        );
-    }
-
-    #[test]
-    fn rules_answer_through_the_index_and_the_engine() {
-        let engine = microshaft();
-        engine.load(&[
-            "(rule (lives-near ?person-1 ?person-2) \
-             (and (address ?person-1 (?town . ?rest-1)) \
-             (address ?person-2 (?town . ?rest-2)) \
-             (not (same ?person-1 ?person-2))))",
-            "(rule (same ?x ?x))",
-            "(rule (wheel ?person) \
-             (and (supervisor ?middle-manager ?person) \
-             (supervisor ?x ?middle-manager)))",
+        let unbound = Query::And(vec![
+            Query::Unify(variable("whole"), pair(variable("nested"))),
+            Query::Value(
+                Predicate::Eq(pair(variable("nested")), pair(variable("nested"))),
+                vec![variable("whole")],
+            ),
         ]);
-        assert_eq!(
-            engine.answers("(lives-near ?x (Bitdiddle Ben))"),
-            [
-                "(lives-near (Reasoner Louis) (Bitdiddle Ben))",
-                "(lives-near (Aull DeWitt) (Bitdiddle Ben))",
-            ]
-        );
-        assert_eq!(
-            engine.answers("(wheel ?who)"),
-            [
-                "(wheel (Bitdiddle Ben))",
-                "(wheel (Warbucks Oliver))",
-                "(wheel (Warbucks Oliver))",
-                "(wheel (Warbucks Oliver))",
-                "(wheel (Warbucks Oliver))",
-            ],
-            "the book's listing in scan-order rows: Ben once, Warbucks four times"
-        );
-    }
+        assert!(qeval(&database, &unbound).answers.is_empty());
+        assert!(reference_answers(&database, &unbound).is_empty());
 
-    #[test]
-    fn the_driver_transcript_matches_the_book_format() {
-        let engine = microshaft();
-        let session = engine.session(&[
-            "(job ?x (computer programmer))",
-            "(assert! (job (Bitdiddle Ben) (computer wizard)))",
+        let atom = Term::Atom("item".to_owned());
+        let bound = Query::And(vec![
+            Query::Unify(variable("whole"), pair(variable("nested"))),
+            Query::Unify(variable("nested"), atom.clone()),
+            Query::Value(
+                Predicate::Eq(pair(variable("nested")), pair(atom)),
+                vec![variable("whole")],
+            ),
         ]);
-        assert!(session.contains(";;; Query input: (job ?x (computer programmer))\n;;; Query results:\n(job (Hacker Alyssa P) (computer programmer))\n(job (Fect Cy D) (computer programmer))\n"));
-        assert!(session.contains("Assertion added to data base.\n"));
+        assert_eq!(qeval(&database, &bound).answers.len(), 1);
+        assert_eq!(reference_answers(&database, &bound).len(), 1);
     }
 }

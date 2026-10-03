@@ -16,7 +16,8 @@
 - The prose is rewritten four times, once for each of Rust, OCaml, TypeScript, and Kotlin. Section and exercise numbers stay the same as in the book. Sections 3.2, 3.4, and 4.3 are re-cut for each language's own closure model, concurrency mechanisms, and search mechanism.
 - Every program printed in the book is re-expressed in the four languages. The re-expressed programs live under `examples/`, `exercises/`, and `solutions/` in each edition.
 - A Chapter 0 primer is added to each edition.
-- The figures are re-rendered from the SVG sources for the PDF output.
+- Chapters 4 and 5 interpret and compile a checked subset of each edition's own language, specified under `spec/host-subsets/`, in place of the book's Scheme evaluator. The book's lessons, section numbers, and exercise numbers are unchanged.
+- Shared figure labels use conceptual mathematics and descriptive operation names instead of source-language expressions. Their evaluation steps, values, connections, and legal metadata are preserved. PDF figures are regenerated from the adapted SVG sources.
 - The build machinery of the 2014 edition is replaced by stock Texinfo 7.3.
 
 ## Licenses of the adapted work

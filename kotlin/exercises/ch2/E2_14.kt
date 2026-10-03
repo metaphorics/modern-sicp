@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.14: demonstrate that Lem is right: `par1` and `par2` (below,
  * the main text's own two parallel-resistance formulas) give different
@@ -35,4 +33,4 @@ public fun par2(
     return divInterval(one, addInterval(divInterval(one, r1), divInterval(one, r2)))
 }
 
-public fun ex_2_14(): Pair<Double, Double> = throw PendingSolution()
+public fun ex_2_14(): Pair<Double, Double> = throw PendingExercise()

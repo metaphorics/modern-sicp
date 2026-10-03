@@ -1,149 +1,76 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The reference solution of exercise 5.32: the explicit-control
-//! evaluator's symbol-operator fast path.
+//! The reference solution of exercise 5.32: the compiler's fast path
+//! for statically known operators.
+//!
+//! A call whose callee the checker resolves to a function id compiles
+//! to a direct `CallFun` transfer: no operator value is ever built,
+//! tested, or dispatched. A call through a variable — a function
+//! pointer, a boxed closure — compiles to the indirect sequence that
+//! evaluates the callee, parks it across the arguments, and transfers
+//! through `CallValue`. Both answer identically on both engines; the
+//! emitted streams show which path each took.
 
-use ch05::sec_5_2::{Fault, OpHandler};
-use ch05::sec_5_4::{compose_controller, operation};
-use sicp_runtime::Value;
+use ch05::sec_5_5::{Instr, PerformOp};
+use sicp_runtime::host::CheckedProgram;
+
+fn admitted(source: &str) -> CheckedProgram {
+    match sicp_runtime::host::admit(source) {
+        Ok(program) => program,
+        Err(diag) => panic!("admitted: {}", diag.message),
+    }
+}
+
+fn has_direct(program: &CheckedProgram) -> bool {
+    ch05::sec_5_5::compile_program(program)
+        .instrs
+        .iter()
+        .any(|instr| matches!(instr, Instr::Perform(PerformOp::CallFun, _)))
+}
+
+fn has_indirect(program: &CheckedProgram) -> bool {
+    ch05::sec_5_5::compile_program(program)
+        .instrs
+        .iter()
+        .any(|instr| matches!(instr, Instr::Perform(PerformOp::CallValue, _)))
+}
 
 mod ex_5_32 {
-    //! Exercise 5.32: symbol operators can be looked up in place;
-    //! compile-time analysis still avoids a run-time test for every
-    //! general expression.
+    //! Exercise 5.32: known operators compile to direct transfers;
+    //! computed operators go through the indirect path.
 
     use super::*;
 
-    const FAST_APPLICATION: &str = "ev-application
-  (save continue)
-  (assign unev (op operands) (reg exp))
-  (test (op symbol-operator?) (reg exp))
-  (branch (label ev-appl-symbol-operator))
-  (save env)
-  (save unev)
-  (assign exp (op operator) (reg exp))
-  (assign continue (label ev-appl-did-operator))
-  (goto (label eval-dispatch))
-ev-appl-symbol-operator
-  (assign exp (op operator) (reg exp))
-  (assign val (op lookup-variable-value) (reg exp) (reg env))
-  (assign argl (op empty-arglist))
-  (assign proc (reg val))
-  (test (op no-operands?) (reg unev))
-  (branch (label apply-dispatch))
-  (save proc)
-  (goto (label ev-appl-operand-loop))";
+    const DIRECT: &str = "fn square(n: i64) -> i64 {\n    n * n\n}\n\nfn main() {\n    println!(\"{}\", square(6));\n}\n";
 
-    fn symbol_operator() -> (&'static str, OpHandler) {
-        operation("symbol-operator?", |args| {
-            let Some(exp) = args.first() else {
-                return Err(Fault::Parse(
-                    "symbol-operator? needs an expression".to_owned(),
-                ));
-            };
-            let is_symbol = exp
-                .list_items()
-                .ok()
-                .and_then(|items| items.first().cloned())
-                .is_some_and(|operator| matches!(operator, Value::Sym(_)));
-            Ok(Value::boolean(is_symbol))
-        })
+    const INDIRECT: &str = "fn double(x: i64) -> i64 {\n    x * 2\n}\n\nfn apply(f: fn(i64) -> i64, v: i64) -> i64 {\n    f(v)\n}\n\nfn main() {\n    println!(\"{}\", apply(double, 21));\n}\n";
+
+    fn agreed(source: &str) -> String {
+        let program = admitted(source);
+        let interpreted = ch05::sec_5_4::Eceval::run(&program);
+        let compiled = ch05::sec_5_5::compiled_run(&program);
+        assert!(interpreted.trap.is_none(), "{interpreted:?}");
+        assert_eq!(interpreted.stdout, compiled.stdout, "engines agree");
+        interpreted.stdout
     }
 
-    fn monitored_driver() -> &'static str {
-        "read-eval-print-loop
-  (perform (op initialize-stack))
-  (perform (op prompt-for-input) (const \";;; EC-Eval input:\"))
-  (assign exp (op read))
-  (assign env (op get-global-environment))
-  (assign continue (label print-result))
-  (goto (label eval-dispatch))
-print-result
-  (perform (op print-stack-statistics))
-  (perform (op announce-output) (const \";;; EC-Eval value:\"))
-  (perform (op user-print) (reg val))
-  (goto (label read-eval-print-loop))"
-    }
-
-    fn measured(controller: &str, source: &str) -> Result<(u64, u64), Fault> {
-        let mut evaluator =
-            ch05::sec_5_4::make_evaluator(controller, &[symbol_operator()], source)?;
-        evaluator.run()?;
-        let transcript = evaluator.transcript();
-        let stats = transcript
-            .iter()
-            .rev()
-            .find_map(|line| line.strip_prefix("(total-pushes = "))
-            .ok_or_else(|| Fault::Parse("no stack statistics printed".to_owned()))?;
-        let mut fields = stats.split_whitespace();
-        let pushes = fields
-            .next()
-            .ok_or_else(|| Fault::Parse("push count missing".to_owned()))?
-            .parse()
-            .map_err(|_| Fault::Parse("push count malformed".to_owned()))?;
-        let depth = stats
-            .split("maximum-depth = ")
-            .nth(1)
-            .and_then(|tail| tail.strip_suffix(')'))
-            .ok_or_else(|| Fault::Parse("maximum depth missing".to_owned()))?
-            .parse()
-            .map_err(|_| Fault::Parse("maximum depth malformed".to_owned()))?;
-        Ok((pushes, depth))
-    }
-
-    fn fast_controller() -> String {
-        compose_controller(&[
-            ("ev-application", FAST_APPLICATION),
-            ("driver", monitored_driver()),
-        ])
-    }
-    /// This controller answers symbol calls and compound operators
-    /// without evaluating the operator expression first. It preserves
-    /// the same machine stack depth while reducing pushes for factorial.
-    pub fn ex_5_32() -> Result<Vec<String>, Fault> {
-        let source =
-            "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))\n(factorial 5)";
-        let base = compose_controller(&[("driver", monitored_driver())]);
-        let base_stats = measured(&base, source)?;
-        let fast_stats = measured(&fast_controller(), source)?;
-        let session_controller = fast_controller();
-        let mut evaluator = ch05::sec_5_4::make_evaluator(
-            &session_controller,
-            &[symbol_operator()],
-            "(define (f x) (* x x))\n(f 6)\n((lambda (y) (+ y 1)) 41)",
-        )?;
-        evaluator.run()?;
-        let transcript = evaluator.transcript();
-        assert!(transcript.contains(&"36".to_owned()), "{transcript:?}");
-        assert!(transcript.contains(&"42".to_owned()), "{transcript:?}");
-        assert!(
-            fast_stats.0 < base_stats.0,
-            "{fast_stats:?} must beat {base_stats:?}"
-        );
-        assert_eq!(fast_stats.1, base_stats.1);
-        Ok(vec![
-            format!(
-                "symbol and compound-operator answers: {}",
-                transcript.join(" ")
-            ),
-            format!(
-                "base monitored factorial pushes/depth: {}/{}",
-                base_stats.0, base_stats.1
-            ),
-            format!(
-                "fast-path factorial pushes/depth: {}/{}",
-                fast_stats.0, fast_stats.1
-            ),
-            "design: symbol calls avoid a run-time operator-evaluation path".to_owned(),
-        ])
-    }
-
+    /// The named call answers `36` through the direct transfer, with
+    /// no indirect dispatch in its stream.
     #[test]
-    fn ex_5_32_check() -> Result<(), Fault> {
-        let answers = ex_5_32()?;
-        assert!(answers[0].contains("42"));
-        assert!(answers[1].contains("144"));
-        Ok(())
+    fn ex_5_32_direct_call_fast_path() {
+        let program = admitted(DIRECT);
+        assert!(has_direct(&program), "a direct transfer is emitted");
+        assert!(!has_indirect(&program), "no indirect dispatch is needed");
+        assert_eq!(agreed(DIRECT), "36\n");
+    }
+
+    /// The pointer call answers `42` through the indirect sequence,
+    /// which parks the callee across its argument.
+    #[test]
+    fn ex_5_32_indirect_call_general_path() {
+        let program = admitted(INDIRECT);
+        assert!(has_indirect(&program), "an indirect transfer is emitted");
+        assert_eq!(agreed(INDIRECT), "42\n");
     }
 }

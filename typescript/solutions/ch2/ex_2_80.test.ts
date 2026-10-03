@@ -6,14 +6,14 @@ import { describe, expect, it } from "vitest";
 import {
   makeComplexFromRealImag,
   makeRational,
-  makeSchemeNumber,
+  makeTsNumber,
 } from "../../packages/ch2/src/05-generic-operations.js";
 import { isZero80 } from "./ex_2_80.js";
 
 describe("exercise 2.80: generic =zero?", () => {
   it("answers for ordinary numbers", () => {
-    expect(isZero80(makeSchemeNumber(0n))).toEqual({ _tag: "Ok", value: true });
-    expect(isZero80(makeSchemeNumber(5n))).toEqual({ _tag: "Ok", value: false });
+    expect(isZero80(makeTsNumber(0n))).toEqual({ _tag: "Ok", value: true });
+    expect(isZero80(makeTsNumber(5n))).toEqual({ _tag: "Ok", value: false });
   });
 
   it("answers for rationals by numerator", () => {

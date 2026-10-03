@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.59: implement `unionSet` for the unordered-list
  * representation of sets (`elementOfSet`/`adjoinSet`/`intersectionSet`
@@ -15,6 +13,6 @@ import sicp.runtime.PendingSolution
 public fun unionSet(
     set1: List<Long>,
     set2: List<Long>,
-): List<Long> = throw PendingSolution()
+): List<Long> = throw PendingExercise()
 
-public fun ex_2_59(): List<Long> = throw PendingSolution()
+public fun ex_2_59(): List<Long> = throw PendingExercise()

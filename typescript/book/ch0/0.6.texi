@@ -16,7 +16,8 @@ type Result<A, E> =
   | @{ readonly _tag: "Error"; readonly error: E @};
 
 const ok = <A>(value: A): Result<A, never> => (@{ _tag: "Ok", value @});
-const err = <E>(error: E): Result<never, E> => (@{ _tag: "Error", error @});
+const err = <E>(error: E): Result<never, E> =>
+  (@{ _tag: "Error", error @});
 @end example
 
 @noindent

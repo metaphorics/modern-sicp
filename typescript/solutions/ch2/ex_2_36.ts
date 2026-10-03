@@ -10,7 +10,7 @@ import { accumulate, cons, nil } from "../../packages/ch2/src/02-picture-languag
  * narrow each list on `_tag`: `heads` takes the first element of every
  * list, `tails` every list after its first, and the recursion stops when
  * the outer list or the first inner list runs out, matching the book's
- * `(null? (car seqs))` guard.
+ * `isNull(car(seqs))` guard.
  */
 
 /** The first element of each list; the lists are consumed together. */

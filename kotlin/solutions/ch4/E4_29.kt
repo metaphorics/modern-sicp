@@ -3,53 +3,70 @@
 
 package sicp.ch4.solutions
 
-import kotlinx.collections.immutable.PersistentList
-import sicp.ch4.LazyEvaluator
-import sicp.ch4.lazyTranscriptOn
-import sicp.runtime.Env
-import sicp.runtime.Expr
-import sicp.runtime.VThunkNoMemo
-import sicp.runtime.Value
+import sicp.ch4.LazyModule
 
-// Exercise 4.29: what memoization buys. The slow-without-memoization
-// program is the counting session itself: `(* x x)` and `(* x x x)` are
-// strict primitive applications, so each use of the parameter is a demand,
-// and an unmemoized thunk re-runs `(id 10)` -- counter, side effect and
-// all -- at every demand. Memoized, `(square (id 10))` forces once
-// (count 1) and the second use reads the stored value; `(cube (id 10))`
-// adds exactly one more computation (count 2). Unmemoized, every demand
-// recomputes: counts 2 and then 5. Any program whose delayed arguments are
-// used more than they are forced -- a nested numerical fold is the
-// textbook shape -- pays multiplicatively without the memo.
+// Exercise 4.29: what memoization buys. The counting session is the
+// demonstration itself: `id` counts its computations, and the two probes
+// differ only in how a demand reaches the computation. Memoized, the
+// parameter is one transparent thunk per argument: `square` reads its
+// parameter twice and the second read answers from the memo, so the
+// session counts 1 then 2. Without the memo every demand re-runs the
+// computation: the same two calls count 2 then 5 -- a program whose
+// delayed arguments are used more often than they are forced pays
+// multiplicatively. The cold probe expresses call-by-name honestly in
+// guest code: the delayed computation is a function value re-invoked at
+// every demand, so the memo cannot hide the recomputation.
 
-/** The counting session's definitions. */
-private val COUNTING_PROGRAM: String =
+/** The counting session under memoized delay: `square` then `cube` count
+ * 1 and 2. => "100\n1\n1000\n2\n" */
+internal val MEMOIZED_COUNTS_PROGRAM: String =
     """
-    (define count 0)
-    (define (id x) (set! count (+ count 1)) x)
-    (define (square x) (* x x))
-    (define (cube x) (* x x x))
-    (square (id 10))
-    count
-    (cube (id 10))
-    count
+var count: Long = 0L
+
+fun id(x: Long): Long {
+    count = count + 1L
+    return x
+}
+
+fun square(x: Long): Long = x * x
+
+fun cube(x: Long): Long = x * x * x
+
+fun main() {
+    println(square(id(10L)))
+    println(count)
+    println(cube(id(10L)))
+    println(count)
+}
+    """.trimIndent()
+
+/** The counting session with every demand re-invoking the computation:
+ * `squareCold` then `cubeCold` count 2 and 5. => "100\n2\n1000\n5\n" */
+internal val COLD_COUNTS_PROGRAM: String =
+    """
+var count: Long = 0L
+
+fun id(x: Long): Long {
+    count = count + 1L
+    return x
+}
+
+fun squareCold(get: () -> Long): Long = get() * get()
+
+fun cubeCold(get: () -> Long): Long = get() * get() * get()
+
+fun main() {
+    println(squareCold { id(10L) })
+    println(count)
+    println(cubeCold { id(10L) })
+    println(count)
+}
     """.trimIndent()
 
 /** Memoized thunks: `(square (id 10))` then `(cube (id 10))` count 1 and
  * 2. => "100\n1\n1000\n2\n" */
-public fun memoizedCountsTranscript(): String = lazyTranscriptOn(::LazyEvaluator, COUNTING_PROGRAM)
+public fun memoizedCountsTranscript(): String = outcomeText(LazyModule.run(MEMOIZED_COUNTS_PROGRAM).map { it.result })
 
-/** The unmemoized probe evaluator: every delayed operand is a
- * [VThunkNoMemo], which re-runs its expression at each demand. */
-public class NoMemoLazy(
-    global: Env,
-) : LazyEvaluator(global) {
-    override fun delayOperands(
-        operands: PersistentList<Expr>,
-        env: Env,
-    ): List<Value> = operands.map { VThunkNoMemo(it, env) }
-}
-
-/** The same session under unmemoized delay: the counts read 2 and 5.
- * => "100\n2\n1000\n5\n" */
-public fun unmemoizedCountsTranscript(): String = lazyTranscriptOn(::NoMemoLazy, COUNTING_PROGRAM)
+/** The same session with a recomputation at every demand: the counts read
+ * 2 and 5. => "100\n2\n1000\n5\n" */
+public fun unmemoizedCountsTranscript(): String = outcomeText(LazyModule.run(COLD_COUNTS_PROGRAM).map { it.result })

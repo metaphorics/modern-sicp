@@ -142,8 +142,8 @@ car(nil)
 
 @noindent
 A @code{list} helper builds the right-nested structure from a sequence in
-left-to-right order, and the book's listings use it wherever Scheme
-builds a display list.
+left-to-right order, and this edition's listings use it wherever a
+display list is needed.
 
 @heading The two equalities
 
@@ -168,8 +168,8 @@ g === h
 @end example
 
 @noindent
-The book's @code{equal?} maps to the written-out structural comparison,
-and its @code{eq?} maps to @code{===}. For lists the structural
+The written-out structural comparison asks about shape and contents;
+@code{===} asks about identity. For lists the structural
 comparison recurs down the pairs:
 
 @example typescript

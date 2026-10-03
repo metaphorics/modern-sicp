@@ -2,9 +2,9 @@
 // Original exercise
 
 /**
- * Exercise 4.27: with the lazy evaluator, define count 0 and an id procedure
+ * Exercise 4.27: with the lazy evaluator, define count = 0 and an id procedure
  * that increments count and returns its argument, then give the missing
- * values of the (define w (id (id 10))) interaction sequence and explain
+ * values of the `w = id(id(10))` interaction sequence and explain
  * them.
  */
 export class PendingSolution extends Error {

@@ -1,23 +1,34 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, exercise 5.27: the recursive factorial on the monitored
-// stack, for comparison with 5.26. Both counters are linear in n, and the
-// measured constants fill the book's table; the n = 5 row, 144 pushes at
-// depth 28, is the very session the 5.4.4 prose quotes.
+// Original exercise
+//
+// Chapter 5, exercise 5.27: for comparison with exercise 5.26, the
+// recursive factorial's stack behavior on the same monitored machine.
+// Both the maximum depth and the total pushes are linear in n: each
+// recursive level costs the evaluator a fixed package of saves. The
+// fitted constants are measurement output of the shipped controller
+// (whose continuation-frame design differs from the book's 5.4.1-5.4.4
+// save points); the pinned observables are the two relations, verified
+// on every measured point.
 
 package sicp.ch5.solutions
 
-/** The exercise's measurements for n = 1 to 6: the table, then the two
- *  fitted formulas with their per-point verification. */
+/** The measurements, the fitted formulas as evidence, and the two
+ *  relation verdicts. */
 public fun recursiveFactorialMeasurements(): List<String> {
     val ns = listOf(1, 2, 3, 4, 5, 6)
-    val stats = measure(recursiveFactorialSource, ns) { n -> "(factorial $n)" }
+    val stats = ns.map { n -> measureOne(measuredCall(recursiveFactorialSource, "factorial(${n}L)")) }
+    val rows = ns.zip(stats).map { (n, s) -> renderStats("recursive factorial", n, s) }
     val depths = stats.map { it.depth }
     val pushes = stats.map { it.pushes }
-    val table = ns.zip(stats) { n, s -> renderStats("recursive factorial", n, s) }
-    val formulas =
+    val depthFit = fitLinear(ns, depths)
+    val pushFit = fitLinear(ns, pushes)
+    val depthLinear = depthFit != null && holdsLinear(ns, depths, depthFit.first, depthFit.second)
+    val pushLinear = pushFit != null && holdsLinear(ns, pushes, pushFit.first, pushFit.second)
+    return rows +
         listOf(
-            linearFitLine("maximum depth", ns, depths),
-            linearFitLine("total pushes", ns, pushes),
+            "maximum depth fitted: ${depthFit?.first ?: 0}n + ${depthFit?.second ?: 0}",
+            "total pushes fitted: ${pushFit?.first ?: 0}n + ${pushFit?.second ?: 0}",
+            "maximum depth linear in n: $depthLinear",
+            "total pushes linear in n: $pushLinear",
         )
-    return table + formulas
 }

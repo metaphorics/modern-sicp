@@ -3,25 +3,22 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.VInt
-import sicp.runtime.VNil
-import sicp.runtime.Value
-import sicp.runtime.cons
-import sicp.runtime.vlist
+import sicp.runtime.Datum
+import sicp.runtime.Empty
+import sicp.runtime.Whole
+import sicp.runtime.datumList
+import sicp.runtime.pair
+import sicp.runtime.renderDatum
 
-/** The book's `append`, over the chain representation. */
+/** Copy the first proper datum chain onto the second. */
 public fun appendList(
-    list1: Value,
-    list2: Value,
-): Value = if (list1 is VNil) list2 else cons(carOf(list1), appendList(cdrOf(list1), list2))
+    list1: Datum,
+    list2: Datum,
+): Datum = if (list1 === Empty) list2 else pair(firstPart(list1), appendList(secondPart(list1), list2))
 
-/**
- * The three evaluations, printed: `appendList` glues the two chains
- * together, `cons` makes x the single head element followed by y's
- * elements, and `vlist` makes x and y the two head elements.
- */
+/** Return native renderings for concatenation, pairing, and a proper two-item list. */
 public fun ex_2_26(): List<String> {
-    val x = vlist(VInt(1L), VInt(2L), VInt(3L))
-    val y = vlist(VInt(4L), VInt(5L), VInt(6L))
-    return listOf(appendList(x, y).toString(), cons(x, y).toString(), vlist(x, y).toString())
+    val x = datumList(Whole(1L), Whole(2L), Whole(3L))
+    val y = datumList(Whole(4L), Whole(5L), Whole(6L))
+    return listOf(appendList(x, y), pair(x, y), datumList(x, y)).map(::renderDatum)
 }

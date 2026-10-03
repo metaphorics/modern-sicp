@@ -1,81 +1,56 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-import { it } from "@effect/vitest";
-import { Effect } from "effect";
-import { describe, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { symbol } from "../../packages/ch4/src/01-metacircular.js";
-import type { Value } from "../../packages/ch4/src/core.js";
-import type { EvaluationError } from "../../packages/ch4/src/errors.js";
-import { format } from "../../packages/ch4/src/read.js";
+import type { Outcome } from "../../packages/ch4/src/runtime/errors.js";
 import {
-  defineVariableValueAssoc,
+  defineInAList,
   frameVariables,
-  lookupVariableValueAssoc,
-  makeAssocEnv,
-  makeGlobalAssocEnv,
-  setVariableValueAssoc,
+  lookupInAList,
+  makeAListEnv,
+  setInAList,
 } from "./ex_4_11.js";
 
-const unboundName = (error: EvaluationError): string =>
-  error._tag === "UnboundVariable" ? error.name : "<not an UnboundVariable>";
+/** The observable result: the rendered value, or the fault category. */
+const shown = (outcome: Outcome): string =>
+  outcome.tag === "ok" ? String(outcome.value) : `error:${outcome.error.tag}`;
 
-const failureOf = <A>(run: Effect.Effect<A, EvaluationError>): Effect.Effect<EvaluationError> =>
-  Effect.flatMap(Effect.result(run), (outcome) =>
-    outcome._tag === "Failure"
-      ? Effect.succeed(outcome.failure)
-      : Effect.die(new Error("expected a failure")),
-  );
+describe("exercise 4.11: frames as association lists", () => {
+  it("lookup scans the frame's entries and walks the parent chain", () => {
+    const outer = makeAListEnv();
+    defineInAList("a", 1, outer);
+    const inner = makeAListEnv(outer);
+    defineInAList("b", 2, inner);
+    expect(shown(lookupInAList("b", inner))).toBe("2");
+    expect(shown(lookupInAList("a", inner))).toBe("1");
+    expect(shown(lookupInAList("zz", inner))).toBe("error:unbound-name");
+  });
 
-const number = (n: number): Value => ({ _tag: "Number", n });
+  it("a write lands in the shared entry of the frame that binds the name", () => {
+    const outer = makeAListEnv();
+    defineInAList("a", 1, outer);
+    const inner = makeAListEnv(outer);
+    defineInAList("b", 2, inner);
+    expect(shown(setInAList("a", 10, inner))).toBe("10");
+    expect(shown(lookupInAList("a", outer))).toBe("10");
+  });
 
-describe("exercise 4.11: association-list frames", () => {
-  it.effect("lookup walks the entries and then the chain", () =>
-    Effect.gen(function* () {
-      const global = yield* makeGlobalAssocEnv();
-      yield* defineVariableValueAssoc(symbol("a"), number(1), global);
-      const inner = yield* makeAssocEnv(global);
-      yield* defineVariableValueAssoc(symbol("b"), number(2), inner);
+  it("define conses onto the current frame and shadows outer names", () => {
+    const outer = makeAListEnv();
+    defineInAList("a", 1, outer);
+    const inner = makeAListEnv(outer);
+    defineInAList("b", 2, inner);
+    defineInAList("c", 3, inner);
+    expect(frameVariables(inner)).toEqual(["c", "b"]);
+    expect(frameVariables(outer)).toEqual(["a"]);
+    expect(shown(lookupInAList("c", outer))).toBe("error:unbound-name");
+  });
 
-      expect(yield* lookupVariableValueAssoc(symbol("b"), inner)).toStrictEqual(number(2));
-      expect(yield* lookupVariableValueAssoc(symbol("a"), inner)).toStrictEqual(number(1));
-      expect(yield* lookupVariableValueAssoc(symbol("a"), global)).toStrictEqual(number(1));
-      const missing = yield* failureOf(lookupVariableValueAssoc(symbol("zz"), inner));
-      expect(missing._tag).toBe("UnboundVariable");
-    }),
-  );
-
-  it.effect("set! writes the shared frame the chain points at", () =>
-    Effect.gen(function* () {
-      const global = yield* makeGlobalAssocEnv();
-      yield* defineVariableValueAssoc(symbol("a"), number(1), global);
-      const inner = yield* makeAssocEnv(global);
-
-      yield* setVariableValueAssoc(symbol("a"), number(10), inner);
-      expect(yield* lookupVariableValueAssoc(symbol("a"), global)).toStrictEqual(number(10));
-      expect(yield* lookupVariableValueAssoc(symbol("a"), inner)).toStrictEqual(number(10));
-    }),
-  );
-
-  it.effect("define conses onto the current frame, shadowing outer names", () =>
-    Effect.gen(function* () {
-      const global = yield* makeGlobalAssocEnv();
-      yield* defineVariableValueAssoc(symbol("a"), number(1), global);
-      const inner = yield* makeAssocEnv(global);
-      yield* defineVariableValueAssoc(symbol("b"), number(2), inner);
-      yield* defineVariableValueAssoc(symbol("c"), number(3), inner);
-
-      expect(yield* lookupVariableValueAssoc(symbol("c"), inner)).toStrictEqual(number(3));
-      const missing = yield* failureOf(lookupVariableValueAssoc(symbol("c"), global));
-      expect(missing._tag).toBe("UnboundVariable");
-
-      expect(format(yield* frameVariables(inner.frame))).toBe("(c b)");
-      expect(format(yield* frameVariables(global.frame))).toBe("(a)");
-
-      const unbound = yield* failureOf(setVariableValueAssoc(symbol("zz"), number(9), inner));
-      expect(unbound._tag).toBe("UnboundVariable");
-      expect(unboundName(unbound)).toBe("zz");
-    }),
-  );
+  it("setting an unbound name fails with unbound-name", () => {
+    const outer = makeAListEnv();
+    defineInAList("a", 1, outer);
+    const inner = makeAListEnv(outer);
+    expect(shown(setInAList("zz", 5, inner))).toBe("error:unbound-name");
+  });
 });

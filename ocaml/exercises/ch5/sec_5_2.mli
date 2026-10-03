@@ -5,4 +5,4 @@
 
 (** Exercise 5.2: the machine language description, assembled and run. [ex_5_02 ()] reports the assembly and runs the machine on 5
       and 6. *)
-val ex_5_02 : unit -> string list
+val ex_5_02 : unit -> (string list, Sicp_ch5.Sec_5_1.error) result

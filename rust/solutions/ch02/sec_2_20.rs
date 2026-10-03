@@ -6,13 +6,11 @@
 mod ex_2_20 {
     use ch02::sec_2_2::List;
 
-    /// Exercise 2.20: `same-parity`
+    /// Exercise 2.20: `same_parity`
     ///
-    /// Scheme's dotted-tail notation becomes a Rust rest parameter: a
-    /// fixed first parameter plus a slice holding all remaining
-    /// arguments, which is exactly the shape `(define (f x . y) ...)`
-    /// gives the book. The first argument leads the answer, and the
-    /// filter keeps the arguments that share its parity.
+    /// Accepts the first value separately and the remaining values as a
+    /// homogeneous slice. The first value leads the answer, and the
+    /// filter keeps arguments with the same parity.
     fn same_parity(first: i128, rest: &[i128]) -> List<i128> {
         let parity = first.rem_euclid(2);
         std::iter::once(first)
@@ -21,7 +19,7 @@ mod ex_2_20 {
             .collect()
     }
 
-    /// Exercise 2.20: same-parity with a rest parameter
+    /// Exercise 2.20: `same_parity` with a rest slice
     ///
     /// Returns the rendered argument lists that share the first
     /// argument's parity for `same_parity(1, [2, 3, 4, 5, 6, 7])` and

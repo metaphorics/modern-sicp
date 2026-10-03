@@ -2,8 +2,8 @@
 // Original exercise
 
 /**
- * Exercise 2.78: untagged numbers, the bare base case: A bare bigint names
- * itself scheme-number: type-tag and contents test for the bare shape with
+ * Exercise 2.78: untagged numbers, the bare base case: a bare guest number
+ * names itself ts-number; type-tag and contents test for the bare shape with
  * typeof, the book's number? predicate. Pending scaffold; the solution and its
  * rationale live in solutions/ch2/ex_2_78.ts and .md.
  */

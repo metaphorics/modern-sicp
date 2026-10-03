@@ -6,58 +6,58 @@ package sicp.ch3.exercises
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
-import sicp.runtime.VInt
-import sicp.runtime.VSym
+import sicp.runtime.Symbol
+import sicp.runtime.Whole
 
 public class E3_26Test :
     FunSpec({
         test("every inserted key is found by a root-to-leaf walk") {
             val t = TreeTable()
-            t.insert(VSym("d"), VInt(4))
-            t.insert(VSym("b"), VInt(2))
-            t.insert(VSym("f"), VInt(6))
-            t.insert(VSym("a"), VInt(1))
-            t.insert(VSym("e"), VInt(5))
-            t.lookup(VSym("a")) shouldBe VInt(1)
-            t.lookup(VSym("b")) shouldBe VInt(2)
-            t.lookup(VSym("d")) shouldBe VInt(4)
-            t.lookup(VSym("e")) shouldBe VInt(5)
-            t.lookup(VSym("f")) shouldBe VInt(6)
+            t.insert(Symbol("d"), Whole(4))
+            t.insert(Symbol("b"), Whole(2))
+            t.insert(Symbol("f"), Whole(6))
+            t.insert(Symbol("a"), Whole(1))
+            t.insert(Symbol("e"), Whole(5))
+            t.lookup(Symbol("a")) shouldBe Whole(1)
+            t.lookup(Symbol("b")) shouldBe Whole(2)
+            t.lookup(Symbol("d")) shouldBe Whole(4)
+            t.lookup(Symbol("e")) shouldBe Whole(5)
+            t.lookup(Symbol("f")) shouldBe Whole(6)
         }
 
         test("a key outside the stored range walks to a null leaf") {
             val t = TreeTable()
-            t.insert(VSym("m"), VInt(13))
-            t.lookup(VSym("a")).shouldBeNull()
-            t.lookup(VSym("z")).shouldBeNull()
+            t.insert(Symbol("m"), Whole(13))
+            t.lookup(Symbol("a")).shouldBeNull()
+            t.lookup(Symbol("z")).shouldBeNull()
         }
 
         test("inserting an existing key overwrites the record in place") {
             val t = TreeTable()
-            t.insert(VSym("b"), VInt(2))
-            t.insert(VSym("a"), VInt(1))
-            t.insert(VSym("b"), VInt(20))
-            t.lookup(VSym("b")) shouldBe VInt(20)
-            t.lookup(VSym("a")) shouldBe VInt(1)
+            t.insert(Symbol("b"), Whole(2))
+            t.insert(Symbol("a"), Whole(1))
+            t.insert(Symbol("b"), Whole(20))
+            t.lookup(Symbol("b")) shouldBe Whole(20)
+            t.lookup(Symbol("a")) shouldBe Whole(1)
         }
 
         test("integer keys order numerically") {
             val t = TreeTable()
-            t.insert(VInt(10), VSym("ten"))
-            t.insert(VInt(2), VSym("two"))
-            t.insert(VInt(33), VSym("thirty-three"))
-            t.lookup(VInt(2)) shouldBe VSym("two")
-            t.lookup(VInt(10)) shouldBe VSym("ten")
-            t.lookup(VInt(33)) shouldBe VSym("thirty-three")
-            t.lookup(VInt(17)).shouldBeNull()
+            t.insert(Whole(10), Symbol("ten"))
+            t.insert(Whole(2), Symbol("two"))
+            t.insert(Whole(33), Symbol("thirty-three"))
+            t.lookup(Whole(2)) shouldBe Symbol("two")
+            t.lookup(Whole(10)) shouldBe Symbol("ten")
+            t.lookup(Whole(33)) shouldBe Symbol("thirty-three")
+            t.lookup(Whole(17)).shouldBeNull()
         }
 
         test("the records are shared mutable nodes: a value change is visible through the table") {
             val t = TreeTable()
-            t.insert(VSym("k"), VInt(1))
-            t.insert(VSym("j"), VInt(0))
-            t.lookup(VSym("k")) shouldBe VInt(1)
-            t.insert(VSym("k"), VInt(2))
-            t.lookup(VSym("k")) shouldBe VInt(2)
+            t.insert(Symbol("k"), Whole(1))
+            t.insert(Symbol("j"), Whole(0))
+            t.lookup(Symbol("k")) shouldBe Whole(1)
+            t.insert(Symbol("k"), Whole(2))
+            t.lookup(Symbol("k")) shouldBe Whole(2)
         }
     })

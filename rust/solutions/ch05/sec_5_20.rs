@@ -2,15 +2,91 @@
 // Original exercise
 
 //! The reference solution of exercise 5.20: the three conses of
-//! `(define x (cons 1 2))` and `(define y (list x x))` run through
-//! the allocation path of the list-structure memory, free opening at
-//! `p1` as the exercise states, the memory-vector drawing pinned as
-//! the module renders it.
+//! `(define x (cons 1 2))` and `(define y (list x x))` through the
+//! allocation path of the list-structure memory, `free` opening at
+//! `p1` as the exercise states.
+//!
+//! The box-and-pointer drawing the exercise asks for, of the
+//! structure the tests below rebuild and check cell by cell:
+//!
+//! ```text
+//!         +---+---+
+//!    x    | 1 | 2 |
+//!         +---+---+
+//!
+//!         +---+---+     +---+---+
+//!    y    | * | *-+---> | * | / |
+//!         +-|-+---+     +-|-+---+
+//!           |             |
+//!           v             v
+//!         (the x box above, shared by both)
+//! ```
+//!
+//! and its memory-vector form, which `memory_vector` renders from
+//! the live heap.
 
-use std::cell::RefCell;
-use std::rc::Rc;
+use ch05::sec_5_3::{Memory, MemoryFault, SharedMemory, Word};
 
-use ch05::sec_5_3::{Memory, Word};
+/// One word drawn as a box-and-pointer compartment: a datum as
+/// itself, the empty list as `/`, and a pair cell as `*` with its
+/// address named.
+fn slot(word: Word) -> String {
+    match word {
+        Word::Int(value) => value.to_string(),
+        Word::Addr(0) => "/".to_owned(),
+        Word::Addr(address) => format!("*{address}"),
+    }
+}
+
+/// One cell's two drawn compartments and its column index. The
+/// reserved cell 0 is the empty list and is drawn as such.
+fn cell_column(memory: &Memory, address: usize) -> (String, String, String) {
+    let column = format!("{address:>3}");
+    if address == 0 {
+        return (column, "  /".to_owned(), "  /".to_owned());
+    }
+    let cell = Word::Addr(address);
+    let car = memory.car(cell).unwrap_or(Word::Addr(0));
+    let cdr = memory.cdr(cell).unwrap_or(Word::Addr(0));
+    (
+        column,
+        format!("{:>3}", slot(car)),
+        format!("{:>3}", slot(cdr)),
+    )
+}
+
+/// The memory-vector representation (Figure 5.14): one column per
+/// cell, the two vector rows, and the three pointers the exercise
+/// asks about.
+fn memory_vector(memory: &Memory, x: Word, y: Word) -> String {
+    let mut index = String::from("index    ");
+    let mut head_row = String::from("the-cars ");
+    let mut tail_row = String::from("the-cdrs ");
+    for address in 0..memory.free() {
+        let (column, car, cdr) = cell_column(memory, address);
+        index.push_str(&column);
+        head_row.push_str(&car);
+        tail_row.push_str(&cdr);
+    }
+    format!(
+        "{index}\n{head_row}\n{tail_row}\nx = {}, y = {}, free = {}",
+        slot(x),
+        slot(y),
+        slot(Word::Addr(memory.free()))
+    )
+}
+
+/// The two definitions of the exercise in allocation order: the pair
+/// `(1 . 2)` first, then `(list x x)`, which is
+/// `(cons x (cons x '()))` and so allocates its inner cons before
+/// the outer cell that names it.
+fn run() -> Result<(SharedMemory, Word, Word), MemoryFault> {
+    let memory: SharedMemory = SharedMemory::new(std::cell::RefCell::new(Memory::new(8, 1)));
+    let x = memory.borrow_mut().cons(Word::Int(1), Word::Int(2))?;
+    let inner = memory.borrow_mut().cons(x, Word::Addr(0))?;
+    let y = memory.borrow_mut().cons(x, inner)?;
+    Ok((memory, x, y))
+}
 
 mod ex_5_20 {
     //! Exercise 5.20: draw the box-and-pointer and memory-vector
@@ -21,67 +97,46 @@ mod ex_5_20 {
 
     use super::*;
 
-    /// A drawing-sized memory: eight cells per semispace, the top
-    /// four reserved for a collector's root list, allocation opening
-    /// at cell 1 so the drawing shows the book's blank cell 0.
-    fn memory() -> Rc<RefCell<Memory>> {
-        Rc::new(RefCell::new(Memory::new(8, 4, 1)))
-    }
-
-    /// Runs the exercise's two definitions in allocation order: the
-    /// pair `(1 . 2)` first, then the innermost cons of `(list x x)`,
-    /// whose cdr argument must exist before the outer cell can name
-    /// it.
-    fn run() -> (Rc<RefCell<Memory>>, Word, Word) {
-        let memory = memory();
-        let x = memory
-            .borrow_mut()
-            .cons(Word::Num(1), Word::Num(2))
-            .expect("cell 1");
-        // (list x x) is (cons x (cons x '())): the inner cons first.
-        let inner = memory
-            .borrow_mut()
-            .cons(x.clone(), Word::Empty)
-            .expect("cell 2");
-        let y = memory.borrow_mut().cons(x.clone(), inner).expect("cell 3");
-        (memory, x, y)
-    }
-
-    /// The three answers: free ends at `p4`, `x` is the pointer
+    /// The three answers: `free` ends at `p4`, `x` is the pointer
     /// `p1`, and `y` is the pointer `p3`.
     #[test]
-    fn ex_5_20_free_and_the_two_pointers() {
-        let (memory, x, y) = run();
-        assert_eq!(x, Word::Pair(1));
-        assert_eq!(y, Word::Pair(3));
-        assert_eq!(memory.borrow().free_word(), Word::Pair(4));
-        assert_eq!(memory.borrow().write(&y).unwrap(), "((1 . 2) (1 . 2))");
+    fn ex_5_20_free_and_the_two_pointers() -> Result<(), MemoryFault> {
+        let (memory, x, y) = run()?;
+        assert_eq!(x, Word::Addr(1));
+        assert_eq!(y, Word::Addr(3));
+        assert_eq!(memory.borrow().free(), 4);
+        Ok(())
     }
 
     /// The sharing the box-and-pointer drawing shows as two arrows
     /// into one box: both elements of `y` are the same cell `p1`,
     /// proved by reading the second element back to `x` itself.
     #[test]
-    fn ex_5_20_y_shares_x() {
-        let (memory, x, y) = run();
-        let second = memory
-            .borrow()
-            .car(&memory.borrow().cdr(&y).unwrap())
-            .unwrap();
+    fn ex_5_20_y_shares_x() -> Result<(), MemoryFault> {
+        let (memory, x, y) = run()?;
+        let heap = memory.borrow();
+        let rest = heap.cdr(y)?;
+        let second = heap.car(rest)?;
         assert_eq!(second, x);
+        Ok(())
     }
 
-    /// The memory-vector drawing, one column per cell: the blank
+    /// The memory-vector drawing, one column per cell: the reserved
     /// cell 0, the `(1 . 2)` pair at `p1`, the two elements of `y`
-    /// at `p2` and `p3` both naming `p1`, and free stopping at `p4`.
+    /// at `p2` and `p3` both naming `p1`, and `free` stopping at
+    /// `p4`.
     #[test]
-    fn ex_5_20_memory_vector_drawing() {
-        let (memory, _, _) = run();
+    fn ex_5_20_memory_vector_drawing() -> Result<(), MemoryFault> {
+        let (memory, x, y) = run()?;
         assert_eq!(
-            memory.borrow().dump(),
-            "index    0   1   2   3   4   5   6   7\n\
-             the-cars e0  n1  p1  p1  e0  e0  e0  e0\n\
-             the-cdrs e0  n2  e0  p2  e0  e0  e0  e0"
+            memory_vector(&memory.borrow(), x, y),
+            concat!(
+                "index      0  1  2  3\n",
+                "the-cars   /  1 *1 *1\n",
+                "the-cdrs   /  2  / *2\n",
+                "x = *1, y = *3, free = *4"
+            )
         );
+        Ok(())
     }
 }

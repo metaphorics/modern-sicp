@@ -70,7 +70,7 @@ fn ex_3_05() {
 
 mod ex_3_05a {
     use ch03::sec_3_1::{RANDOM_INIT, Rand, estimate_pi};
-    use sicp_runtime::SchemeError;
+    use sicp_runtime::SicpError;
 
     /// Exercise 3.5a (this edition): a seeded stream and a Cesaro table
     ///
@@ -82,7 +82,7 @@ mod ex_3_05a {
     /// # Errors
     /// Propagates the generator's zero-seed rejection; `xorshift64*`
     /// maps zero to zero forever.
-    pub fn seeded_stream(seed: u64, count: usize) -> Result<Vec<u64>, SchemeError> {
+    pub fn seeded_stream(seed: u64, count: usize) -> Result<Vec<u64>, SicpError> {
         let mut rand = Rand::new(seed)?;
         Ok((0..count).map(|_| rand.generate()).collect())
     }

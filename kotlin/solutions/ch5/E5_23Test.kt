@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, exercise 5.23
+// Chapter 5, exercise 5_23
 
 package sicp.ch5.solutions
 
@@ -8,28 +8,16 @@ import io.kotest.matchers.shouldBe
 
 public class E5_23Test :
     FunSpec({
-        test("cond dispatches through cond->if, a bodyless clause answers its test, let becomes a lambda application") {
+        test("a guard when dispatches through the if-chain transform and both engines answer alike") {
             derivedExpressionRuns() shouldBe
                 listOf(
-                    ";;; EC-Eval input:",
-                    ";;; EC-Eval value:",
-                    "ok",
-                    ";;; EC-Eval input:",
-                    ";;; EC-Eval value:",
                     "zero",
-                    ";;; EC-Eval input:",
-                    ";;; EC-Eval value:",
                     "one",
-                    ";;; EC-Eval input:",
-                    ";;; EC-Eval value:",
                     "many",
-                    ";;; EC-Eval input:",
-                    ";;; EC-Eval value:",
-                    "#f",
-                    ";;; EC-Eval input:",
-                    ";;; EC-Eval value:",
-                    "6",
-                    ";;; EC-Eval input:",
+                    "missing",
+                    "six",
+                    "transformed syntax matches the core program: true",
+                    "direct and explicit-control runs agree: true",
                 )
         }
     })

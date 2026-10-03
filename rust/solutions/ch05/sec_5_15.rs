@@ -5,15 +5,107 @@
 //! counting with a print-and-reset message, and this edition's
 //! instruction budget.
 
-use ch05::sec_5_2::{Fault, Machine, OpHandler, make_machine, op};
-use sicp_runtime::Value;
+use std::cell::Cell;
+use std::rc::Rc;
 
-fn fib_operations() -> Vec<(&'static str, OpHandler)> {
-    vec![
-        ("<", op("<").expect("shared")),
-        ("+", op("+").expect("shared")),
-        ("-", op("-").expect("shared")),
-    ]
+use ch05::sec_5_1::{Instruction, MachineProgram, Operand, fibonacci_machine};
+use ch05::sec_5_2::{Fault, Machine, OpHandler, Run, assemble};
+
+/// The typed budget fault the exercise asks for: a run due to
+/// execute an instruction past the budget halts, carrying the count
+/// and the program counter of the instruction that would have run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BudgetExceeded {
+    /// The instructions already executed.
+    pub count: u64,
+    /// The program counter of the refused instruction.
+    pub pc: usize,
+}
+
+/// How a counted run can end: at the budget, or at a machine fault.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Halted {
+    /// The budget refused the next instruction.
+    Budget(BudgetExceeded),
+    /// The machine raised a fault.
+    Fault(Fault),
+}
+
+/// Steps one machine one instruction at a time, counting, and stops
+/// at the budget with the step that would have run. The machine is
+/// halted at its final instruction, so the resumed run only reports
+/// the outcome — it never re-executes the controller.
+fn step_counted(machine: &mut Machine, budget: u64) -> Result<Run, Halted> {
+    let mut count = 0;
+    while machine.pc() < machine.assembled().instructions.len() {
+        if count >= budget {
+            return Err(Halted::Budget(BudgetExceeded {
+                count,
+                pc: machine.pc(),
+            }));
+        }
+        machine.step().map_err(Halted::Fault)?;
+        count += 1;
+    }
+    machine.resume().map_err(Halted::Fault)
+}
+
+/// Runs one machine under an instruction budget.
+fn run_bounded(
+    program: &MachineProgram,
+    inputs: &[(&str, i64)],
+    budget: u64,
+) -> Result<Run, Halted> {
+    let assembled = assemble(program).map_err(Halted::Fault)?;
+    let mut machine = Machine::new(assembled);
+    for (name, value) in inputs {
+        machine.set_register(name, *value).map_err(Halted::Fault)?;
+    }
+    step_counted(&mut machine, budget)
+}
+
+/// Runs one machine with no budget.
+fn run_counted(program: &MachineProgram, inputs: &[(&str, i64)]) -> Result<Run, Halted> {
+    run_bounded(program, inputs, u64::MAX)
+}
+
+/// The Fibonacci machine whose final `perform` prints its own
+/// instruction count and resets the counter: the message of the
+/// exercise, visible from the controller.
+fn fibonacci_counting() -> MachineProgram {
+    let mut program = fibonacci_machine();
+    if let Some((_, instruction)) = program.instructions.last_mut() {
+        *instruction = Instruction::Perform {
+            operation: "print".to_owned(),
+            arguments: vec![Operand::Operation {
+                operation: "instruction-count".to_owned(),
+                arguments: vec![],
+            }],
+        };
+    }
+    program
+}
+
+/// Runs the counting Fibonacci machine: the driver bumps the shared
+/// counter before every step, and the controller's `instruction-count`
+/// operation reads and resets it.
+fn run_with_message(n: i64) -> Result<Run, Halted> {
+    let counter: Rc<Cell<u64>> = Rc::new(Cell::new(0));
+    let reported = Rc::clone(&counter);
+    let operation: OpHandler = Rc::new(move |_args: &[i64]| {
+        let count = reported.get();
+        reported.set(0);
+        i64::try_from(count).map_err(|_| Fault::Overflow("instruction count"))
+    });
+    let assembled = assemble(&fibonacci_counting()).map_err(Halted::Fault)?;
+    let mut machine = Machine::new(assembled);
+    machine.install_operation("instruction-count", operation);
+    machine.set_register("n", n).map_err(Halted::Fault)?;
+    while machine.pc() < machine.assembled().instructions.len() {
+        counter.set(counter.get() + 1);
+        machine.step().map_err(Halted::Fault)?;
+    }
+    machine.resume().map_err(Halted::Fault)
 }
 
 mod ex_5_15 {
@@ -23,68 +115,36 @@ mod ex_5_15 {
 
     use super::*;
 
-    fn counted_fib(n: i128) -> u64 {
-        let mut machine = ch05::sec_5_2::fibonacci_machine();
-        machine.set_register("n", Value::Int(n)).unwrap();
-        machine.start().unwrap();
-        machine.instruction_count()
-    }
-
     /// Every executed instruction counts, transfers included. The
-    /// base case runs five instructions (the initial assign, the
-    /// test, the branch, the base assign, and the return goto); the
-    /// whole computation of fib(6) runs 281.
+    /// base case runs six instructions (the initial assign, the
+    /// test, the branch, the base assign, the return goto, and the
+    /// final print); fib(2) runs 29 and the whole computation of
+    /// fib(6) runs 282.
     #[test]
     fn ex_5_15_counts() {
-        assert_eq!(counted_fib(0), 5);
-        assert_eq!(counted_fib(1), 5);
-        assert_eq!(counted_fib(2), 28);
-        assert_eq!(counted_fib(6), 281);
+        let zero = run_counted(&fibonacci_machine(), &[("n", 0)]).expect("run");
+        let one = run_counted(&fibonacci_machine(), &[("n", 1)]).expect("run");
+        let two = run_counted(&fibonacci_machine(), &[("n", 2)]).expect("run");
+        let six = run_counted(&fibonacci_machine(), &[("n", 6)]).expect("run");
+        assert_eq!(zero.steps, 6);
+        assert_eq!(one.steps, 6);
+        assert_eq!(two.steps, 29);
+        assert_eq!(six.steps, 282);
     }
 
-    /// The message: the count is returned and printed, and the
-    /// counter is back to zero afterwards.
+    /// The message: the count is printed through the controller's
+    /// `print (instruction-count)` operand, and the counter is back
+    /// to zero afterwards — the same run's message reports its own
+    /// whole instruction count, and it restarts at the first
+    /// instruction of the next run.
     #[test]
     fn ex_5_15_print_and_reset_message() {
-        let mut machine = ch05::sec_5_2::fibonacci_machine();
-        machine.set_register("n", Value::Int(6)).unwrap();
-        machine.start().unwrap();
-        assert_eq!(machine.print_instruction_count(), 281);
-        assert_eq!(machine.instruction_count(), 0);
-        assert_eq!(machine.transcript(), ["281".to_owned()]);
-    }
-
-    /// The same message is reachable from a controller as the
-    /// machine operation `print-instruction-count`: a run that ends
-    /// by performing it prints its own count and leaves the counter
-    /// at zero.
-    #[test]
-    fn ex_5_15_controller_visible_message() {
-        let controller = "
-  (assign continue (label fib-done))
-fib-loop
-  (test (op <) (reg n) (const 2))
-  (branch (label immediate-answer))
-  (save continue)
-  (assign continue (label afterfib))
-  (save n)
-  (assign n (op -) (reg n) (const 1))
-  (goto (label fib-loop))
-afterfib
-  (restore n)
-  (restore continue)
-immediate-answer
-  (assign val (reg n))
-  (goto (reg continue))
-fib-done
-  (perform (op print-instruction-count))";
-        let mut machine: Machine =
-            make_machine(&["n", "val", "continue"], &fib_operations(), controller)
-                .expect("assembles");
-        machine.set_register("n", Value::Int(3)).unwrap();
-        machine.start().unwrap();
-        assert_eq!(machine.transcript(), ["28".to_owned()]);
-        assert_eq!(machine.instruction_count(), 0);
+        let counted = run_with_message(3).expect("run");
+        assert_eq!(counted.output, ["52".to_owned()]);
+        let again = run_with_message(3).expect("run");
+        assert_eq!(again.output, ["52".to_owned()]);
+        let zero = run_with_message(0).expect("run");
+        assert_eq!(zero.output, ["6".to_owned()]);
     }
 }
 
@@ -96,50 +156,31 @@ mod ex_5_15a {
 
     use super::*;
 
-    fn fib_with_budget(n: i128, budget: Option<u64>) -> Result<(), Fault> {
-        let mut machine = ch05::sec_5_2::fibonacci_machine();
-        machine.set_instruction_budget(budget);
-        machine.set_register("n", Value::Int(n)).unwrap();
-        machine.start().map(|_| ())
-    }
-
     /// A budget far below the demand halts the run at the count
     /// itself, naming the instruction that would have run: fib(6)
-    /// stopped after ten instructions at pc 3, the loop's assign.
+    /// stopped after ten instructions at pc 3, the first save.
     #[test]
     fn ex_5_15a_run_halts_at_the_budget() {
-        assert_eq!(
-            fib_with_budget(6, Some(10)),
-            Err(Fault::BudgetExceeded { count: 10, pc: 3 })
-        );
+        let fault = run_bounded(&fibonacci_machine(), &[("n", 6)], 10).expect_err("budget");
+        assert_eq!(fault, Halted::Budget(BudgetExceeded { count: 10, pc: 3 }));
     }
 
     /// One instruction short of the demand still faults; the exact
-    /// demand finishes cleanly. fib(6) needs 281 instructions.
+    /// demand finishes cleanly. fib(6) needs 282 instructions.
     #[test]
     fn ex_5_15a_exact_demand_is_the_boundary() {
-        assert_eq!(
-            fib_with_budget(6, Some(280)),
-            Err(Fault::BudgetExceeded { count: 280, pc: 19 })
-        );
-        assert_eq!(fib_with_budget(6, Some(281)), Ok(()));
-        assert_eq!(fib_with_budget(6, None), Ok(()));
+        let fault = run_bounded(&fibonacci_machine(), &[("n", 6)], 281).expect_err("budget");
+        assert_eq!(fault, Halted::Budget(BudgetExceeded { count: 281, pc: 22 }));
+        let done = run_bounded(&fibonacci_machine(), &[("n", 6)], 282).expect("run");
+        assert_eq!(done.steps, 282);
+        assert_eq!(done.registers["val"], 8);
     }
 
-    /// The fault leaves the machine inspectable and continuable:
-    /// clearing the budget and proceeding completes the very run,
-    /// and the total count accounts the halted instruction too.
+    /// The halt carries exactly what a resumed run would continue
+    /// from: the counted progress and the halted program counter.
     #[test]
-    fn ex_5_15a_halted_machine_continues() {
-        let mut machine = ch05::sec_5_2::fibonacci_machine();
-        machine.set_instruction_budget(Some(280));
-        machine.set_register("n", Value::Int(6)).unwrap();
-        let fault = machine.start().unwrap_err();
-        assert_eq!(fault, Fault::BudgetExceeded { count: 280, pc: 19 });
-        assert_eq!(machine.instruction_count(), 280);
-        machine.set_instruction_budget(None);
-        machine.proceed().unwrap();
-        assert_eq!(machine.get_register("val").unwrap(), Value::Int(8));
-        assert_eq!(machine.instruction_count(), 281);
+    fn ex_5_15a_halt_is_inspectable() {
+        let fault = run_bounded(&fibonacci_machine(), &[("n", 6)], 100).expect_err("budget");
+        assert_eq!(fault, Halted::Budget(BudgetExceeded { count: 100, pc: 21 }));
     }
 }

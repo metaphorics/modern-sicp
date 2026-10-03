@@ -6,9 +6,9 @@ package sicp.ch4.exercises
 import sicp.runtime.PendingSolution
 
 /**
- * Exercise 4.49: Alyssa's generator. Her `parse-word` ignores the input
- * and answers an `an-element-of` choice from the word list, and `parse`
- * clears `*unparsed*` instead of filling it, so the parsing programs
+ * Exercise 4.49: Alyssa's generator. Her `parseWord` ignores the input
+ * and answers an `anElementOf` choice from the word list, and `parse`
+ * clears `unparsed` instead of filling it, so the parsing programs
  * generate sentences instead -- proceeding left to right through each
  * sentence, the same order 4.46 pinned for the evaluator's choices.
  *

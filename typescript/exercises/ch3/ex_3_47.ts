@@ -4,7 +4,7 @@
 import type { Effect } from "effect";
 
 /**
- * Exercise 3.47: semaphores from mutexes and test-and-set. Pending
+ * Exercise 3.47: semaphores from mutexes and testAndSet. Pending
  * scaffold; the solution and its rationale live in
  * solutions/ch3/ex_3_47.ts and .md.
  */
@@ -30,7 +30,7 @@ export function makeSemaphoreFromMutexes(_size: number): Semaphore {
   throw new PendingSolution();
 }
 
-/** (b) In terms of atomic test-and-set!: the guard the permit state
+/** (b) In terms of atomic testAndSet: the guard the permit state
  * lives under is spelled from the book's cell and the module's atomic
  * `testAndSet`, with the busy-wait replaced by a rescheduling yield. */
 export function makeSemaphoreFromTestAndSet(_size: number): Semaphore {

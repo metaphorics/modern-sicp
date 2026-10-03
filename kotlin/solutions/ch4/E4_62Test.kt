@@ -11,16 +11,12 @@ public class E4_62Test :
         test("Exercise 4.62: the last-pair queries") {
             lastPairQueries() shouldBe
                 listOf(
-                    "query: (last-pair (3) ?x)",
-                    "(last-pair (3) (3))",
-                    "query: (last-pair (1 2 3) ?x)",
-                    "(last-pair (1 2 3) (3))",
-                    "query: (last-pair (2 ?x) (3))",
-                    "(last-pair (2 3) (3))",
-                    "query: (last-pair ?x (3)) -- divergent; first three answers:",
-                    "(last-pair (3) (3))",
-                    "(last-pair (?u-20 3) (3))",
-                    "(last-pair (?u-20 ?u-22 3) (3))",
+                    "?x = [3]",
+                    "?x = [3]",
+                    "?x = 3",
+                    "backward answer 0: x has 1 item(s), ends 3",
+                    "backward answer 1: x has 2 item(s), ends 3",
+                    "backward answer 2: x has 3 item(s), ends 3",
                 )
         }
     })

@@ -6,7 +6,7 @@
  *
  * timedPrimeTest from exercise 1.22 wraps fastPrime instead of isPrime;
  * witnesses come from the section's seeded Random, the stand-in for
- * Scheme's random primitive (Math.random would have the same shape but
+ * the original's random primitive (Math.random would have the same shape but
  * no replay). The medians use the warmup-plus-median discipline of
  * exercise 1.22a, because a first-run timing on a JIT measures the
  * compiler, not the test.

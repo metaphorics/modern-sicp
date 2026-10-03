@@ -33,7 +33,7 @@ describe("exercise 3.51: show reveals memoized delay timing", () => {
     expect(transcript.slice(before)).toEqual(["6", "7"]);
   });
 
-  it("without memo-proc the second ref re-announces the cells it re-walks", () => {
+  it("without memoization the second ref re-announces the cells it re-walks", () => {
     const transcript: string[] = [];
     const x = makeUnmemoizedX(transcript);
     expect(transcript).toEqual(["0"]);

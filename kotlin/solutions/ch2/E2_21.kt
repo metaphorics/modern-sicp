@@ -3,24 +3,30 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.VInt
-import sicp.runtime.VNil
-import sicp.runtime.Value
-import sicp.runtime.cons
-import sicp.runtime.vlist
+import sicp.runtime.Datum
+import sicp.runtime.Empty
+import sicp.runtime.Whole
+import sicp.runtime.datumList
+import sicp.runtime.pair
+import sicp.runtime.renderDatum
 
-/** The book's `map` over the chain, as the chapter text defines it. */
+/** Apply [f] to every whole-number element of a pair chain. */
 public fun mapList(
     f: (Long) -> Long,
-    items: Value,
-): Value = if (items is VNil) VNil else cons(VInt(f(numOf(carOf(items)))), mapList(f, cdrOf(items)))
+    items: Datum,
+): Datum = if (items === Empty) Empty else pair(Whole(f(wholeNumber(firstPart(items)))), mapList(f, secondPart(items)))
 
-/** The book's first definition: cons the square of the head onto the square-list of the rest. */
-public fun squareList(items: Value): Value =
-    if (items is VNil) VNil else cons(VInt(numOf(carOf(items)) * numOf(carOf(items))), squareList(cdrOf(items)))
+/** Square each number recursively, constructing the result in the same order. */
+public fun squareList(items: Datum): Datum =
+    if (items === Empty) {
+        Empty
+    } else {
+        val value = wholeNumber(firstPart(items))
+        pair(Whole(value * value), squareList(secondPart(items)))
+    }
 
-/** The book's second definition: `mapList` with a squaring function. */
-public fun squareListViaMap(items: Value): Value = mapList({ x -> x * x }, items)
+/** Define the same operation through [mapList]. */
+public fun squareListViaMap(items: Datum): Datum = mapList({ value -> value * value }, items)
 
-/** Both definitions square `(1 2 3 4)` to `(1 4 9 16)`; the direct one, printed. */
-public fun ex_2_21(): String = squareList(vlist(VInt(1L), VInt(2L), VInt(3L), VInt(4L))).toString()
+/** Canonical native rendering of the squared sample sequence. */
+public fun ex_2_21(): String = renderDatum(squareList(datumList(Whole(1L), Whole(2L), Whole(3L), Whole(4L))))

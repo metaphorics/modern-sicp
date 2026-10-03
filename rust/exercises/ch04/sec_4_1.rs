@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The pending scaffold of exercise 4.1: Exercise 4.1: operand evaluation order in `list-of-values`..
+//! The pending scaffold of exercise 4.1: operand evaluation order under the two operand-framing orders.
 
 /// The typed pending report of an unsolved scaffold: the body returns
 /// this instead of panicking, so the failure names its origin.
@@ -12,13 +12,13 @@ pub struct Pending {
 }
 
 mod ex_4_01 {
-    //! Exercise 4.1: operand evaluation order in `list-of-values`.
+    //! Exercise 4.1: operand evaluation order, left to right and right to left.
 
     use super::Pending;
 
-    /// Runs `(f (begin (display 1) 1) (begin (display 2) 2))` under the
-    /// left-to-right and the right-to-left `list-of-values`, answering
-    /// the two display transcripts.
+    /// Runs `f` applied to two printing blocks, `{ print!("1"); 1 }` and
+    /// `{ print!("2"); 2 }`, under left-to-right and right-to-left operand
+    /// evaluation, answering the two printed transcripts.
     pub fn ex_4_01() -> Result<(String, String), Pending> {
         Err(Pending { exercise: "4.1" })
     }

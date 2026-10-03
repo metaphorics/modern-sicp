@@ -16,13 +16,13 @@ describe("exercise 2.19", () => {
     expect(cc(100, list(1, 5, 10, 25, 50))).toBe(292);
   });
 
-  it("counts 4 ways to make 11 from (50 25 10 5 1)", () => {
+  it("counts 4 ways to make 11 from [50, 25, 10, 5, 1]", () => {
     expect(cc(11, usCoins)).toBe(4);
   });
 
   it("the selectors see the first denomination and the rest", () => {
     expect(firstDenomination(usCoins)).toBe(50);
-    expect(showList(exceptFirstDenomination(usCoins))).toBe("(25 10 5 1)");
+    expect(showList(exceptFirstDenomination(usCoins))).toBe("[25, 10, 5, 1]");
     expect(noMore(usCoins)).toBe(false);
     expect(noMore(nil)).toBe(true);
   });

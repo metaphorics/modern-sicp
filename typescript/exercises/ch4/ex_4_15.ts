@@ -2,12 +2,11 @@
 // Original exercise
 
 /**
- * Exercise 4.15: the halting problem, run rather than argued. Given
- * run-forever and try, suppose halts? correctly decides whether any
- * procedure halts on any input. With a true oracle, (try try) runs
- * forever; with a false oracle, (try (lambda (u) u)) answers 'halted even
- * though that procedure halts on itself. The demand: build both runs and
- * pin what each oracle actually answers.
+ * Exercise 4.15: test the diagonal argument for the halting problem.
+ * Suppose an oracle decides whether any procedure halts on any input.
+ * Apply `try` to itself. If the oracle answers true, `try` runs forever.
+ * If the oracle answers false, `try` halts. Build both cases and explain
+ * why each observed outcome contradicts the oracle's answer.
  */
 export class PendingSolution extends Error {
   constructor() {
@@ -16,11 +15,16 @@ export class PendingSolution extends Error {
   }
 }
 
-/** The book's given definitions, spelled in the object language. */
-export const runForeverProgram = "(define (run-forever) (run-forever))";
-
-/** The book's try, parameterized over the claimed halts? oracle. */
-export const tryProgram = "(define (try p) (if (halts? p p) (run-forever) 'halted))";
+/** Typed halting premise: both runs apply `try` to itself. */
+export type HaltingRun = {
+  readonly subject: "try";
+  readonly oracleAnswer: boolean;
+  readonly observed: "runs-forever" | "halted";
+};
+export const haltingRuns: readonly HaltingRun[] = [
+  { subject: "try", oracleAnswer: true, observed: "runs-forever" },
+  { subject: "try", oracleAnswer: false, observed: "halted" },
+];
 
 export function ex_4_15(): string {
   throw new PendingSolution();

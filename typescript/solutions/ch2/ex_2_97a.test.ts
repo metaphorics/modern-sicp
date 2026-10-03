@@ -36,7 +36,7 @@ describe("exercise 2.97a: nothing left to drop after reduce", () => {
       return;
     }
     expect(isUnitTermList(g.value)).toBe(true);
-    expect(showTerms(g.value)).toBe("(polynomial x (0 1))");
+    expect(showTerms(g.value)).toBe("[polynomial, x, [0, 1]]");
   });
 
   it("reducing a reduced pair answers the same pair", () => {
@@ -47,8 +47,8 @@ describe("exercise 2.97a: nothing left to drop after reduce", () => {
     }
     expect(showTerms(r.value.twice[0])).toBe(showTerms(r.value.once[0]));
     expect(showTerms(r.value.twice[1])).toBe(showTerms(r.value.once[1]));
-    expect(showTerms(r.value.once[0])).toBe("(polynomial x (3 1) (2 2) (1 3) (0 1))");
-    expect(showTerms(r.value.once[1])).toBe("(polynomial x (4 1) (3 1) (1 -1) (0 -1))");
+    expect(showTerms(r.value.once[0])).toBe("[polynomial, x, [3, 1], [2, 2], [1, 3], [0, 1]]");
+    expect(showTerms(r.value.once[1])).toBe("[polynomial, x, [4, 1], [3, 1], [1, -1], [0, -1]]");
   });
 
   it("reduces the 2.95 products to exactly P2 over P3", () => {
@@ -57,7 +57,7 @@ describe("exercise 2.97a: nothing left to drop after reduce", () => {
     if (r._tag !== "Ok") {
       return;
     }
-    expect(showTerms(r.value.numer)).toBe("(polynomial x (2 11) (0 7))");
-    expect(showTerms(r.value.denom)).toBe("(polynomial x (1 13) (0 5))");
+    expect(showTerms(r.value.numer)).toBe("[polynomial, x, [2, 11], [0, 7]]");
+    expect(showTerms(r.value.denom)).toBe("[polynomial, x, [1, 13], [0, 5]]");
   });
 });

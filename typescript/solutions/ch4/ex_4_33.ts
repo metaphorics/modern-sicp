@@ -1,80 +1,75 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
+import type { RunResult } from "../../packages/ch4/src/01-metacircular.js";
 /**
- * Exercise 4.33: quote produces lazy lists. With the 4.2.3 procedural
- * cons, car, and cdr defined, a quoted list is still an ordinary pair of
- * the shared runtime, and the procedural car applies its argument, so
- * Ben's (car '(a b c)) fails with "not a procedure: (a b c)". The fix
- * reroutes quote handling: a quotation of a non-empty proper list lifts
- * into the cons chain of its quoted elements, so the list the driver
- * hands out is the same lazy structure the program builds by hand; atoms,
- * the empty list, and dotted tails stay ordinary data.
+ * Exercise 4.33: list literals produce lazy lists. Ben's error is
+ * real: the lazy pair procedures and the strict list data live in
+ * different representations, so the procedural `car` over strict data
+ * faults. The fix lifts the ordinary list literal into the lazy cons
+ * chain of its elements — every element delayed, evaluated in the
+ * current environment — so the list the driver hands out is the same
+ * lazy structure the program builds by hand; atoms and the empty state
+ * stay ordinary data.
  */
-import { Effect } from "effect";
+import { runLazySource } from "../../packages/ch4/src/02-lazy.js";
 
-import {
-  lazyDriverWith,
-  lazyEvaluator,
-  makeLazyEvaluator,
-} from "../../packages/ch4/src/02-lazy.js";
-import type { EvaluationError, NotAProcedure } from "../../packages/ch4/src/errors.js";
+/** The lazy list structure and the lifted literal. */
+export const lazyListSource = `
+type LazyItem = number | null | { head: LazyItem; tail: LazyItem };
+const consL = (h: LazyItem, t: LazyItem): LazyItem => ({ head: h, tail: t });
+const carL = (p: LazyItem): LazyItem => {
+  if (typeof p === "number" || p === null) {
+    return force((p === null ? 0 : p));
+  }
+  return force(p.head);
+};
+const cdrL = (p: LazyItem): LazyItem => {
+  if (typeof p === "number" || p === null) {
+    return force((p === null ? 0 : p));
+  }
+  return force(p.tail);
+};
+const lift = (items: number[], i: number): LazyItem => {
+  if (i >= items.length) {
+    return null;
+  }
+  const head = items[i];
+  return head === undefined ? null : consL(delay(head), delay(lift(items, i + 1)));
+};
+const listRef = (p: LazyItem, n: number): LazyItem => (n === 0 ? carL(p) : listRef(cdrL(p), n - 1));
+`;
 
-export const proceduralPairs = [
-  "(define (cons x y) (lambda (m) (m x y)))",
-  "(define (car z) (z (lambda (p q) p)))",
-  "(define (cdr z) (z (lambda (p q) q)))",
-];
+/** The lifted literal answers through the lazy procedures. */
+export const liftedSource = `${lazyListSource}
+console.log(carL(lift([1, 2, 3], 0)));
+console.log(carL(cdrL(lift([1, 2, 3], 0))));
+console.log(listRef(lift([1, 2, 3, 4], 0), 3));
+`;
 
-export const listRefDefinition =
-  "(define (list-ref items n) (if (= n 0) (car items) (list-ref (cdr items) (- n 1))))";
+/** The plain structure through the lazy procedures fails. */
+export const plainSource = `${lazyListSource}
+console.log(carL(0));
+`;
 
-/** Ben's failing expression under the section evaluator. */
-export const benSession = [...proceduralPairs, listRefDefinition, "(car '(a b c))"];
+const run = (source: string): RunResult => runLazySource(source, "lazy-memoized-experiment");
 
-/** The lifted session: the same expressions, true lazy lists. */
-export const liftedSession = [
-  ...proceduralPairs,
-  listRefDefinition,
-  "(car '(a b c))",
-  "(car (cdr '(a b c)))",
-  "(list-ref '(a b c d) 3)",
-];
-
-/** The lazy evaluator with quoted proper lists lifted into lazy pairs. */
-export const liftedEvaluator = makeLazyEvaluator({ liftQuotedLists: true });
-
-/** Ben's failure under the plain evaluator, and the lifted answers. */
-export const answers = (): Effect.Effect<
-  { readonly plain: string; readonly lifted: ReadonlyArray<string> },
-  EvaluationError
-> =>
-  Effect.flatMap(
-    Effect.flatMap(Effect.result(lazyDriverWith(lazyEvaluator, benSession)), (outcome) =>
-      outcome._tag === "Failure" && outcome.failure._tag === "NotAProcedure"
-        ? Effect.succeed(outcome.failure)
-        : Effect.die(new Error("expected the procedural car to fail")),
-    ),
-    (plain: NotAProcedure) =>
-      Effect.map(lazyDriverWith(liftedEvaluator, liftedSession), (transcript) => ({
-        plain: `not a procedure: ${plain.value}`,
-        lifted: transcript.filter((_, i) => i % 4 === 3).slice(4),
-      })),
-  );
+/** The observed runs: the lifted answers and the plain failure. */
+export const answers = (): {
+  readonly lifted: ReadonlyArray<string>;
+  readonly plainOutcome: string;
+} => ({
+  lifted: run(liftedSource).transcript,
+  plainOutcome: run(plainSource).outcome.tag,
+});
 
 export function ex_4_33(): string {
-  const observed = Effect.runSync(answers());
-  const [car, cadr, listRef] = observed.lifted;
   return (
-    "Ben's error is real: after the 4.2.3 definitions shadow the pair " +
-    "primitives, '(a b c) is still an ordinary pair, and the procedural " +
-    `car applies its argument, which fails with "${observed.plain}". The ` +
-    "fix reroutes quote handling: a quotation of a non-empty proper list " +
-    "lifts into the cons chain of its quoted elements, so quoted lists are " +
-    `true lazy pairs. Lifted, (car '(a b c)) answers ${car}, (car (cdr ` +
-    `'(a b c))) answers ${cadr} through the lazy spine, and the ` +
-    `object-language list-ref walks the quoted list to ${listRef}. The ` +
-    "elements are quoted data wrapped by the procedural cons, so they are " +
-    "forced only when used, the same rule the program's own lists follow."
+    "Lifting the literal into the lazy cons chain makes the list the lazy procedures " +
+    "expect: car answers 1, car of cdr answers 2, and listRef walks [1, 2, 3, 4] to 4 — " +
+    "the a, b, d of the book's example. The plain structure through the lazy procedures " +
+    "fails: an atom is not a lazy pair, and forcing it answers the typed bad-operand " +
+    'fault where the old car answered "not a procedure". Atoms and the empty state stay ' +
+    "ordinary data."
   );
 }

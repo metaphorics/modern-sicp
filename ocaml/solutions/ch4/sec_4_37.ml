@@ -1,52 +1,61 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(** Exercise 4.37: Ben's generator. Ben computes the square root after
-    [j] and prunes with [hsq], so on the way to the first triple the
-    evaluator delivers fewer [require] failures than the 4.35 order.
-    The backtrack counter of 4.44a measures both runs on the same
-    bounds; Ben is correct about the size of the search, and the
-    demonstration pins the shared first triple and the two counts. *)
+(* Exercise 4.37: Ben's generator. Ben chooses only [i] and [j] and
+   computes the hypotenuse, pruning with [hsq] before it does, so the
+   search expands two nested choices where 4.35 expands three. The
+   search experiment's own counters measure both complete searches over
+   the same bounds: the two procedures answer the same triples in the
+   same order, and Ben's expands far fewer choice points and fails far
+   fewer branches. The subset has no float-to-integer conversion, so
+   Ben's [sqrt] and [integer?] test become an integer square root and
+   the check that it squares back to [ksq]; the root is computed, not
+   searched, which is the point of Ben's version. *)
 
-module Eval = Sicp_ch4.Sec_4_3
-module Eval_error = Sicp_common.Eval_error
-module Value = Sicp_common.Value
+module Check = Sicp_common.Check
 
-let show = function
-  | Ok v -> Value.to_string v
-  | Error e -> "Error: " ^ Eval_error.to_string e
+let transcript source =
+  Sicp_ch4.Sec_4_1.transcript ~experiment:Check.Search Sicp_ch4.Sec_4_3.run source
+  |> String.split_on_char '\n'
+  |> List.filter (fun line -> line <> "")
 ;;
 
-let program =
+let program procedure =
   {|
-(define (require p) (if (not p) (amb)))
-(define (an-integer-between low high)
-  (require (not (> low high)))
-  (amb low (an-integer-between (+ low 1) high)))
-(define (a-pythagorean-triple-between low high)
-  (let ((i (an-integer-between low high)))
-    (let ((j (an-integer-between i high)))
-      (let ((k (an-integer-between j high)))
-        (require (= (+ (* i i) (* j j)) (* k k)))
-        (list i j k)))))
-(define (a-pythagorean-triple-between-ben low high)
-  (let ((i (an-integer-between low high)) (hsq (* high high)))
-    (let ((j (an-integer-between i high)))
-      (let ((ksq (+ (* i i) (* j j))))
-        (require (>= hsq ksq))
-        (let ((k (sqrt ksq)))
-          (require (integer? k))
-          (list i j k))))))|}
+let rec an_integer_between low high =
+  require (low <= high);
+  amb low (an_integer_between (low + 1) high)
+
+let show_triple i j k =
+  "(" ^ string_of_int i ^ " " ^ string_of_int j ^ " " ^ string_of_int k ^ ")"
+
+let a_pythagorean_triple_between low high =
+  let i = an_integer_between low high in
+  let j = an_integer_between i high in
+  let k = an_integer_between j high in
+  require (i * i + j * j = k * k);
+  show_triple i j k
+
+let rec integer_sqrt n root =
+  if (root + 1) * (root + 1) > n then root else integer_sqrt n (root + 1)
+
+let a_pythagorean_triple_between_ben low high =
+  let i = an_integer_between low high in
+  let hsq = high * high in
+  let j = an_integer_between i high in
+  let ksq = i * i + j * j in
+  require (hsq >= ksq);
+  let k = integer_sqrt ksq 0 in
+  require (k * k = ksq);
+  show_triple i j k
+
+let () = print_endline (|}
+  ^ procedure
+  ^ {| 1 20)
+|}
 ;;
 
 let ex_4_37 () =
-  let env = Eval.the_global_environment () in
-  let (_ : (Value.t, Eval_error.t) result) = Eval.run_program env program in
-  Eval.reset_backtrack_count ();
-  let plain = show (Eval.run env "(a-pythagorean-triple-between 1 20)") in
-  let plain_count = "backtracks=" ^ string_of_int (Eval.backtrack_count ()) in
-  Eval.reset_backtrack_count ();
-  let ben = show (Eval.run env "(a-pythagorean-triple-between-ben 1 20)") in
-  let ben_count = "backtracks=" ^ string_of_int (Eval.backtrack_count ()) in
-  [ plain; plain_count; ben; ben_count ]
+  transcript (program "a_pythagorean_triple_between")
+  @ transcript (program "a_pythagorean_triple_between_ben")
 ;;

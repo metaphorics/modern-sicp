@@ -2,289 +2,326 @@
 // Original exercise
 
 /**
- * Exercise 4.9: iteration constructs as derived expressions. The language
- * gains `while` and `for`: each expands, at evaluation time, into a core
- * language combination that installs a local recursive loop procedure in a
- * freshly named frame slot and calls it. The dispatch below is complete,
- * so the constructs work anywhere an expression can appear, including
- * nested lambda bodies, and no make-procedure or host-apply trick is used.
+ * Exercise 4.9: design iteration constructs as derived forms over the
+ * guest's `while` and `for-of`. The two extension nodes lower to core
+ * statements: the while expression becomes a loop in an immediately
+ * called block, and the range loop binds its variable and its limit
+ * once, then walks inclusively with `while`. The loop's value is
+ * `undefined`, the statement's own answer; every constructed node
+ * carries the source node's span, and the lowering is total so the
+ * constructs work inside procedure bodies.
  */
-import { Effect } from "effect";
-
+import { Session } from "../../packages/ch4/src/01-metacircular.js";
+import type { Env } from "../../packages/ch4/src/runtime/env.js";
+import type { Outcome } from "../../packages/ch4/src/runtime/errors.js";
 import {
-  applyPrimitiveProcedure,
-  assignmentValue,
-  assignmentVariable,
-  beginActions,
-  condToIf,
-  defineVariableValue,
-  definitionValue,
-  definitionVariable,
-  extendEnvironment,
-  ifAlternative,
-  ifConsequent,
-  ifPredicate,
-  isApplication,
-  isAssignment,
-  isBegin,
-  isCond,
-  isDefinition,
-  isIf,
-  isLambda,
-  isQuoted,
-  isSelfEvaluating,
-  isTrue,
-  isVariable,
-  lambdaBody,
-  lambdaParameters,
-  lookupVariableValue,
-  makeBegin,
-  makeIf,
-  makeLambda,
-  makeProcedure,
-  ok,
-  operands,
-  operator,
-  setVariableValue,
-  symbol,
-  taggedList,
-  textOfQuotation,
-} from "../../packages/ch4/src/01-metacircular.js";
-import type {
-  CompoundProc,
-  Env,
-  Evaluate,
-  SymbolValue,
-  Value,
-} from "../../packages/ch4/src/core.js";
-import {
-  type EvaluationError,
-  NotAProcedure,
-  RuntimeError,
-  UnknownSyntax,
-} from "../../packages/ch4/src/errors.js";
-import { type Cons, cons, type List, list, nil, toArray } from "../../packages/ch4/src/list.js";
-import { format, ReadError, read } from "../../packages/ch4/src/read.js";
+  assign,
+  bin,
+  block,
+  type CaseClause,
+  call,
+  type Decl,
+  type Expr,
+  exprStmt,
+  ident,
+  lam,
+  type ObjectField,
+  type Stmt,
+  varDecl,
+  whileStmt,
+} from "../../packages/ch4/src/syntax/ast.js";
+import type { Span } from "../../packages/ch4/src/syntax/diagnostics.js";
 
-const cadr = (exp: Cons<Value>): Value =>
-  exp.tail._tag === "Cons" ? exp.tail.head : symbol("<malformed>");
-
-const cddr = (exp: Cons<Value>): List<Value> => (exp.tail._tag === "Cons" ? exp.tail.tail : nil);
-
-const fromValues = (items: ReadonlyArray<Value>): List<Value> =>
-  items.reduceRight<List<Value>>((tail, head) => cons(head, tail), nil);
-
-const QUOTED_NIL: Value = list<Value>(symbol("quote"), nil);
-
-// The loop constructs ---------------------------------------------------
-
-export const isWhile = (exp: Value): exp is Cons<Value> => taggedList("while", exp);
-
-export const whilePredicate = (exp: Cons<Value>): Value => cadr(exp);
-
-export const whileActions = (exp: Cons<Value>): List<Value> => cddr(exp);
-
-/** (while pred body...) becomes a combination that binds a fresh loop
- * cell, installs in it a procedure that re-tests pred and, when true,
- * runs body and recurses, then calls the loop. Its value is the empty
- * list. */
-export const whileToCombination = (exp: Cons<Value>): Value => {
-  const loop = freshCell("while-loop");
-  const again = list<Value>(loop);
-  const step = fromValues([...toArray(whileActions(exp)), again]);
-  const loopBody = makeIf(whilePredicate(exp), makeBegin(step), QUOTED_NIL);
-  const install = list<Value>(symbol("set!"), loop, makeLambda(nil, list<Value>(loopBody)));
-  const kickoff = makeBegin(list<Value>(install, again));
-  return list<Value>(makeLambda(list<Value>(loop), list<Value>(kickoff)), QUOTED_NIL);
-};
-
-export interface ForBindingSpec {
-  readonly variable: SymbolValue;
-  readonly from: Value;
-  readonly to: Value;
+/** The while expression extension: loops while its test holds. */
+export interface WhileExprNode {
+  readonly tag: "while-expr";
+  readonly test: Expr;
+  readonly body: ReadonlyArray<Decl | Stmt>;
+  readonly span: Span;
 }
 
-const bindingParts = (binding: Value): ForBindingSpec | undefined => {
-  if (binding._tag !== "Cons" || binding.head._tag !== "Symbol") {
-    return undefined;
+/** The range loop extension: walks `name` from `from` to `to`, inclusive. */
+export interface ForRangeNode {
+  readonly tag: "for-range";
+  readonly name: string;
+  readonly from: Expr;
+  readonly to: Expr;
+  readonly body: ReadonlyArray<Decl | Stmt>;
+  readonly span: Span;
+}
+
+/** The syntax this exercise evaluates: shared expressions plus its two forms. */
+export type IterExpr = Expr | WhileExprNode | ForRangeNode;
+
+/** Builds a while expression. */
+export const whileExpr = (
+  test: Expr,
+  body: ReadonlyArray<Decl | Stmt>,
+  span: Span,
+): WhileExprNode => ({ tag: "while-expr", test, body, span });
+
+/** Builds a range loop. */
+export const forRange = (
+  name: string,
+  from: Expr,
+  to: Expr,
+  body: ReadonlyArray<Decl | Stmt>,
+  span: Span,
+): ForRangeNode => ({ tag: "for-range", name, from, to, body, span });
+
+/** The generated name the range limit is bound to exactly once. */
+export const limitName = "@@limit";
+
+/** The while expression derived over the guest's `while` statement. */
+export const whileToWhile = (node: WhileExprNode): Expr =>
+  call(
+    lam(
+      [],
+      [whileStmt(node.test, { tag: "block", body: node.body, span: node.span }, node.span)],
+      node.span,
+    ),
+    [],
+    node.span,
+  );
+
+/**
+ * The range loop derived over `while`: the variable and the limit are
+ * bound once, then the loop walks `name` from `from` to `to` inclusive.
+ */
+export const forRangeToWhile = (node: ForRangeNode): Expr =>
+  call(
+    lam(
+      [],
+      [
+        varDecl("let", node.name, node.from, null, node.span),
+        varDecl("const", limitName, node.to, null, node.span),
+        whileStmt(
+          bin("<=", ident(node.name, node.span), ident(limitName, node.span), node.span),
+          {
+            tag: "block",
+            body: [
+              ...node.body,
+              exprStmt(
+                assign(
+                  ident(node.name, node.span),
+                  bin(
+                    "+",
+                    ident(node.name, node.span),
+                    { tag: "number", value: 1, span: node.span },
+                    node.span,
+                  ),
+                  node.span,
+                ),
+                node.span,
+              ),
+            ],
+            span: node.span,
+          },
+          node.span,
+        ),
+      ],
+      node.span,
+    ),
+    [],
+    node.span,
+  );
+
+// ---------------------------------------------------------------------
+// Total lowering: both extension forms anywhere in the tree
+// ---------------------------------------------------------------------
+
+const lowerExpr = (expr: IterExpr): Expr => {
+  if (expr.tag === "while-expr") {
+    return whileToWhile({ ...expr, test: lowerExpr(expr.test), body: lowerItems(expr.body) });
   }
-  if (binding.tail._tag !== "Cons" || binding.tail.tail._tag !== "Cons") {
-    return undefined;
+  if (expr.tag === "for-range") {
+    return forRangeToWhile({
+      ...expr,
+      from: lowerExpr(expr.from),
+      to: lowerExpr(expr.to),
+      body: lowerItems(expr.body),
+    });
   }
-  return { variable: binding.head, from: binding.tail.head, to: binding.tail.tail.head };
+  switch (expr.tag) {
+    case "number":
+    case "string":
+    case "boolean":
+    case "null":
+    case "undefined":
+    case "variable":
+      return expr;
+    case "template":
+      return { ...expr, exprs: expr.exprs.map(lowerExpr) };
+    case "array":
+      return {
+        ...expr,
+        elements: expr.elements.map((arg) => ({ kind: arg.kind, expr: lowerExpr(arg.expr) })),
+      };
+    case "object": {
+      const fields: ObjectField[] = expr.fields.map((field) => ({
+        key: field.key,
+        value: lowerExpr(field.value),
+        span: field.span,
+      }));
+      return { ...expr, fields };
+    }
+    case "unary":
+      return { ...expr, operand: lowerExpr(expr.operand) };
+    case "binary":
+      return { ...expr, left: lowerExpr(expr.left), right: lowerExpr(expr.right) };
+    case "logical":
+      return { ...expr, left: lowerExpr(expr.left), right: lowerExpr(expr.right) };
+    case "conditional":
+      return {
+        ...expr,
+        test: lowerExpr(expr.test),
+        consequent: lowerExpr(expr.consequent),
+        alternative: lowerExpr(expr.alternative),
+      };
+    case "permanent-assign":
+    case "assign":
+      return { ...expr, target: lowerExpr(expr.target), value: lowerExpr(expr.value) };
+    case "if-fail":
+      return {
+        ...expr,
+        expression: lowerExpr(expr.expression),
+        fallback: lowerExpr(expr.fallback),
+      };
+    case "arrow":
+      return { ...expr, body: { body: lowerItems(expr.body.body), span: expr.body.span } };
+    case "call":
+      return {
+        ...expr,
+        callee: lowerExpr(expr.callee),
+        args: expr.args.map((arg) => ({ kind: arg.kind, expr: lowerExpr(arg.expr) })),
+      };
+    case "member":
+      return { ...expr, object: lowerExpr(expr.object) };
+    case "index":
+      return { ...expr, object: lowerExpr(expr.object), index: lowerExpr(expr.index) };
+    case "new-error":
+      return { ...expr, args: expr.args.map(lowerExpr) };
+    case "new-map":
+      return { ...expr, args: expr.args.map(lowerExpr) };
+    case "new-set":
+      return { ...expr, args: expr.args.map(lowerExpr) };
+    case "delay":
+      return { ...expr, expr: lowerExpr(expr.expr) };
+    case "force":
+      return { ...expr, expr: lowerExpr(expr.expr) };
+    case "require":
+      return { ...expr, condition: lowerExpr(expr.condition) };
+    case "choose":
+      return { ...expr, alternatives: expr.alternatives.map(lowerExpr) };
+    case "ramb":
+      return { ...expr, alternatives: expr.alternatives.map(lowerExpr) };
+  }
+};
+function isStmt(item: Decl | Stmt): item is Stmt {
+  switch (item.tag) {
+    case "import":
+    case "type-decl":
+    case "interface-decl":
+    case "var-decl":
+    case "function-decl":
+      return false;
+    default:
+      return true;
+  }
+}
+
+function lowerStmt(item: Stmt): Stmt {
+  const lowered = lowerItem(item);
+  if (!isStmt(lowered)) {
+    throw new Error("statement lowering produced a declaration");
+  }
+  return lowered;
+}
+
+const lowerItem = (item: Decl | Stmt): Decl | Stmt => {
+  switch (item.tag) {
+    case "import":
+    case "type-decl":
+    case "interface-decl":
+    case "break":
+    case "continue":
+      return item;
+    case "var-decl":
+      return { ...item, init: lowerExpr(item.init) };
+    case "function-decl":
+      return { ...item, body: { body: lowerItems(item.body.body), span: item.body.span } };
+    case "expr-stmt":
+      return { ...item, expr: lowerExpr(item.expr) };
+    case "return":
+      return item.argument === null ? item : { ...item, argument: lowerExpr(item.argument) };
+    case "throw":
+      return { ...item, argument: lowerExpr(item.argument) };
+    case "if": {
+      const alternative = item.alternative === null ? null : lowerStmt(item.alternative);
+      return {
+        ...item,
+        test: lowerExpr(item.test),
+        consequent: lowerStmt(item.consequent),
+        alternative,
+      };
+    }
+    case "while":
+      return { ...item, test: lowerExpr(item.test), body: lowerStmt(item.body) };
+    case "for-of":
+      return { ...item, iterable: lowerExpr(item.iterable), body: lowerStmt(item.body) };
+    case "block":
+      return { ...item, body: lowerItems(item.body) };
+    case "switch": {
+      const cases: CaseClause[] = item.cases.map((clause) => ({
+        test: lowerExpr(clause.test),
+        body: lowerItems(clause.body),
+        span: clause.span,
+      }));
+      return {
+        ...item,
+        discriminant: lowerExpr(item.discriminant),
+        cases,
+        defaultBody: item.defaultBody === null ? null : lowerItems(item.defaultBody),
+      };
+    }
+    case "try": {
+      const blockOf = (body: {
+        readonly body: ReadonlyArray<Decl | Stmt>;
+        readonly span: Span;
+      }): {
+        readonly body: ReadonlyArray<Decl | Stmt>;
+        readonly span: Span;
+      } => ({ body: lowerItems(body.body), span: body.span });
+      return {
+        ...item,
+        block: blockOf(item.block),
+        handler:
+          item.handler === null
+            ? null
+            : { param: item.handler.param, body: blockOf(item.handler.body) },
+        finalizer: item.finalizer === null ? null : blockOf(item.finalizer),
+      };
+    }
+  }
 };
 
-export const isFor = (exp: Value): exp is Cons<Value> => {
-  if (!taggedList("for", exp)) {
-    return false;
-  }
-  return bindingParts(cadr(exp)) !== undefined;
-};
+const lowerItems = (items: ReadonlyArray<Decl | Stmt>): ReadonlyArray<Decl | Stmt> =>
+  items.map(lowerItem);
 
-/** (for (v from to) body...) binds to once, installs a loop procedure
- * over v, and walks v from from up to and including to. Its value is the
- * empty list. */
-export const forToCombination = (exp: Cons<Value>): Value => {
-  const parts = bindingParts(cadr(exp));
-  if (parts === undefined) {
-    return list<Value>(exp); // unreachable through isFor; kept total for the type
-  }
-  const { variable, from, to } = parts;
-  const limit = freshCell("for-limit");
-  const loop = freshCell("for-loop");
-  const one: Value = { _tag: "Number", n: 1 };
-  const again = list<Value>(loop, list<Value>(symbol("+"), variable, one));
-  const step = fromValues([...toArray(cddr(exp)), again]);
-  const loopBody = makeIf(
-    list<Value>(symbol("<"), variable, list<Value>(symbol("+"), limit, one)),
-    makeBegin(step),
-    QUOTED_NIL,
-  );
-  const install = list<Value>(
-    symbol("set!"),
-    loop,
-    makeLambda(list<Value>(variable), list<Value>(loopBody)),
-  );
-  const kickoff = list<Value>(loop, from);
-  const inner = makeBegin(list<Value>(install, kickoff));
-  const loopApplication = list<Value>(
-    makeLambda(list<Value>(loop), list<Value>(inner)),
-    QUOTED_NIL,
-  );
-  return list<Value>(makeLambda(list<Value>(limit), list<Value>(loopApplication)), to);
-};
-
-let expansionCount = 0;
-
-const freshCell = (base: string): SymbolValue => {
-  expansionCount += 1;
-  return symbol(`${base}:${expansionCount}`);
-};
-
-// A complete dispatch: the module's evaluate with the two loop clauses
-// added, so while and for work in nested bodies too.
-
-const evalIfLoops = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(evaluateWithLoops(ifPredicate(exp), env), (predicate) =>
-    isTrue(predicate)
-      ? evaluateWithLoops(ifConsequent(exp), env)
-      : evaluateWithLoops(ifAlternative(exp), env),
-  );
-
-const evalSequenceLoops = (exps: List<Value>, env: Env): Effect.Effect<Value, EvaluationError> => {
-  if (exps._tag === "Nil") {
-    return Effect.fail(new RuntimeError({ message: "Empty sequence: EVAL", detail: "" }));
-  }
-  if (exps.tail._tag === "Nil") {
-    return evaluateWithLoops(exps.head, env);
-  }
-  return Effect.flatMap(evaluateWithLoops(exps.head, env), () => evalSequenceLoops(exps.tail, env));
-};
-
-const evalAssignmentLoops = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(evaluateWithLoops(assignmentValue(exp), env), (value) =>
-    Effect.map(setVariableValue(assignmentVariable(exp), value, env), () => ok),
-  );
-
-const evalDefinitionLoops = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(evaluateWithLoops(definitionValue(exp), env), (value) =>
-    Effect.map(defineVariableValue(definitionVariable(exp), value, env), () => ok),
-  );
-
-const listOfValuesLoops = (
-  exps: List<Value>,
+/** The evaluator's case for the derived forms: lower, then evaluate. */
+export const evalIteration = (
+  expr: IterExpr,
   env: Env,
-): Effect.Effect<List<Value>, EvaluationError> => {
-  if (exps._tag === "Nil") {
-    return Effect.succeed(nil);
-  }
-  return Effect.flatMap(evaluateWithLoops(exps.head, env), (first) =>
-    Effect.map(listOfValuesLoops(exps.tail, env), (rest) => cons(first, rest)),
-  );
-};
-
-const applyLoops = (procedure: Value, args: List<Value>): Effect.Effect<Value, EvaluationError> => {
-  if (procedure._tag === "Primitive") {
-    return applyPrimitiveProcedure(procedure, args);
-  }
-  if (procedure._tag === "Compound") {
-    return Effect.flatMap(extendEnvironment(procedure.params, args, procedure.env), (callEnv) =>
-      evalSequenceLoops(procedure.body, callEnv),
-    );
-  }
-  return Effect.fail(new NotAProcedure({ value: format(procedure) }));
-};
-
-const evalApplicationLoops = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(evaluateWithLoops(operator(exp), env), (procedure) =>
-    Effect.flatMap(listOfValuesLoops(operands(exp), env), (args) => applyLoops(procedure, args)),
-  );
-
-const evalWhile = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  evaluateWithLoops(whileToCombination(exp), env);
-
-const evalFor = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  evaluateWithLoops(forToCombination(exp), env);
-
-export const evaluateWithLoops: Evaluate = (exp, env) => {
-  if (isWhile(exp)) {
-    return evalWhile(exp, env);
-  }
-  if (isFor(exp)) {
-    return evalFor(exp, env);
-  }
-  if (isSelfEvaluating(exp)) {
-    return Effect.succeed(exp);
-  }
-  if (isVariable(exp)) {
-    return lookupVariableValue(exp, env);
-  }
-  if (isQuoted(exp)) {
-    return Effect.succeed(textOfQuotation(exp));
-  }
-  if (isAssignment(exp)) {
-    return evalAssignmentLoops(exp, env);
-  }
-  if (isDefinition(exp)) {
-    return evalDefinitionLoops(exp, env);
-  }
-  if (isIf(exp)) {
-    return evalIfLoops(exp, env);
-  }
-  if (isLambda(exp)) {
-    const procedure: CompoundProc = makeProcedure(lambdaParameters(exp), lambdaBody(exp), env);
-    return Effect.succeed(procedure);
-  }
-  if (isBegin(exp)) {
-    return evalSequenceLoops(beginActions(exp), env);
-  }
-  if (isCond(exp)) {
-    return evaluateWithLoops(condToIf(exp), env);
-  }
-  if (isApplication(exp)) {
-    return evalApplicationLoops(exp, env);
-  }
-  return Effect.fail(new UnknownSyntax({ expr: format(exp) }));
-};
-
-/** Reads one form and evaluates it with the loop constructs installed. */
-export const evalStringWithLoops = (
-  text: string,
-  env: Env,
-): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(
-    Effect.try({
-      try: () => read(text),
-      catch: (error) =>
-        new RuntimeError({
-          message: "read failed",
-          detail:
-            error instanceof ReadError || error instanceof Error ? error.message : String(error),
-        }),
-    }),
-    (exp) => evaluateWithLoops(exp, env),
-  );
+  session: Session = new Session("core"),
+): Outcome => session.evaluate(lowerExpr(expr), env);
 
 export function ex_4_09(): string {
-  return "Iteration belongs in the evaluator, not in the programmer's discipline: while and for are derived expressions that expand at evaluation time into a core-language combination holding a local recursive loop procedure in a freshly named frame slot. The expansion terminates by the ordinary application rule, uses no make-procedure or host-apply escape hatch, and works anywhere an expression can appear, including nested lambda bodies. A for loop summing 1 through 5 answers 15, exactly what manual recursion computes for (sum-to 5).";
+  return (
+    "Iteration is a derived form over the guest's `while`: the while expression becomes a " +
+    "loop in an immediately called block, and the range loop binds its variable and limit " +
+    "once and walks inclusively. A range loop over 1..5 accumulating into `total` answers " +
+    "15, matching the manual recursion; a while summing 1..4 answers 10 at top level and " +
+    "inside a procedure body; a while with a false predicate never runs and answers " +
+    "undefined; a range loop over 3..3 runs its body once and answers 3."
+  );
 }

@@ -95,7 +95,7 @@
         <dc:subject>
           <rdf:Bag>
             <rdf:li>list</rdf:li>
-            <rdf:li>define</rdf:li>
+            <rdf:li>binding</rdf:li>
           </rdf:Bag>
         </dc:subject>
       </cc:Work>

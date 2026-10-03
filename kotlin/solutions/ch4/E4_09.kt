@@ -1,114 +1,111 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Original exercise
 // Chapter 4, exercise 4.9
 
 package sicp.ch4.solutions
 
-import arrow.core.raise.Raise
-import kotlinx.collections.immutable.persistentListOf
-import kotlinx.collections.immutable.toPersistentList
-import sicp.ch4.EvalStep
-import sicp.ch4.Evaluator
-import sicp.runtime.AppE
-import sicp.runtime.BeginE
-import sicp.runtime.Env
-import sicp.runtime.Expr
-import sicp.runtime.IfE
-import sicp.runtime.LambdaE
-import sicp.runtime.LitE
-import sicp.runtime.QuoteE
-import sicp.runtime.SchemeError
-import sicp.runtime.SetE
-import sicp.runtime.VNil
-import sicp.runtime.VSym
-import sicp.runtime.VarE
+import sicp.ch4.Direct
 
-/**
- * Exercise 4.9: iteration constructs designed as derived expressions.
- * `(while test body...)` and `(until test body...)` each rewrite to a
- * set!-installed zero-argument loop procedure,
- * `((lambda (tag) (set! tag (lambda () round)) (tag)) 'tag)` with the round
- * being `(if test (begin body... (tag)) ())` for `while` and the mirrored
- * `(if test () (begin body... (tag)))` for `until`. The rewrite fixes both
- * properties that matter: the body re-enters the full evaluator at every
- * iteration, and the self-call sits in tail position, so the loop runs an
- * iterative process in constant host stack.
- */
-public class WithLoops(
-    global: Env,
-) : Evaluator(global) {
-    context(r: Raise<SchemeError>)
-    override fun step(
-        expr: Expr,
-        env: Env,
-    ): EvalStep {
-        if (expr is AppE && expr.operator == VarE("while")) {
-            return EvalStep.Continue(whileToCombination(expr), env)
-        }
-        if (expr is AppE && expr.operator == VarE("until")) {
-            return EvalStep.Continue(untilToCombination(expr), env)
-        }
-        return super.step(expr, env)
-    }
+// Exercise 4.9: `while` and `until` lower to recursive procedures. Each
+// generated loop is a `GLetRec` binding whose `GIf` selects the body or the
+// done value; a body block ends with the recursive `GApp`.
+
+/** Both derived loops bind their recursive procedure in guest code. */
+internal val LOOPS_SOURCE: String =
+    """
+fun whileToCombination(test: GExpr, body: List<GStmt>): GExpr {
+    val again: List<GStmt> = listOf(GExprStmt(GApp(GVar("loop"), GNum(0L))))
+    val round = GIf(test, GBlock(body + again), GNum(0L))
+    return GLetRec("loop", GLam("u", round), GApp(GVar("loop"), GNum(0L)))
 }
 
-/** `(while test body...)`: repeat the body while the test holds; the
- * answer is the unspecified value. */
-context(r: Raise<SchemeError>)
-public fun whileToCombination(expr: AppE): Expr {
-    if (expr.operands.isEmpty()) r.raise(SchemeError.Parse("bad while form: no test"))
-    val test = expr.operands.first()
-    val body = expr.operands.drop(1)
-    val round =
-        IfE(
-            test,
-            roundBody(body, "*while*"),
-            LitE(VNil),
-        )
-    return loopCombination("*while*", round)
+fun untilToCombination(test: GExpr, body: List<GStmt>): GExpr {
+    val again: List<GStmt> = listOf(GExprStmt(GApp(GVar("loop"), GNum(0L))))
+    val round = GIf(test, GNum(0L), GBlock(body + again))
+    return GLetRec("loop", GLam("u", round), GApp(GVar("loop"), GNum(0L)))
 }
+    """.trimIndent()
 
-/** `(until test body...)`: repeat the body until the test holds; the
- * answer is the unspecified value. */
-context(r: Raise<SchemeError>)
-public fun untilToCombination(expr: AppE): Expr {
-    if (expr.operands.isEmpty()) r.raise(SchemeError.Parse("bad until form: no test"))
-    val test = expr.operands.first()
-    val body = expr.operands.drop(1)
-    val round =
-        IfE(
-            test,
-            LitE(VNil),
-            roundBody(body, "*until*"),
-        )
-    return loopCombination("*until*", round)
+private fun runLoop(main: String): String = outcomeText(Direct.run(KERNEL_SOURCE + "\n" + LOOPS_SOURCE + "\n" + main.trimIndent()))
+
+/** A while loop sums the integers from 1 through 5. => "15\n" */
+public fun whileSumTranscript(): String =
+    runLoop(
+        """
+fun main() {
+    val env = GFrame(mutableMapOf<String, GValue>("n" to GNumV(0L), "total" to GNumV(0L)), null)
+    val body = listOf(
+        GAssignStmt("n", GAdd(GVar("n"), GNum(1L))),
+        GAssignStmt("total", GAdd(GVar("total"), GVar("n"))),
+    )
+    gEval(whileToCombination(GLt(GVar("n"), GNum(5L)), body), env)
+    println(renderValue(gEval(GVar("total"), env)))
 }
+        """,
+    )
 
-/** The next round: the body followed by the self-call, in tail position. */
-private fun roundBody(
-    body: List<Expr>,
-    tag: String,
-): Expr =
-    if (body.isEmpty()) {
-        AppE(VarE(tag), persistentListOf())
-    } else {
-        BeginE((body + AppE(VarE(tag), persistentListOf())).toPersistentList())
-    }
+/** A false while test skips its body. => "0\n" */
+public fun whileNeverRunsTranscript(): String =
+    runLoop(
+        """
+fun main() {
+    val env = GFrame(mutableMapOf<String, GValue>("n" to GNumV(0L)), null)
+    gEval(whileToCombination(GLt(GVar("n"), GNum(0L)), listOf(GAssignStmt("n", GNum(1L)))), env)
+    println(renderValue(gEval(GVar("n"), env)))
+}
+        """,
+    )
 
-/** `((lambda (tag) (set! tag (lambda () round)) (tag)) 'tag)`: the frame
- * the wrapper binds `tag` in is the one the body's self-calls resolve
- * through, which is why the set! shape is required. */
-private fun loopCombination(
-    tag: String,
-    round: Expr,
-): Expr =
-    AppE(
-        LambdaE(
-            persistentListOf(tag),
-            null,
-            persistentListOf(
-                SetE(tag, LambdaE(persistentListOf(), null, persistentListOf(round))),
-                AppE(VarE(tag), persistentListOf()),
-            ),
-        ),
-        persistentListOf(QuoteE(VSym(tag))),
+/** Until multiplies 8 through 12 and stops at 13. => "95040\n13\n" */
+public fun untilProductTranscript(): String =
+    runLoop(
+        """
+fun main() {
+    val env = GFrame(mutableMapOf<String, GValue>("n" to GNumV(8L), "product" to GNumV(1L)), null)
+    val body = listOf(
+        GAssignStmt("product", GMul(GVar("product"), GVar("n"))),
+        GAssignStmt("n", GAdd(GVar("n"), GNum(1L))),
+    )
+    gEval(untilToCombination(GEq(GVar("n"), GNum(13L)), body), env)
+    println(renderValue(gEval(GVar("product"), env)))
+    println(renderValue(gEval(GVar("n"), env)))
+}
+        """,
+    )
+
+/** An already-satisfied until test skips its body. => "0\n" */
+public fun untilNeverRunsTranscript(): String =
+    runLoop(
+        """
+fun main() {
+    val env = GFrame(mutableMapOf<String, GValue>("n" to GNumV(0L)), null)
+    gEval(untilToCombination(GEq(GVar("n"), GNum(0L)), listOf(GAssignStmt("n", GNum(1L)))), env)
+    println(renderValue(gEval(GVar("n"), env)))
+}
+        """,
+    )
+
+/** Nested derived loops keep their loop bindings local. => "6\n" */
+public fun nestedLoopsTranscript(): String =
+    runLoop(
+        """
+fun main() {
+    val env = GFrame(
+        mutableMapOf<String, GValue>("outer" to GNumV(0L), "inner" to GNumV(0L), "total" to GNumV(0L)),
+        null,
+    )
+    val innerBody = listOf(
+        GAssignStmt("inner", GAdd(GVar("inner"), GNum(1L))),
+        GAssignStmt("total", GAdd(GVar("total"), GNum(1L))),
+    )
+    val innerLoop = whileToCombination(GLt(GVar("inner"), GNum(3L)), innerBody)
+    val outerBody = listOf(
+        GAssignStmt("outer", GAdd(GVar("outer"), GNum(1L))),
+        GAssignStmt("inner", GNum(0L)),
+        GExprStmt(innerLoop),
+    )
+    gEval(whileToCombination(GLt(GVar("outer"), GNum(2L)), outerBody), env)
+    println(renderValue(gEval(GVar("total"), env)))
+}
+        """,
     )

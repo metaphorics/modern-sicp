@@ -12,6 +12,21 @@ public class E4_55Test :
         test("Exercise 4.55: the three simple queries").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            simpleQueries() shouldBe listOf("MEASURE")
+            simpleQueries() shouldBe
+                listOf(
+                    "?name = [Hacker, Alyssa, P]",
+                    "?name = [Fect, Cy, D]",
+                    "?name = [Tweakit, Lem, E]",
+                    "?name = [Scrooge, Eben]",
+                    "?title = [chief, accountant]",
+                    "?name = [Cratchet, Robert]",
+                    "?title = [scrivener]",
+                    "?name = [Bitdiddle, Ben]",
+                    "?where = [[Ridge, Road], 10]",
+                    "?name = [Reasoner, Louis]",
+                    "?where = [[Pine, Tree, Road], 80]",
+                    "?name = [Aull, DeWitt]",
+                    "?where = [[Onion, Square], 5]",
+                )
         }
     })

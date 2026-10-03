@@ -9,7 +9,7 @@ import {
   type GenError,
   makeComplexFromRealImag,
   makeRational,
-  makeSchemeNumber,
+  makeTsNumber,
   typeTagOf,
 } from "../../packages/ch2/src/05-generic-operations.js";
 
@@ -19,8 +19,8 @@ import {
  * every argument there through the coercion table, and apply the
  * operation at the coerced tags. The rationale records the
  * counterexample: with only the section's one-step coercions, the
- * strategy never walks a two-step chain, so a (real, real) operation
- * is not tried for (scheme-number, rational) even though both
+ * strategy never walks a two-step chain, so a `[real, real]` operation
+ * is not tried for `[ts-number, rational]` even though both
  * arguments can reach real.
  */
 
@@ -35,11 +35,11 @@ const coercions = new Map<string, Coercion>();
 /** Installs the section's two one-step coercions: ordinary numbers
  * into rationals, rationals into reals. */
 export const installCoercions82 = (): void => {
-  coercions.set("scheme-number>rational", (n) => {
+  coercions.set("ts-number>rational", (n) => {
     const c = contentsOf(n);
     return typeof c === "bigint"
       ? ok(makeRational(c, 1n))
-      : err({ _tag: "NoMethod", op: "scheme-number->rational", tags: [typeTagOf(n)] });
+      : err({ _tag: "NoMethod", op: "ts-number->rational", tags: [typeTagOf(n)] });
   });
   coercions.set("rational>real", (r) => {
     const c = contentsOf(r);
@@ -124,6 +124,6 @@ export const addReal82 = (args: ReadonlyArray<ArithDatum>): Result<ArithDatum, G
 
 /** The tower's constructors, for the tests. */
 export const real82 = (x: number): Real82 => attachTag("real", x);
-export const sn82 = (n: bigint): bigint => makeSchemeNumber(n);
+export const sn82 = (n: bigint): bigint => makeTsNumber(n);
 export const rat82 = (n: bigint, d: bigint) => makeRational(n, d);
 export const cpx82 = (x: number, y: number) => makeComplexFromRealImag(x, y);

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 4, exercise 4.77
+// Chapter 4, exercise 4_77
 
 package sicp.ch4.solutions
 
@@ -11,20 +11,36 @@ public class E4_77Test :
         test("Exercise 4.77: the delayed filters") {
             delayedFilterDemos() shouldBe
                 listOf(
-                    "query: (and (not (job ?x (computer programmer))) (supervisor ?x ?y))",
-                    "(and (not (job (Tweakit Lem E) (computer programmer))) (supervisor (Tweakit Lem E) (Bitdiddle Ben)))",
-                    "(and (not (job (Reasoner Louis) (computer programmer))) (supervisor (Reasoner Louis) (Hacker Alyssa P)))",
-                    "(and (not (job (Bitdiddle Ben) (computer programmer))) (supervisor (Bitdiddle Ben) (Warbucks Oliver)))",
-                    "(and (not (job (Scrooge Eben) (computer programmer))) (supervisor (Scrooge Eben) (Warbucks Oliver)))",
-                    "(and (not (job (Cratchet Robert) (computer programmer))) (supervisor (Cratchet Robert) (Scrooge Eben)))",
-                    "(and (not (job (Aull DeWitt) (computer programmer))) (supervisor (Aull DeWitt) (Warbucks Oliver)))",
-                    "deferred=1 fulfilled=8 unresolved=0",
-                    "query: (and (lisp-value > ?amount 30000) (salary ?who ?amount))",
-                    "the naive order diverges in this engine before answering",
-                    "deferred=2 fulfilled=9 unresolved=0",
-                    "query: (and (salary ?who ?amount) (lisp-value > ?amount 30000)) -- answers=1",
-                    "the naive order diverges in this engine before answering",
-                    "deferred=2 fulfilled=9 unresolved=0",
+                    "stock not-first: 0 line(s), the unbound filter drops everything",
+                    "stock lisp-value-first: 0 line(s), the unbound guard drops everything",
+                    "postponed not-first: 6 answer(s), the bound order's: true",
+                    "postponed lisp-value-first: 5 answer(s), the bound order's: true",
+                    "stock rule filter, bound later by the caller: 0 line(s)",
+                    "postponed rule filter, bound later by the caller: true",
+                    "postponed bound order: true",
+                    "a filter no conjunct binds runs at the end, as stock: true",
+                    "?x = [Tweakit, Lem, E]",
+                    "?y = [Bitdiddle, Ben]",
+                    "?x = [Reasoner, Louis]",
+                    "?y = [Hacker, Alyssa, P]",
+                    "?x = [Bitdiddle, Ben]",
+                    "?y = [Warbucks, Oliver]",
+                    "?x = [Scrooge, Eben]",
+                    "?y = [Warbucks, Oliver]",
+                    "?x = [Cratchet, Robert]",
+                    "?y = [Scrooge, Eben]",
+                    "?x = [Aull, DeWitt]",
+                    "?y = [Warbucks, Oliver]",
+                    "?who = [Bitdiddle, Ben]",
+                    "?amount = 60000",
+                    "?who = [Hacker, Alyssa, P]",
+                    "?amount = 40000",
+                    "?who = [Fect, Cy, D]",
+                    "?amount = 35000",
+                    "?who = [Warbucks, Oliver]",
+                    "?amount = 150000",
+                    "?who = [Scrooge, Eben]",
+                    "?amount = 75000",
                 )
         }
     })

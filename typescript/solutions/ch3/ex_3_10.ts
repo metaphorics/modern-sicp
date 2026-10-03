@@ -17,10 +17,11 @@ import { InsufficientFunds } from "../../packages/ch3/src/01-assignment.js";
  * run, not a drawing.
  */
 
-/** The book's alternate `make-withdraw`, spelled as its own
- * desugaring: `(let ((balance initial-amount)) ...)` is applied-lambda
- * sugar, so the balance cell is born in the frame of an immediately
- * applied function, one call deeper than in the parameter version. */
+/** The statement's alternate `makeWithdraw`, spelled as its own
+ * desugaring: an immediately-invoked arrow expression binds `balance`
+ * to `initialAmount`, so the balance cell is born in the frame of an
+ * immediately applied function, one call deeper than in the parameter
+ * version. */
 export const makeWithdrawLet = (initialAmount: number): WithdrawalProcessor =>
   (
     (balance: Ref.Ref<number>) =>

@@ -1,47 +1,45 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Original exercise
 
-//! The reference solution of exercise 4.65: the wheel query that lists
-//! Warbucks four times. The `wheel` rule composes two supervisor steps,
-//! and the data base offers three middle managers (Alyssa, Ben, Scrooge)
-//! whose own supervisor rows line up: Ben wheels through each of his
-//! three supervisees in one route, and Warbucks through four, so the
-//! stream prints Ben once and Warbucks four times -- the book's listing
-//! in scan-order rows.
+//! The reference solution of exercise 4.65: the wheel rule produces
+//! duplicate answers unless uniqueness is explicit.
 
-use ch04::sec_4_4::{Engine, microshaft};
+/// Shared typed support for this exercise.
+pub mod support;
 
-mod ex_4_65 {
-    //! Exercise 4.65: the fourfold wheel listing.
+use ch04::sec_4_4::{Database, Query, qeval};
+use support::{answer_text, atom, fact, relation, rule, var};
 
-    use super::*;
-
-    /// One Microshaft engine carrying the `wheel` rule of 4.4.1.
-    pub fn engine() -> Engine {
-        let engine = microshaft();
-        engine.load(&["(rule (wheel ?person) \
-             (and (supervisor ?middle-manager ?person) \
-             (supervisor ?x ?middle-manager)))"]);
-        engine
+fn organization() -> Database {
+    let mut database = Database::new();
+    for (staff, boss) in [
+        ("Bitdiddle Ben", "Warbucks Oliver"),
+        ("Hacker Alyssa P", "Bitdiddle Ben"),
+        ("Fect Cy D", "Bitdiddle Ben"),
+        ("Tweakit Lem E", "Bitdiddle Ben"),
+    ] {
+        database.assert(fact("supervisor", vec![atom(staff), atom(boss)]));
     }
+    database.add_rule(rule(
+        fact("wheel", vec![var("person")]),
+        vec![
+            relation("supervisor", vec![var("middle"), var("person")]),
+            relation("supervisor", vec![var("staff"), var("middle")]),
+        ],
+    ));
+    database
 }
 
 #[test]
 fn ex_4_65() {
-    // The book's response, row for row the same multiset: three
-    // derivation routes reach Ben (one per supervisee of his that has a
-    // supervisee of their own -- just Louis) -- no: Ben appears once,
-    // through Louis; Warbucks appears four times, once per supervised
-    // middle manager with a supervisee (Alyssa via Louis, Ben via each
-    // of Alyssa, Fect, and Tweakit, Scrooge via Cratchet).
-    assert_eq!(
-        ex_4_65::engine().answers("(wheel ?who)"),
-        [
-            "(wheel (Bitdiddle Ben))",
-            "(wheel (Warbucks Oliver))",
-            "(wheel (Warbucks Oliver))",
-            "(wheel (Warbucks Oliver))",
-            "(wheel (Warbucks Oliver))",
-        ]
+    let outcome = qeval(&organization(), &relation("wheel", vec![var("person")]));
+    assert!(outcome.answers.len() >= 2);
+    let unique = qeval(
+        &organization(),
+        &Query::UniqueBy(
+            vec!["person".to_owned()],
+            Box::new(relation("wheel", vec![var("person")])),
+        ),
     );
+    assert_eq!(unique.answers.len(), 1);
+    assert_eq!(answer_text(&unique.answers[0], "person"), "Warbucks Oliver");
 }

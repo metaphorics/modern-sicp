@@ -4,7 +4,7 @@
 import type { MCons, MList } from "../../packages/ch3/src/03-mutable-data.js";
 
 /**
- * Exercise 3.12: append copies, append! splices. Pending scaffold;
+ * Exercise 3.12: append copies, appendBang splices. Pending scaffold;
  * the solution and its rationale live in solutions/ch3/ex_3_12.ts
  * and .md.
  */
@@ -26,7 +26,7 @@ export function lastPair<A>(_x: MList<A>): MCons<A> {
   throw new PendingSolution();
 }
 
-/** The book's `append!`: rewrites the final pair of `x` to point at
+/** The book's `appendBang`: rewrites the final pair of `x` to point at
  * `y` and returns `x`; empty `x` throws. */
 export function appendBang<A>(_x: MList<A>, _y: MList<A>): MList<A> {
   throw new PendingSolution();
@@ -42,7 +42,7 @@ export interface AppendDemo {
   readonly xTailIsY: boolean;
 }
 
-/** Runs the book's append / append! interaction over x = (a b), y =
+/** Runs the book's append / appendBang interaction over x = (a b), y =
  * (c d) and reports the pins. */
 export function appendDemo(): AppendDemo {
   throw new PendingSolution();

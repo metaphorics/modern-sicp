@@ -13,7 +13,7 @@ import { type Mutex, makeMutex } from "../../packages/ch3/src/04-concurrency.js"
  * in advance and only discovers, while holding the account lock, that
  * filing the audit requires the ledger. Neither process can name its
  * full resource set when it starts acquiring, so there is no global
- * order both can follow, and the numbered-account scheme cannot be
+ * order both can follow, and the numbered-account plan cannot be
  * extended to help. The deadlock is measured; the two-phase variant
  * shows what recovery looks like.
  */

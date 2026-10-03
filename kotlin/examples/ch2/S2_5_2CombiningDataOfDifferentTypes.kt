@@ -19,15 +19,12 @@ import sicp.ch2.exercises.installGenericArithmetic
 import sicp.ch2.exercises.show
 
 /**
- * 2.5.2's own worked example: an ordinary number and a complex number
- * cannot be added directly, since the table holds no `(integer,
- * complex)` handler. The book's fix is the coercion table -- a
- * procedure that views an ordinary number as a complex number with a
- * zero imaginary part, `scheme-number->complex`, installed under
- * `put-coercion` -- and the revised `apply-generic` that tries a
- * coercion on a miss before giving up. [installOrdinaryToComplex] is
- * that one coercion procedure; [addWithCoercion]/[addWithoutCoercion]
- * run the same addition through the revised and the plain dispatcher.
+ * An ordinary numeric value cannot be added directly to a complex value
+ * when no mixed-type handler exists. The coercion-table repair converts an
+ * ordinary integer into a rectangular complex value with zero imaginary
+ * component. [installOrdinaryToComplex] installs that conversion;
+ * [addWithCoercion] and [addWithoutCoercion] compare dispatch with and
+ * without the installed conversion.
  */
 private fun freshTable(): NumTable {
     val table = NumTable()
@@ -35,22 +32,18 @@ private fun freshTable(): NumTable {
     return table
 }
 
-/** The book's `scheme-number->complex`: view an ordinary number as a
- * complex number whose imaginary part is zero. */
+/** Convert an ordinary integer value to a rectangular complex value. */
 private fun ordinaryToComplex(z: Num): Num {
     val n = z as ZLong
     return Complex(Rect(n.n.toDouble(), 0.0))
 }
 
-/** Installs the one coercion procedure this example needs, the way the
- * book's `put-coercion` installs `scheme-number->complex`. */
+/** Install the one numeric-to-complex conversion this example requires. */
 public fun installOrdinaryToComplex(coercions: CoercionTable) {
     coercions.putCoercion(ZLong::class, Complex::class) { z -> ordinaryToComplex(z) }
 }
 
-/** Plain dispatch on an ordinary number and a complex number: no
- * `(integer, complex)` handler exists, so this misses with `NoMethod`,
- * exactly the gap 2.5.2 opens with. */
+/** Plain dispatch has no handler for an ordinary number paired with a complex value. */
 public fun addWithoutCoercion(): Boolean {
     val table = freshTable()
     val result = either { applyGeneric(table, "add", listOf(ZLong(3), Complex(Rect(2.0, 4.0)))) }

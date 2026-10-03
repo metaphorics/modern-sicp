@@ -15,13 +15,11 @@ import {
  * advances the initial value by dt times the integrand's car and
  * recurses on the integrand's cdr:
  *
- *   (define (integral integrand initial-value dt)
- *     (cons-stream initial-value
- *       (if (stream-null? integrand)
- *           the-empty-stream
- *           (integral (stream-cdr integrand)
- *                     (+ (* dt (stream-car integrand)) initial-value)
- *                     dt))))
+ *   const integral = (integrand, initialValue, dt) =>
+ *     consStream(initialValue, () =>
+ *       integrand === null
+ *         ? null
+ *         : integral(streamCdr(integrand), dt * integrand.head + initialValue, dt));
  *
  * In a system with loops, such as the `solve` procedure of 3.5.4, the
  * integrand is the mapping of f over the very stream being defined, so
@@ -36,9 +34,9 @@ import {
 /** The book's modified `integral`: the integrand arrives delayed and
  * is forced only inside the tail promise, once per demanded element.
  * The recursion re-delays the integrand's cdr, and a null integrand
- * ends the stream, the statement's `stream-null?` guard. Restated
+ * ends the stream, the statement's empty-stream guard. Restated
  * after the exercise; the module's `integralDelayed` is the section's
- * own add-streams spelling of the same contract. */
+ * own addStreams spelling of the same contract. */
 export const delayedIntegral = (
   delayedIntegrand: () => Stream<number>,
   initialValue: number,

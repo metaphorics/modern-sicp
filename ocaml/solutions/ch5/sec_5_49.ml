@@ -1,99 +1,65 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 5.5 *)
+   Adapted from SICP section 5.5 *)
 
-(** Exercise 5.49: a read-compile-execute-print loop.  The host drives
-    the loop and calls [compile] as an operation between machine runs
-    -- the book's own suggested arrangement.  Each form is compiled
-    into a block under the shared compile state, the one machine is
-    assembled with every block chained through a driver that prompts,
-    runs the form, and prints its value, so definitions persist in the
-    one global environment the way the book's loop needs. *)
-
+module Check = Sicp_common.Check
+module Eval_error = Sicp_common.Eval_error
 module C = Sicp_ch5.Sec_5_5
+module M = Sicp_ch5.Sec_5_1
+module W = Sicp_ch5.Sec_5_4
 
-let ( >>= ) = Result.bind
+let ( let* ) = Result.bind
 
-(** [chain_driver entries] is the driver fragment that prompts, runs,
-    and prints each compiled form in order: before every entry the
-    driver prompts for input and points [continue] at the printing
-    block that follows the form's code; after the last value the chain
-    jumps to [machine-end], the label that closes the assembled
-    controller. *)
-let chain_driver entries =
-  let last = List.length entries - 1 in
-  let one index entry =
-    Printf.sprintf
-      {|  (perform (op prompt-for-input))
-  (assign continue (label print-%d))
-  (goto (label %s))
-print-%d
-  (perform (op announce-output))
-  (perform (op user-print) (reg val))%s|}
-      index
-      entry
-      index
-      (if index = last then "\n  (goto (label machine-end))" else "")
-  in
-  ";; the read-compile-execute-print loop: the host compiled each\n\
-  \ form; the chain runs them in order and prints each value\n"
-  ^ "  (assign env (op get-global-environment))\n"
-  ^ String.concat "\n" (List.mapi one entries)
+let machine_code blocks =
+  C.make_instruction_sequence
+    []
+    []
+    (List.concat_map
+       (fun (label, code) -> (M.Label label :: code) @ [ M.Goto "done" ])
+       blocks
+     @ Sec_5_45.runtime
+     @ [ M.Label "done" ])
 ;;
 
-(** [loop forms] is the read-compile-execute-print session over [forms]:
-    one line group per form, the value the machine printed. *)
-let loop forms =
+let execute ~emit blocks env label =
+  let* m = C.load ~emit (machine_code blocks) in
+  let* () = M.set_register m "env" (W.Env env) in
+  let* () = M.goto_label m label in
+  let* () = M.start m in
+  let* value = M.get_register m "val" in
+  let* env = M.get_register m "env" in
+  match value, env with
+  | W.V v, W.Env env -> Ok (v, env)
+  | w, W.Env _ | _, w ->
+    Error (Eval_error.Bad_instruction ("the loop reads " ^ W.word_to_string w))
+;;
+
+let read_compile_execute_print ~emit items =
   let state = C.new_state () in
-  let compile_one form = C.compile_block state form in
-  let rec compile_all acc = function
-    | [] -> Ok (List.rev acc)
-    | form :: rest -> compile_one form >>= fun block -> compile_all (block :: acc) rest
+  let* _, _, lines =
+    List.fold_left
+      (fun acc item ->
+         let* blocks, env, lines = acc in
+         let label = Printf.sprintf "form-%d" (List.length blocks) in
+         let blocks =
+           blocks
+           @ [ label, Sec_5_45.block_statements (C.compile_program state [ item ]) ]
+         in
+         let* v, env = execute ~emit blocks env label in
+         Ok (blocks, env, lines @ [ Sec_5_48.describe env item v ]))
+      (Ok ([], Sec_5_45.global_environment ~emit, []))
+      items
   in
-  compile_all [] forms
-  >>= fun blocks ->
-  if blocks = []
-  then Ok []
-  else (
-    let entries = List.map fst blocks in
-    let blocks_text = String.concat "\n" (List.map snd blocks) in
-    let controller =
-      String.concat
-        "\n"
-        (List.map
-           (fun (nm, text) -> if nm = "driver" then chain_driver entries else text)
-           C.eceval_fragments)
-      ^ "\n"
-      ^ blocks_text
-      ^ "\nmachine-end"
-    in
-    C.make_compiled_evaluator ~controller ~source:"" ~state ()
-    >>= fun m ->
-    (match C.start m with
-     | Ok () -> Ok ()
-     | Error e -> Error e)
-    >>= fun () ->
-    let lines = C.transcript m in
-    let expected = 3 * List.length forms in
-    if List.length lines <> expected
-    then Error (C.Op_failed "the session printed an unexpected line count")
-    else (
-      let rec chunk acc = function
-        | a :: b :: v :: rest -> chunk ([ a; b; v ] :: acc) rest
-        | [] -> Ok (List.rev acc)
-        | _ -> Error (C.Op_failed "the session lines do not group by form")
-      in
-      chunk [] lines))
+  Ok lines
 ;;
 
-(** [ex_5_49 ()] runs the loop over a definition and two calls: the
-    compiled definitions answer [ok] and the calls answer their
-    values, all without an interpreter anywhere in the path. *)
+let source =
+  "let rec fib n = if n < 2 then n else fib (n - 1) + fib (n - 2)\n\
+   let a = fib 12\n\
+   let double x = x + x\n\
+   let b = double 441\n"
+;;
+
 let ex_5_49 () =
-  loop
-    [ "(define (square n) (* n n))"
-    ; "(square 12)"
-    ; "(define (twice n) (+ n n))"
-    ; "(twice (square 21))"
-    ]
-  >>= fun sessions -> Ok (List.map (fun lines -> String.concat " " lines) sessions)
+  let* p = Sec_5_33.program ~filename:"ex_5_49.ml" source in
+  read_compile_execute_print ~emit:ignore (Check.items p)
 ;;

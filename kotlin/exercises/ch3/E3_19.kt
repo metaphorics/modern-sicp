@@ -3,12 +3,11 @@
 
 package sicp.ch3.exercises
 
+import sicp.runtime.Datum
 import sicp.runtime.PendingSolution
-import sicp.runtime.Value
 
 /**
- * Exercise 3.19: redo exercise 3.18's cycle test with an algorithm that
- * uses only a constant amount of space -- two cursors moving through the
- * cdr chain at different speeds, no memory of visited pairs at all.
+ * Exercise 3.19: detect a loop with constant space. Advance one cursor by
+ * two links and another by one link through the second-field chain.
  */
-public fun containsCycleConstantSpace(x: Value): Boolean = throw PendingSolution()
+public fun containsCycleConstantSpace(x: Datum): Boolean = throw PendingSolution()

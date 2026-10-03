@@ -94,7 +94,7 @@ and install alternative representations.
 @image{../../text/original/figures/chap2/Fig2.19a,,147mm,Figure 2.19: Data-abstraction barriers in the complex-number system.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.19a.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.19a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.19:} Data-abstraction barriers in the complex-number system.}
@@ -180,7 +180,7 @@ Imaginary-part(z_1 + z_2) = Imaginary-part(z_1) + Imaginary-part(z_2)
 @image{../../text/original/figures/chap2/Fig2.20,,147mm,Figure 2.20: Complex numbers as points in the plane.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.20.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.20.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.20:} Complex numbers as points in the plane.}
@@ -256,31 +256,55 @@ since that table is what finally makes the four selectors below generic across
 whichever representation a number carries:
 
 @example kotlin
-context(r: Raise<SchemeError>)
-fun addComplex(table: OpTable, z1: Value, z2: Value): Value @{
-    val re = realOf(realPart(table, z1)) + realOf(realPart(table, z2))
-    val im = realOf(imagPart(table, z1)) + realOf(imagPart(table, z2))
+context(r: Raise<DataError>)
+fun addComplex(table: OpTable,
+    z1: Value,
+    z2: Value): Value @{
+    val re = realOf(realPart(table,
+            z1)) + realOf(realPart(table,
+        z2))
+    val im = realOf(imagPart(table,
+            z1)) + realOf(imagPart(table,
+        z2))
     return makeFromRealImag(table, re, im)
 @}
 
-context(r: Raise<SchemeError>)
-fun subComplex(table: OpTable, z1: Value, z2: Value): Value @{
-    val re = realOf(realPart(table, z1)) - realOf(realPart(table, z2))
-    val im = realOf(imagPart(table, z1)) - realOf(imagPart(table, z2))
+context(r: Raise<DataError>)
+fun subComplex(table: OpTable,
+    z1: Value,
+    z2: Value): Value @{
+    val re = realOf(realPart(table,
+            z1)) - realOf(realPart(table,
+        z2))
+    val im = realOf(imagPart(table,
+            z1)) - realOf(imagPart(table,
+        z2))
     return makeFromRealImag(table, re, im)
 @}
 
-context(r: Raise<SchemeError>)
-fun mulComplex(table: OpTable, z1: Value, z2: Value): Value @{
-    val mag = realOf(magnitude(table, z1)) * realOf(magnitude(table, z2))
-    val ang = realOf(angle(table, z1)) + realOf(angle(table, z2))
+context(r: Raise<DataError>)
+fun mulComplex(table: OpTable,
+    z1: Value,
+    z2: Value): Value @{
+    val mag = realOf(magnitude(table,
+            z1)) * realOf(magnitude(table,
+        z2))
+    val ang = realOf(angle(table,
+            z1)) + realOf(angle(table,
+        z2))
     return makeFromMagAng(table, mag, ang)
 @}
 
-context(r: Raise<SchemeError>)
-fun divComplex(table: OpTable, z1: Value, z2: Value): Value @{
-    val mag = realOf(magnitude(table, z1)) / realOf(magnitude(table, z2))
-    val ang = realOf(angle(table, z1)) - realOf(angle(table, z2))
+context(r: Raise<DataError>)
+fun divComplex(table: OpTable,
+    z1: Value,
+    z2: Value): Value @{
+    val mag = realOf(magnitude(table,
+            z1)) / realOf(magnitude(table,
+        z2))
+    val ang = realOf(angle(table,
+            z1)) - realOf(angle(table,
+        z2))
     return makeFromMagAng(table, mag, ang)
 @}
 @end example
@@ -328,33 +352,36 @@ computed by Kotlin's @code{kotlin.math.atan2} function, is defined so as to take
 arguments @math{y} and @math{x} and to return the angle whose tangent is @math{{y / x}}.
 The signs of the arguments determine the quadrant of the angle.}  Ben's
 representation is therefore given by the following selectors and constructors,
-each threading the section's shared @code{Raise<SchemeError>} context so a
+each threading the section's shared @code{Raise<DataError>} context so a
 malformed pair fails typed rather than crashing:
 
 @example kotlin
-context(r: Raise<SchemeError>)
+context(r: Raise<DataError>)
 fun rectRealPart(z: Value): Value = car(z)
 
-context(r: Raise<SchemeError>)
+context(r: Raise<DataError>)
 fun rectImagPart(z: Value): Value = cdr(z)
 
-context(r: Raise<SchemeError>)
+context(r: Raise<DataError>)
 fun rectMagnitude(z: Value): Value @{
     val x = realOf(rectRealPart(z))
     val y = realOf(rectImagPart(z))
     return VReal(sqrt(x * x + y * y))
 @}
 
-context(r: Raise<SchemeError>)
+context(r: Raise<DataError>)
 fun rectAngle(z: Value): Value @{
     val x = realOf(rectRealPart(z))
     val y = realOf(rectImagPart(z))
     return VReal(atan2(y, x))
 @}
 
-fun rectMakeFromRealImag(x: Double, y: Double): Value = VPair(VReal(x), VReal(y))
+fun rectMakeFromRealImag(x: Double,
+    y: Double): Value = VPair(VReal(x),
+    VReal(y))
 
-fun rectMakeFromMagAng(mag: Double, ang: Double): Value =
+fun rectMakeFromMagAng(mag: Double,
+    ang: Double): Value =
     VPair(VReal(mag * cos(ang)), VReal(mag * sin(ang)))
 @end example
 
@@ -365,20 +392,20 @@ the trigonometric relations to obtain the real and imaginary parts.  Alyssa's
 representation is:
 
 @example kotlin
-context(r: Raise<SchemeError>)
+context(r: Raise<DataError>)
 fun polarMagnitude(z: Value): Value = car(z)
 
-context(r: Raise<SchemeError>)
+context(r: Raise<DataError>)
 fun polarAngle(z: Value): Value = cdr(z)
 
-context(r: Raise<SchemeError>)
+context(r: Raise<DataError>)
 fun polarRealPart(z: Value): Value @{
     val mag = realOf(polarMagnitude(z))
     val ang = realOf(polarAngle(z))
     return VReal(mag * cos(ang))
 @}
 
-context(r: Raise<SchemeError>)
+context(r: Raise<DataError>)
 fun polarImagPart(z: Value): Value @{
     val mag = realOf(polarMagnitude(z))
     val ang = realOf(polarAngle(z))
@@ -386,9 +413,13 @@ fun polarImagPart(z: Value): Value @{
 @}
 
 fun polarMakeFromRealImag(x: Double, y: Double): Value =
-    VPair(VReal(sqrt(x * x + y * y)), VReal(atan2(y, x)))
+    VPair(VReal(sqrt(x * x + y * y)),
+                VReal(atan2(y,
+        x)))
 
-fun polarMakeFromMagAng(mag: Double, ang: Double): Value = VPair(VReal(mag), VReal(ang))
+fun polarMakeFromMagAng(mag: Double,
+    ang: Double): Value =
+    VPair(VReal(mag), VReal(ang))
 @end example
 
 @noindent
@@ -433,20 +464,23 @@ the runtime already carries an operation-tagged value class for exactly this,
 case of a complex number:
 
 @example kotlin
-fun attachTag(typeTag: String, contents: Value): Value = VTagged(typeTag, contents)
+fun attachTag(typeTag: String, contents: Value): Value =
+    VTagged(typeTag, contents)
 
-context(r: Raise<SchemeError>)
+context(r: Raise<DataError>)
 fun typeTag(datum: Value): String =
     when (datum) @{
         is VTagged -> datum.tag
-        else -> r.raise(SchemeError.UserRaised("Bad tagged datum: TYPE-TAG", listOf(datum)))
+        else -> r.raise(DataError.BadDatum("Bad tagged datum: typeTag",
+            listOf(datum)))
     @}
 
-context(r: Raise<SchemeError>)
+context(r: Raise<DataError>)
 fun contents(datum: Value): Value =
     when (datum) @{
         is VTagged -> datum.data
-        else -> r.raise(SchemeError.UserRaised("Bad tagged datum: CONTENTS", listOf(datum)))
+        else -> r.raise(DataError.BadDatum("Bad tagged datum: contents",
+            listOf(datum)))
     @}
 @end example
 
@@ -455,16 +489,18 @@ Using these functions, we can define predicates @code{isRectangular} and
 @code{isPolar}, which recognize rectangular and polar numbers, respectively:
 
 @example kotlin
-fun isRectangular(z: Value): Boolean = z is VTagged && z.tag == "rectangular"
+fun isRectangular(z: Value): Boolean =
+    z is VTagged && z.tag == "rectangular"
 
-fun isPolar(z: Value): Boolean = z is VTagged && z.tag == "polar"
+fun isPolar(z: Value): Boolean = z is VTagged &&
+    z.tag == "polar"
 @end example
 
 @noindent
 With type tags, Ben and Alyssa can now modify their code so that their two
 different representations can coexist in the same system.  Whenever Ben
 constructs a complex number, he tags it as rectangular.  Whenever Alyssa
-constructs a complex number, she tags it as polar.  In Scheme, Ben and Alyssa
+constructs a complex number, she tags it as polar.  In the original book, Ben and Alyssa
 would also have had to rename their internal procedures so the names of their
 procedures do not conflict.  This edition's @code{rect}- and @code{polar}-prefixed
 names of @ref{2.4.1} are already distinct by name---top-level Kotlin
@@ -474,21 +510,27 @@ constructor.  Here are Ben's tagged constructors, built
 directly from @ref{2.4.1}:
 
 @example kotlin
-fun rectMakeFromRealImagTagged(x: Double, y: Double): Value =
+fun rectMakeFromRealImagTagged(x: Double,
+    y: Double): Value =
     attachTag("rectangular", rectMakeFromRealImag(x, y))
 
-fun rectMakeFromMagAngTagged(mag: Double, ang: Double): Value =
-    attachTag("rectangular", rectMakeFromMagAng(mag, ang))
+fun rectMakeFromMagAngTagged(mag: Double,
+    ang: Double): Value =
+    attachTag("rectangular",
+            rectMakeFromMagAng(mag,
+        ang))
 @end example
 
 @noindent
 and here are Alyssa's tagged constructors:
 
 @example kotlin
-fun polarMakeFromRealImagTagged(x: Double, y: Double): Value =
+fun polarMakeFromRealImagTagged(x: Double,
+    y: Double): Value =
     attachTag("polar", polarMakeFromRealImag(x, y))
 
-fun polarMakeFromMagAngTagged(mag: Double, ang: Double): Value =
+fun polarMakeFromMagAngTagged(mag: Double,
+    ang: Double): Value =
     attachTag("polar", polarMakeFromMagAng(mag, ang))
 @end example
 
@@ -510,36 +552,40 @@ extract the bare, untagged datum and send this to the rectangular or polar
 function as required:
 
 @example kotlin
-context(r: Raise<SchemeError>)
+context(r: Raise<DataError>)
 fun realPartDispatch(z: Value): Value =
     when @{
         isRectangular(z) -> rectRealPart(contents(z))
         isPolar(z) -> polarRealPart(contents(z))
-        else -> r.raise(SchemeError.UserRaised("Unknown type: REAL-PART", listOf(z)))
+        else -> r.raise(DataError.BadDatum("Unknown type: realPart",
+            listOf(z)))
     @}
 
-context(r: Raise<SchemeError>)
+context(r: Raise<DataError>)
 fun imagPartDispatch(z: Value): Value =
     when @{
         isRectangular(z) -> rectImagPart(contents(z))
         isPolar(z) -> polarImagPart(contents(z))
-        else -> r.raise(SchemeError.UserRaised("Unknown type: IMAG-PART", listOf(z)))
+        else -> r.raise(DataError.BadDatum("Unknown type: imagPart",
+            listOf(z)))
     @}
 
-context(r: Raise<SchemeError>)
+context(r: Raise<DataError>)
 fun magnitudeDispatch(z: Value): Value =
     when @{
         isRectangular(z) -> rectMagnitude(contents(z))
         isPolar(z) -> polarMagnitude(contents(z))
-        else -> r.raise(SchemeError.UserRaised("Unknown type: MAGNITUDE", listOf(z)))
+        else -> r.raise(DataError.BadDatum("Unknown type: magnitude",
+            listOf(z)))
     @}
 
-context(r: Raise<SchemeError>)
+context(r: Raise<DataError>)
 fun angleDispatch(z: Value): Value =
     when @{
         isRectangular(z) -> rectAngle(contents(z))
         isPolar(z) -> polarAngle(contents(z))
-        else -> r.raise(SchemeError.UserRaised("Unknown type: ANGLE", listOf(z)))
+        else -> r.raise(DataError.BadDatum("Unknown type: angle",
+            listOf(z)))
     @}
 @end example
 
@@ -593,7 +639,7 @@ interface.
 @image{../../text/original/figures/chap2/Fig2.21a,,147mm,Figure 2.21: Structure of the generic complex-arithmetic system.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.21a.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.21a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.21:} Structure of the generic complex-arithmetic system.}
@@ -629,7 +675,7 @@ and apply the appropriate selector for that representation.
 
 Another weakness of the technique is that even though the individual
 representations can be designed separately, we must guarantee that no two
-functions in the entire system have the same name.  In Scheme this is why Ben
+functions in the entire system have the same name.  In the original book this is why Ben
 and Alyssa had to change the names of their original procedures from
 @ref{2.4.1}; in this edition the @code{rect}- and @code{polar}-prefixed names
 of @ref{2.4.1} are that renaming already, but the underlying issue is the same
@@ -684,7 +730,7 @@ angle      | angle-polar     | angle-rectangular
 @image{../../text/original/figures/chap2/Fig2.22,,147mm,Figure 2.22: Table of operations for the complex-number system.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.22.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.22.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.22:} Table of operations for the complex-number system.}
@@ -738,15 +784,21 @@ numbers.  This is accomplished by calling the following function:
 @example kotlin
 fun installRectangularPackage(table: OpTable) @{
     val tag = tagListKey("rectangular")
-    table.put(Key.Sym("real-part"), tag) @{ args -> rectRealPart(sole(args)) @}
-    table.put(Key.Sym("imag-part"), tag) @{ args -> rectImagPart(sole(args)) @}
-    table.put(Key.Sym("magnitude"), tag) @{ args -> rectMagnitude(sole(args)) @}
-    table.put(Key.Sym("angle"), tag) @{ args -> rectAngle(sole(args)) @}
-    table.put(Key.Sym("make-from-real-imag"), Key.Sym("rectangular")) @{ args ->
+    table.put(Key.Sym("real-part"), tag) @{ args ->
+        rectRealPart(sole(args)) @}
+    table.put(Key.Sym("imag-part"), tag) @{ args ->
+        rectImagPart(sole(args)) @}
+    table.put(Key.Sym("magnitude"), tag) @{ args ->
+        rectMagnitude(sole(args)) @}
+    table.put(Key.Sym("angle"),
+        tag) @{ args -> rectAngle(sole(args)) @}
+    table.put(Key.Sym("make-from-real-imag"),
+        Key.Sym("rectangular")) @{ args ->
         val (x, y) = realPair(args)
         rectMakeFromRealImagTagged(x, y)
     @}
-    table.put(Key.Sym("make-from-mag-ang"), Key.Sym("rectangular")) @{ args ->
+    table.put(Key.Sym("make-from-mag-ang"),
+        Key.Sym("rectangular")) @{ args ->
         val (mag, ang) = realPair(args)
         rectMakeFromMagAngTagged(mag, ang)
     @}
@@ -777,15 +829,21 @@ Alyssa's polar package is analogous:
 @example kotlin
 fun installPolarPackage(table: OpTable) @{
     val tag = tagListKey("polar")
-    table.put(Key.Sym("real-part"), tag) @{ args -> polarRealPart(sole(args)) @}
-    table.put(Key.Sym("imag-part"), tag) @{ args -> polarImagPart(sole(args)) @}
-    table.put(Key.Sym("magnitude"), tag) @{ args -> polarMagnitude(sole(args)) @}
-    table.put(Key.Sym("angle"), tag) @{ args -> polarAngle(sole(args)) @}
-    table.put(Key.Sym("make-from-real-imag"), Key.Sym("polar")) @{ args ->
+    table.put(Key.Sym("real-part"), tag) @{ args ->
+        polarRealPart(sole(args)) @}
+    table.put(Key.Sym("imag-part"), tag) @{ args ->
+        polarImagPart(sole(args)) @}
+    table.put(Key.Sym("magnitude"), tag) @{ args ->
+        polarMagnitude(sole(args)) @}
+    table.put(Key.Sym("angle"), tag) @{ args ->
+        polarAngle(sole(args)) @}
+    table.put(Key.Sym("make-from-real-imag"),
+        Key.Sym("polar")) @{ args ->
         val (x, y) = realPair(args)
         polarMakeFromRealImagTagged(x, y)
     @}
-    table.put(Key.Sym("make-from-mag-ang"), Key.Sym("polar")) @{ args ->
+    table.put(Key.Sym("make-from-mag-ang"),
+        Key.Sym("polar")) @{ args ->
         val (mag, ang) = realPair(args)
         polarMakeFromMagAngTagged(mag, ang)
     @}
@@ -793,7 +851,7 @@ fun installPolarPackage(table: OpTable) @{
 @end example
 
 @noindent
-In Scheme, Ben and Alyssa both still use their original procedures defined
+In the original book, Ben and Alyssa both still use their original procedures defined
 with the same names as each other's (e.g., @code{real-part}); these
 definitions are now internal to different procedures (see @ref{1.1.8}), so
 there is no name conflict.  This edition's top-level functions cannot keep
@@ -814,8 +872,9 @@ any length, and the book's separate @code{apply} primitive becomes the
 ordinary call @code{r.handler(bare)} against the contents list.}
 
 @example kotlin
-context(r: Raise<SchemeError>)
-fun applyGeneric(table: OpTable, op: String, args: List<Value>): Value @{
+context(r: Raise<DataError>)
+fun applyGeneric(table: OpTable, op: String,
+    args: List<Value>): Value @{
     val tagKeys = mutableListOf<Key>()
     val tagValues = mutableListOf<Value>()
     for (arg in args) @{
@@ -823,11 +882,13 @@ fun applyGeneric(table: OpTable, op: String, args: List<Value>): Value @{
         tagKeys += Key.Sym(tag)
         tagValues += VSym(tag)
     @}
-    val handler = table.get(Key.Sym(op), keyTagList(tagKeys))
+    val handler = table.get(Key.Sym(op),
+        keyTagList(tagKeys))
         ?: r.raise(
-            SchemeError.UserRaised(
-                "No method for these types: APPLY-GENERIC",
-                listOf(vlist(listOf(VSym(op), vlist(tagValues)))),
+            DataError.BadDatum(
+                "No method for these types: applyGeneric",
+                listOf(vlist(listOf(VSym(op),
+                    vlist(tagValues)))),
             ),
         )
     val bare = args.map @{ contents(it) @}
@@ -837,7 +898,7 @@ fun applyGeneric(table: OpTable, op: String, args: List<Value>): Value @{
 
 @noindent
 A miss here does not fall through to a general-purpose error: it raises the
-edition's typed @code{SchemeError.UserRaised}, naming the operation and the
+edition's typed @code{DataError.BadDatum}, naming the operation and the
 tags that had no handler, which is the concrete answer to what an
 extensible-at-runtime table costs that a closed @code{sealed} hierarchy
 cannot: the compiler cannot catch a missing combination the way it catches a
@@ -846,17 +907,25 @@ missing @code{when} branch, so the table's own miss path has to.
 Using @code{applyGeneric}, we can define our generic selectors as follows:
 
 @example kotlin
-context(r: Raise<SchemeError>)
-fun realPart(table: OpTable, z: Value): Value = applyGeneric(table, "real-part", listOf(z))
+context(r: Raise<DataError>)
+fun realPart(table: OpTable,
+    z: Value): Value = applyGeneric(table,
+    "real-part", listOf(z))
 
-context(r: Raise<SchemeError>)
-fun imagPart(table: OpTable, z: Value): Value = applyGeneric(table, "imag-part", listOf(z))
+context(r: Raise<DataError>)
+fun imagPart(table: OpTable,
+    z: Value): Value = applyGeneric(table,
+    "imag-part", listOf(z))
 
-context(r: Raise<SchemeError>)
-fun magnitude(table: OpTable, z: Value): Value = applyGeneric(table, "magnitude", listOf(z))
+context(r: Raise<DataError>)
+fun magnitude(table: OpTable,
+    z: Value): Value = applyGeneric(table,
+    "magnitude", listOf(z))
 
-context(r: Raise<SchemeError>)
-fun angle(table: OpTable, z: Value): Value = applyGeneric(table, "angle", listOf(z))
+context(r: Raise<DataError>)
+fun angle(table: OpTable,
+    z: Value): Value = applyGeneric(table,
+    "angle", listOf(z))
 @end example
 
 @noindent
@@ -870,17 +939,33 @@ rectangular numbers whenever we have real and imaginary parts, and polar
 numbers whenever we have magnitudes and angles:
 
 @example kotlin
-context(r: Raise<SchemeError>)
-fun makeFromRealImag(table: OpTable, x: Double, y: Double): Value @{
-    val handler = table.get(Key.Sym("make-from-real-imag"), Key.Sym("rectangular"))
-        ?: r.raise(SchemeError.UserRaised("make-from-real-imag is not installed for rectangular", emptyList()))
+context(r: Raise<DataError>)
+fun makeFromRealImag(table: OpTable,
+    x: Double,
+    y: Double): Value @{
+    val handler = table.get(Key.Sym("make-from-real-imag"),
+        Key.Sym("rectangular"))
+        ?: r.raise(
+            DataError.BadDatum(
+                "make-from-real-imag is not installed for rectangular",
+                emptyList()
+            )
+        )
     return r.handler(listOf(VReal(x), VReal(y)))
 @}
 
-context(r: Raise<SchemeError>)
-fun makeFromMagAng(table: OpTable, mag: Double, ang: Double): Value @{
-    val handler = table.get(Key.Sym("make-from-mag-ang"), Key.Sym("polar"))
-        ?: r.raise(SchemeError.UserRaised("make-from-mag-ang is not installed for polar", emptyList()))
+context(r: Raise<DataError>)
+fun makeFromMagAng(table: OpTable,
+    mag: Double,
+    ang: Double): Value @{
+    val handler = table.get(Key.Sym("make-from-mag-ang"),
+        Key.Sym("polar"))
+        ?: r.raise(
+            DataError.BadDatum(
+                "make-from-mag-ang is not installed for polar",
+                emptyList()
+            )
+        )
     return r.handler(listOf(VReal(mag), VReal(ang)))
 @}
 @end example
@@ -907,7 +992,11 @@ a closed hierarchy cannot do that, so @code{applyGeneric} reaches for the
 runtime's @code{OpTable} instead:
 
 @example kotlin
-table.put(Key.Sym("real-part"), tagListKey("rectangular"), handler)
+table.put(
+    Key.Sym("real-part"),
+    tagListKey("rectangular"),
+    handler,
+)
 // => Unit
 table.get(Key.Sym("real-part"), tagListKey("polar"))
 // => null
@@ -915,7 +1004,7 @@ table.get(Key.Sym("real-part"), tagListKey("polar"))
 
 When every representation is known in advance, the sealed hierarchy still
 wins: the compiler catches a missing case at compile time that
-@code{applyGeneric} can only catch by raising a @code{SchemeError} at run
+@code{applyGeneric} can only catch by raising a @code{DataError} at run
 time, exactly the trade-off exercise 2.76 measures.
 @end quotation
 
@@ -934,28 +1023,52 @@ differentiates it:
 sealed interface OperatorExpr @{
     data class Num(val n: Long) : OperatorExpr
     data class Var(val name: String) : OperatorExpr
-    data class Sum(val a1: OperatorExpr, val a2: OperatorExpr) : OperatorExpr
-    data class Product(val a1: OperatorExpr, val a2: OperatorExpr) : OperatorExpr
-    data class Pow(val base: OperatorExpr, val n: Long) : OperatorExpr
+    data class Sum(val a1: OperatorExpr,
+        val a2: OperatorExpr) : OperatorExpr
+    data class Product(val a1: OperatorExpr,
+        val a2: OperatorExpr) : OperatorExpr
+    data class Pow(
+        val base: OperatorExpr,
+        val n: Long,
+    ) : OperatorExpr
 @}
 
 fun interface DerivRule @{
-    fun differentiate(exp: OperatorExpr, variable: String, table: DerivTable): OperatorExpr
+    fun differentiate(exp: OperatorExpr,
+        variable: String,
+        table: DerivTable): OperatorExpr
 @}
 
 class DerivTable @{
-    private val rules: MutableMap<String, DerivRule> = HashMap()
-    fun put(operator: String, rule: DerivRule) @{ rules[operator] = rule @}
+    private val rules: MutableMap<String, DerivRule> =
+        HashMap()
+    fun put(
+        operator: String,
+        rule: DerivRule,
+    ) @{ rules[operator] = rule @}
     fun get(operator: String): DerivRule? = rules[operator]
 @}
 
-fun derivDataDirected(exp: OperatorExpr, variable: String, table: DerivTable): OperatorExpr =
+fun derivDataDirected(exp: OperatorExpr,
+    variable: String,
+    table: DerivTable): OperatorExpr =
     when (exp) @{
         is OperatorExpr.Num -> OperatorExpr.Num(0)
-        is OperatorExpr.Var -> OperatorExpr.Num(if (exp.name == variable) 1 else 0)
-        is OperatorExpr.Sum -> dispatchRule("+", exp, variable, table)
-        is OperatorExpr.Product -> dispatchRule("*", exp, variable, table)
-        is OperatorExpr.Pow -> dispatchRule("**", exp, variable, table)
+        is OperatorExpr.Var ->
+            OperatorExpr.Num(
+                if (exp.name == variable) 1 else 0,
+            )
+        is OperatorExpr.Sum ->
+            dispatchRule("+", exp, variable, table)
+        is OperatorExpr.Product ->
+            dispatchRule(
+                "*",
+                exp,
+                variable,
+                table,
+            )
+        is OperatorExpr.Pow ->
+            dispatchRule("**", exp, variable, table)
     @}
 @end example
 
@@ -1059,7 +1172,8 @@ fun interface MessageObject @{
     fun send(op: String): Double
 @}
 
-fun makeFromRealImagMessagePassing(x: Double, y: Double): MessageObject =
+fun makeFromRealImagMessagePassing(x: Double,
+    y: Double): MessageObject =
     MessageObject @{ op ->
         when (op) @{
             "real-part" -> x
@@ -1078,7 +1192,9 @@ object and lets the object do the work:@footnote{One limitation of this
 organization is it permits only generic functions of one argument.}
 
 @example kotlin
-fun applyGenericMessagePassing(op: String, arg: MessageObject): Double = arg.send(op)
+fun applyGenericMessagePassing(op: String,
+    arg: MessageObject): Double =
+    arg.send(op)
 @end example
 
 @noindent

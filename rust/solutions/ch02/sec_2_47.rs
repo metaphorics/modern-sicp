@@ -13,17 +13,17 @@ mod ex_2_47 {
     pub struct FrameAsList([Vect; 3]);
 
     /// A frame built from nested pairs exactly as the book's second
-    /// constructor writes it, `(cons origin (cons edge1 edge2))`, on
+    /// constructor writes it, the origin paired with the pair of edges, on
     /// the section 2.1 pair.
     #[derive(Debug, Clone)]
     pub struct FrameAsPair(Pair<Vect, Pair<Vect, Vect>>);
 
-    /// The book's first constructor: `(list origin edge1 edge2)`.
+    /// The book's first constructor: the three-item list.
     pub fn make_frame_list(origin: Vect, edge1: Vect, edge2: Vect) -> FrameAsList {
         FrameAsList([origin, edge1, edge2])
     }
 
-    /// The book's second constructor: `(cons origin (cons edge1 edge2))`.
+    /// The book's second constructor: the origin paired with the pair of edges.
     pub fn make_frame_pair(origin: Vect, edge1: Vect, edge2: Vect) -> FrameAsPair {
         FrameAsPair(cons(origin, cons(edge1, edge2)))
     }

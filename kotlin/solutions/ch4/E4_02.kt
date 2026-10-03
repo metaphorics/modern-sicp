@@ -3,63 +3,70 @@
 
 package sicp.ch4.solutions
 
-import arrow.core.raise.Raise
-import kotlinx.collections.immutable.persistentListOf
-import kotlinx.collections.immutable.toPersistentList
-import sicp.ch4.EvalStep
-import sicp.ch4.Evaluator
-import sicp.runtime.AppE
-import sicp.runtime.DefineE
-import sicp.runtime.Env
-import sicp.runtime.Expr
-import sicp.runtime.SchemeError
-import sicp.runtime.SetE
-import sicp.runtime.VarE
+import sicp.ch4.Direct
 
-/**
- * Exercise 4.2, part (a): Louis Reasoner's applications-first eval checks
- * applications before assignments and definitions, so a definition
- * evaluates as an application of the (unbound) operator `define`:
- * `(define x 3)` => Error: unbound variable: define. This host's parser
- * classifies the two forms into typed [DefineE]/[SetE] nodes before eval
- * sees them, so the reordering arrives as a demotion: the node is rebuilt
- * as the pair Louis's clause order catches, and the application clause runs
- * before any special-form dispatch.
- */
-public class ApplicationsFirst(
-    global: Env,
-) : Evaluator(global) {
-    context(r: Raise<SchemeError>)
-    override fun step(
-        expr: Expr,
-        env: Env,
-    ): EvalStep =
-        when (expr) {
-            is DefineE -> EvalStep.Continue(AppE(VarE("define"), persistentListOf(VarE(expr.name), expr.value)), env)
-            is SetE -> EvalStep.Continue(AppE(VarE("set!"), persistentListOf(VarE(expr.name), expr.value)), env)
-            is AppE -> evalApplication(expr, env)
-            else -> super.step(expr, env)
-        }
-}
+// Exercise 4.2: Louis's applications-first order, and the `call` sugar.
+// Louis checks the application clause before assignment and definition,
+// so a definition evaluates as an application of the unbound operator
+// `define`. The kernel's typed dispatch keeps the lesson sharp: the
+// variant dispatcher below checks `GApp` first, and a use of the name
+// `define` in operator position fails unbound -- while the kernel's own
+// binding forms are distinct variants, so `GLet` and `GSet` route
+// correctly whatever order the application clause takes. Part (b) is the
+// `call` sugar as a guest rewrite: `call(operator, operand)` lowers to
+// the kernel's single-argument `GApp`, and the square call answers 49.
 
-/**
- * Exercise 4.2, part (b): application syntax grows a distinguished `call`
- * head, `(call f x)`, and every other pair applies as before. Stripping the
- * sugar in `step` -- one clause, re-entered at every depth -- keeps the
- * special forms and bare combinations working: `(call (lambda (x) (* x x))
- * 7)` => 49.
- */
-public class CallSyntax(
-    global: Env,
-) : Evaluator(global) {
-    context(r: Raise<SchemeError>)
-    override fun step(
-        expr: Expr,
-        env: Env,
-    ): EvalStep =
-        if (expr is AppE && expr.operator == VarE("call") && expr.operands.isNotEmpty()) {
-            EvalStep.Continue(AppE(expr.operands.first(), expr.operands.drop(1).toPersistentList()), env)
-        } else {
-            super.step(expr, env)
+/** Louis's dispatcher: the application clause runs before anything else. */
+internal val APPLICATIONS_FIRST_SOURCE: String =
+    """
+fun evalApplicationsFirst(expr: GExpr, env: GFrame): GValue? {
+    if (expr is GApp) {
+        val fn = gEval(expr.fn, env) ?: return null
+        if (fn is GClosV) {
+            val arg = gEval(expr.arg, env) ?: return null
+            return gApply(fn, arg)
         }
+        return null
+    }
+    return gEval(expr, env)
 }
+    """.trimIndent()
+
+/** The `call` sugar lowered to the kernel application. */
+internal val CALL_SUGAR_SOURCE: String =
+    """
+fun callToApp(fn: GExpr, arg: GExpr): GExpr = GApp(fn, arg)
+    """.trimIndent()
+
+/** Louis's order: `define` in operator position is unbound, while the
+ * kernel's binding forms still route by their own tags.
+ * => "error\n3\ntrue\n" */
+public fun louisDefineTranscript(): String =
+    outcomeText(
+        Direct.run(
+            KERNEL_SOURCE + "\n" + APPLICATIONS_FIRST_SOURCE + "\n" +
+                """
+fun main() {
+    val env = GFrame(mutableMapOf<String, GValue>("x" to GNumV(0L)), null)
+    println(renderValue(evalApplicationsFirst(GApp(GVar("define"), GNum(3L)), env)))
+    println(renderValue(evalApplicationsFirst(GLet("y", GNum(3L), GVar("y")), env)))
+    println(renderValue(evalApplicationsFirst(GSet("x", GNum(5L)), env)))
+}
+                """.trimIndent(),
+        ),
+    )
+
+/** The `call` sugar: the square of 7. => "49\n" */
+public fun callSugarTranscript(): String =
+    outcomeText(
+        Direct.run(
+            KERNEL_SOURCE + "\n" + CALL_SUGAR_SOURCE + "\n" +
+                """
+fun main() {
+    val env = GFrame(mutableMapOf<String, GValue>(), null)
+    val square = GLam("x", GMul(GVar("x"), GVar("x")))
+    println(renderValue(gEval(callToApp(square, GNum(7L)), env)))
+}
+                """.trimIndent(),
+        ),
+    )

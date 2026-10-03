@@ -12,14 +12,14 @@ fn sym(s: &str) -> Symbol {
 }
 
 fn main() {
-    // A quoted list of symbols is built directly, with no reader: the
-    // book's `(list 'a 'b 'c)`.
+    // A quoted list of symbols is built directly from its symbols, with
+    // no reader.
     let letters: List<Symbol> = List::from_iter([sym("a"), sym("b"), sym("c")]);
     println!("{letters}");
     // => (a b c)
     assert_eq!(letters.to_string(), "(a b c)");
 
-    // A list containing a list: the book's `(list (list 'george))`.
+    // A list containing a list: one list nested inside another.
     // Nesting is a `Nest`, exactly as 2.2's heterogeneous lists are.
     let nested = sub(&[sub(&[leaf(sym("george"))])]);
     println!("{nested}");

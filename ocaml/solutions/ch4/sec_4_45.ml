@@ -1,74 +1,92 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(** Exercise 4.45: the five parses of ``The professor lectures to the
-    student in the class with the cat.'' The demonstration parses the
-    sentence once and types [try_again] four times; the evaluator
-    produces exactly the five attachment trees the statement counts,
-    distinguished by which prepositional phrase attaches to which verb
-    phrase or noun phrase. *)
+(* Exercise 4.45: the five parses of the professor's sentence. The
+   section's grammar becomes a guest program over a closed parse-tree
+   variant; the words not yet consumed live in a reference the parse
+   threads through, and the search experiment rolls a failed branch's
+   consumption back with the branch. A tree prints in the book's list
+   notation. The complete search prints the five parses, which differ in
+   where each prepositional phrase attaches, and finds no others. *)
 
-module Eval = Sicp_ch4.Sec_4_3
-module Eval_error = Sicp_common.Eval_error
-module Value = Sicp_common.Value
+module Check = Sicp_common.Check
 
-let show = function
-  | Ok v -> Value.to_string v
-  | Error e -> "Error: " ^ Eval_error.to_string e
+let transcript source =
+  Sicp_ch4.Sec_4_1.transcript ~experiment:Check.Search Sicp_ch4.Sec_4_3.run source
+  |> String.split_on_char '\n'
+  |> List.filter (fun line -> line <> "")
 ;;
 
 let program =
   {|
-(define (require p) (if (not p) (amb)))
-(define (an-element-of items)
-  (require (not (null? items)))
-  (amb (car items) (an-element-of (cdr items))))
-(define *unparsed* '())
-(define nouns '(noun student professor cat class))
-(define verbs '(verb studies lectures eats sleeps))
-(define articles '(article the a))
-(define prepositions '(prep for to in by with))
-(define (parse-word word-list)
-  (require (not (null? *unparsed*)))
-  (require (member (car *unparsed*) (cdr word-list)))
-  (let ((found-word (car *unparsed*)))
-    (set! *unparsed* (cdr *unparsed*))
-    (list (car word-list) found-word)))
-(define (parse-simple-noun-phrase)
-  (list 'simple-noun-phrase (parse-word articles) (parse-word nouns)))
-(define (parse-noun-phrase)
-  (define (maybe-extend noun-phrase)
-    (amb noun-phrase
-         (maybe-extend
-          (list 'noun-phrase noun-phrase (parse-prepositional-phrase)))))
-  (maybe-extend (parse-simple-noun-phrase)))
-(define (parse-prepositional-phrase)
-  (list 'prep-phrase (parse-word prepositions) (parse-noun-phrase)))
-(define (parse-verb-phrase)
-  (define (maybe-extend verb-phrase)
-    (amb verb-phrase
-         (maybe-extend
-          (list 'verb-phrase verb-phrase (parse-prepositional-phrase)))))
-  (maybe-extend (parse-word verbs)))
-(define (parse-sentence)
-  (list 'sentence (parse-noun-phrase) (parse-verb-phrase)))
-(define (parse input)
-  (set! *unparsed* input)
-  (let ((sent (parse-sentence))) (require (null? *unparsed*)) sent))|}
+type tree =
+  | Word of string * string
+  | Node of string * tree list
+
+let rec show tree =
+  match tree with
+  | Word (category, word) -> "(" ^ category ^ " " ^ word ^ ")"
+  | Node (label, parts) -> "(" ^ label ^ show_parts parts ^ ")"
+
+and show_parts parts =
+  match parts with
+  | [] -> ""
+  | part :: rest -> " " ^ show part ^ show_parts rest
+
+let nouns = [ "student"; "professor"; "cat"; "class" ]
+let verbs = [ "studies"; "lectures"; "eats"; "sleeps" ]
+let articles = [ "the"; "a" ]
+let prepositions = [ "for"; "to"; "in"; "by"; "with" ]
+
+let parse_word category words input =
+  match !input with
+  | [] -> require false; Word (category, "")
+  | word :: rest ->
+    let rec listed candidates =
+      match candidates with
+      | [] -> false
+      | candidate :: more -> candidate = word || listed more
+    in
+    require (listed words);
+    input := rest;
+    Word (category, word)
+
+let parse_simple_noun_phrase input =
+  Node ("simple-noun-phrase", [ parse_word "article" articles input; parse_word "noun" nouns input ])
+
+let rec parse_noun_phrase input =
+  let rec maybe_extend noun_phrase =
+    amb
+      noun_phrase
+      (maybe_extend (Node ("noun-phrase", [ noun_phrase; parse_prepositional_phrase input ])))
+  in
+  maybe_extend (parse_simple_noun_phrase input)
+
+and parse_prepositional_phrase input =
+  Node ("prep-phrase", [ parse_word "prep" prepositions input; parse_noun_phrase input ])
+
+let parse_verb_phrase input =
+  let rec maybe_extend verb_phrase =
+    amb
+      verb_phrase
+      (maybe_extend (Node ("verb-phrase", [ verb_phrase; parse_prepositional_phrase input ])))
+  in
+  maybe_extend (parse_word "verb" verbs input)
+
+let parse_sentence input = Node ("sentence", [ parse_noun_phrase input; parse_verb_phrase input ])
+
+let parse words =
+  let input = ref words in
+  let sentence = parse_sentence input in
+  require (match !input with [] -> true | _ :: _ -> false);
+  sentence
+
+let () =
+  print_endline
+    (show
+       (parse
+          [ "the"; "professor"; "lectures"; "to"; "the"; "student"; "in"; "the"; "class"; "with"; "the"; "cat" ]))
+|}
 ;;
 
-let sentence =
-  "(parse '(the professor lectures to the student in the class with the cat))"
-;;
-
-let ex_4_45 () =
-  let env = Eval.the_global_environment () in
-  let (_ : (Value.t, Eval_error.t) result) = Eval.run_program env program in
-  let first = Eval.run env sentence in
-  let second = Eval.try_again () in
-  let third = Eval.try_again () in
-  let fourth = Eval.try_again () in
-  let fifth = Eval.try_again () in
-  let sixth = Eval.try_again () in
-  List.map show [ first; second; third; fourth; fifth; sixth ]
-;;
+let ex_4_45 () = transcript program

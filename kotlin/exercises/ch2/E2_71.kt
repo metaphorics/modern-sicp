@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.71: for an alphabet of `n` symbols with relative frequencies
  * `1, 2, 4, ..., 2^(n-1)`, sketch the Huffman tree for `n = 5` and
@@ -16,4 +14,4 @@ import sicp.runtime.PendingSolution
  */
 public fun skewedPairs(n: Int): List<Pair<String, Long>> = (0 until n).map { i -> "S$i" to (1L shl i) }
 
-public fun ex_2_71(n: Int): Pair<Int, Int> = throw PendingSolution()
+public fun ex_2_71(n: Int): Pair<Int, Int> = throw PendingExercise()

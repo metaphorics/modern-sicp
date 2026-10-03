@@ -12,7 +12,7 @@ public class E4_26aTest :
         test("Exercise 4.26a: before the derivation, when is an unbound application").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            whenBeforeTranscript() shouldBe "Error: unbound variable: when\n"
+            whenBeforeTranscript() shouldBe "null"
         }
 
         test("Exercise 4.26a: after the derivation, when evaluates").config(
@@ -24,7 +24,7 @@ public class E4_26aTest :
         test("Exercise 4.26a: a false condition answers the missing alternative").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            whenNoElseTranscript() shouldBe "#f\n"
+            whenNoElseTranscript() shouldBe "false\n"
         }
 
         test("Exercise 4.26a: a multi-expression body answers the last expression").config(

@@ -2,24 +2,22 @@
 // Original exercise
 
 import {
-  arithmeticOperations,
   assign,
   branch,
-  type ControllerLine,
-  getRegisterContents,
-  jump,
-  jumpReg,
-  lbl,
+  expectOk,
+  gotoLabel,
+  gotoRegister,
+  labelRef,
+  type MachineStatement,
   makeMachine,
   mark,
   op,
   perform,
-  reg,
+  register,
   restore,
   save,
-  setRegisterContents,
   test,
-} from "../../packages/ch5/src/02-simulator.js";
+} from "./ex_5_07.ts";
 import {
   cons,
   dump,
@@ -32,8 +30,7 @@ import {
   renderWord,
   type Value,
   write,
-} from "../../packages/ch5/src/03-storage.js";
-import { expectOk } from "./ex_5_07.js";
+} from "./exercise-memory.ts";
 
 /** Plants a proper list of numbers through the allocation path. */
 export const plantList = (memory: Memory, values: ReadonlyArray<number>): Value => {
@@ -43,40 +40,40 @@ export const plantList = (memory: Memory, values: ReadonlyArray<number>): Value 
 };
 
 /** The append machine: it copies x and shares y; the answer lands in z. */
-export const appendController: ControllerLine[] = [
-  assign("continue", lbl("append-done")),
+export const appendController: MachineStatement<Value>[] = [
+  assign<Value>("continue", labelRef<Value>("append-done")),
   mark("append-loop"),
-  test("null?", reg("x")),
-  branch("base"),
-  assign("temp", op("car", reg("x"))),
-  save("temp"),
-  save("continue"),
-  assign("continue", lbl("after-car")),
-  assign("x", op("cdr", reg("x"))),
-  jump("append-loop"),
+  test<Value>("null?", register<Value>("x")),
+  branch<Value>("base"),
+  assign<Value>("temp", op<Value>("car", register<Value>("x"))),
+  save<Value>("temp"),
+  save<Value>("continue"),
+  assign<Value>("continue", labelRef<Value>("after-car")),
+  assign<Value>("x", op<Value>("cdr", register<Value>("x"))),
+  gotoLabel<Value>("append-loop"),
   mark("base"),
-  assign("z", reg("y")),
-  jumpReg("continue"),
+  assign<Value>("z", register<Value>("y")),
+  gotoRegister<Value>("continue"),
   mark("after-car"),
-  restore("continue"),
-  restore("temp"),
-  assign("z", op("cons", reg("temp"), reg("z"))),
-  jumpReg("continue"),
+  restore<Value>("continue"),
+  restore<Value>("temp"),
+  assign<Value>("z", op<Value>("cons", register<Value>("temp"), register<Value>("z"))),
+  gotoRegister<Value>("continue"),
   mark("append-done"),
 ];
 
 /** The append! machine: walk to the last pair of x and splice y in with
  * set-cdr!; no cell is allocated and there is no z. */
-export const appendBangController: ControllerLine[] = [
-  assign("temp", reg("x")),
+export const appendBangController: MachineStatement<Value>[] = [
+  assign<Value>("temp", register<Value>("x")),
   mark("last-pair"),
-  assign("cand", op("cdr", reg("temp"))),
-  test("null?", reg("cand")),
-  branch("splice"),
-  assign("temp", op("cdr", reg("temp"))),
-  jump("last-pair"),
+  assign<Value>("cand", op<Value>("cdr", register<Value>("temp"))),
+  test<Value>("null?", register<Value>("cand")),
+  branch<Value>("splice"),
+  assign<Value>("temp", op<Value>("cdr", register<Value>("temp"))),
+  gotoLabel<Value>("last-pair"),
   mark("splice"),
-  perform("set-cdr!", reg("temp"), reg("y")),
+  perform<Value>("set-cdr!", register<Value>("temp"), register<Value>("y")),
 ];
 
 /** Both exercise runs: append over planted x and y, then append! over a
@@ -85,17 +82,16 @@ export const appendRuns = (): string[] => {
   const memory = makeMemory(16);
   const x = plantList(memory, [1, 2, 3]);
   const y = plantList(memory, [4, 5]);
-  const machine = expectOk(
-    makeMachine(
-      ["x", "y", "z", "temp", "continue"],
-      { ...arithmeticOperations, ...listOperations(memory) },
-      appendController,
-    ),
-  );
-  expectOk(setRegisterContents(machine, "x", x));
-  expectOk(setRegisterContents(machine, "y", y));
-  expectOk(machine.start());
-  const z = expectOk(getRegisterContents(machine, "z"));
+  const machine = makeMachine<Value>({
+    registers: ["x", "y", "z", "temp", "continue"],
+    operations: listOperations(memory),
+    controller: appendController,
+  });
+  machine.writeRegister("x", x);
+  machine.writeRegister("y", y);
+  expectOk(machine.run());
+  const z = machine.readRegister("z");
+  if (z === undefined) throw new Error("append finished without a result");
   const appendLines = [
     `append: z = ${renderWord(z)} = ${write(memory, z)}`,
     `append: x is still ${write(memory, x)} (${renderWord(x)}), free moved to ` +
@@ -106,17 +102,16 @@ export const appendRuns = (): string[] => {
   const x2 = plantList(memory2, [1, 2, 3]);
   const y2 = plantList(memory2, [4, 5]);
   const before = dump(memory2);
-  const machine2 = expectOk(
-    makeMachine(
-      ["x", "y", "temp", "cand"],
-      { ...arithmeticOperations, ...listOperations(memory2) },
-      appendBangController,
-    ),
-  );
-  expectOk(setRegisterContents(machine2, "x", x2));
-  expectOk(setRegisterContents(machine2, "y", y2));
-  expectOk(machine2.start());
-  const xSpliced = expectOk(getRegisterContents(machine2, "x"));
+  const machine2 = makeMachine<Value>({
+    registers: ["x", "y", "temp", "cand"],
+    operations: listOperations(memory2),
+    controller: appendBangController,
+  });
+  machine2.writeRegister("x", x2);
+  machine2.writeRegister("y", y2);
+  expectOk(machine2.run());
+  const xSpliced = machine2.readRegister("x");
+  if (xSpliced === undefined) throw new Error("append! finished without its input pair");
   return [
     ...appendLines,
     "append!: before, the last pair of x points at e0:",
@@ -138,30 +133,31 @@ export const appendIdentity = (): {
   const memory = makeMemory(16);
   const x = plantList(memory, [1, 2, 3]);
   const y = plantList(memory, [4, 5]);
-  const appendMachine = expectOk(
-    makeMachine(
-      ["x", "y", "z", "temp", "continue"],
-      { ...arithmeticOperations, ...listOperations(memory) },
-      appendController,
-    ),
-  );
-  expectOk(setRegisterContents(appendMachine, "x", x));
-  expectOk(setRegisterContents(appendMachine, "y", y));
-  expectOk(appendMachine.start());
-  const copied = expectOk(getRegisterContents(appendMachine, "z"));
+  const appendMachine = makeMachine<Value>({
+    registers: ["x", "y", "z", "temp", "continue"],
+    operations: listOperations(memory),
+    controller: appendController,
+  });
+  appendMachine.writeRegister("x", x);
+  appendMachine.writeRegister("y", y);
+  expectOk(appendMachine.run());
+  const copied = appendMachine.readRegister("z");
 
   const memory2 = makeMemory(8);
   const x2 = plantList(memory2, [1, 2, 3]);
   const y2 = plantList(memory2, [4, 5]);
-  const appendBangMachine = expectOk(
-    makeMachine(["x", "y", "temp", "cand"], listOperations(memory2), appendBangController),
-  );
-  expectOk(setRegisterContents(appendBangMachine, "x", x2));
-  expectOk(setRegisterContents(appendBangMachine, "y", y2));
-  expectOk(appendBangMachine.start());
-  const spliced = expectOk(getRegisterContents(appendBangMachine, "x"));
+  const appendBangMachine = makeMachine<Value>({
+    registers: ["x", "y", "temp", "cand"],
+    operations: listOperations(memory2),
+    controller: appendBangController,
+  });
+  appendBangMachine.writeRegister("x", x2);
+  appendBangMachine.writeRegister("y", y2);
+  expectOk(appendBangMachine.run());
+  const spliced = appendBangMachine.readRegister("x");
   return {
-    appendCopies: !eqWords(copied, x) && write(memory, x) === "(1 2 3)",
-    appendBangShares: eqWords(spliced, x2) && write(memory2, x2) === "(1 2 3 4 5)",
+    appendCopies: copied !== undefined && !eqWords(copied, x) && write(memory, x) === "(1 2 3)",
+    appendBangShares:
+      spliced !== undefined && eqWords(spliced, x2) && write(memory2, x2) === "(1 2 3 4 5)",
   };
 };

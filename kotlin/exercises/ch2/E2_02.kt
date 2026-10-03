@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.2: consider the problem of representing line segments in a
  * plane. Each segment is represented as a pair of points: a starting point
@@ -27,4 +25,4 @@ public data class Point(
     val y: Double,
 )
 
-public fun ex_2_02(): Point = throw PendingSolution()
+public fun ex_2_02(): Point = throw PendingExercise()

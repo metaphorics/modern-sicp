@@ -1,68 +1,34 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, exercise 5.34: the iterative factorial's compilation. The
-// essential difference from the recursive version sits in `iter`'s
-// self-call: it is the last expression of the body, compiled with
-// target `val` and linkage `return`, so `compile-proc-appl` emits the
-// two-instruction direct transfer -- `(assign val (op compiled-
-// procedure-entry) (reg proc))` then `(goto (reg val))` -- with no save
-// of `continue` for the call. The measured depths at n = 3, 4, 5 are
-// equal: the iterative process runs in constant stack space.
+// Original exercise
+//
+// Chapter 5, exercise 5.34: compile the iterative factorial and
+// annotate its maximum stack depth. The annotation reads the compiled
+// code's own machine run -- the section's `Compiler.machine` seam -- so
+// every number is the compiled machine's stack output, and the depth's
+// behavior in n is the exercise's relation.
 
 package sicp.ch5.solutions
 
-import sicp.ch5.CompilerConfig
+import arrow.core.raise.either
+import sicp.guest.GuestError
 
-private val factorialIterSource: String =
-    """
-    (define (factorial n)
-      (define (iter product counter)
-        (if (> counter n)
-            product
-            (iter (* counter product)
-                  (+ counter 1))))
-      (iter 1 1))
-    """.trimIndent()
-
-/** The tail-call shape: a compiled-branch dispatch whose compiled path
- *  is the direct transfer with no `continue` assignment before it. A
- *  non-tail call sets `continue` to its after-call label on the line
- *  before the entry read, so only transfers without that predecessor
- *  count: the tail calls of `iter` and of `factorial`'s body. */
-private fun tailTransferCount(stmts: List<String>): Int {
-    var count = 0
-    for (i in 0 until stmts.size - 3) {
-        val entry = stmts[i]
-        val transfer = stmts[i + 1]
-        val label = stmts[i + 2]
-        val setup = stmts.getOrNull(i - 1) ?: ""
-        if (entry == "(assign val (op compiled-procedure-entry) (reg proc))" &&
-            transfer == "(goto (reg val))" &&
-            label.startsWith("primitive-branch") &&
-            !setup.startsWith("(assign continue (label ")
-        ) {
-            count += 1
+/** The compiled iterative factorial's stack annotation for the measured
+ *  n, with the relation the exercise concludes with. */
+public fun compiledFactorialAnnotation(): List<String> {
+    val ns = listOf(1, 2, 3, 4, 5, 6)
+    val rows =
+        ns.map { n ->
+            val machine = compiledMachine(measuredCall(iterativeFactorialSource, "factorial(${n}L)"))
+            val outcome = either<GuestError, Unit> { machine.run() }
+            outcome.fold({ error -> error("the compiled run faulted: ${error.category}") }, { })
+            "compiled iterative factorial n=$n: total-pushes = ${machine.stack.pushes} maximum-depth = ${machine.stack.maxDepth}"
         }
-    }
-    return count
-}
-
-/** The compilation's annotation and the measured depths: the direct
- *  transfers appear (the tail calls of `iter` and of `factorial`'s
- *  body), and the monitored session holds one maximum depth for every
- *  n. */
-public fun iterativeFactorialCompilation(): List<String> {
-    val cfg = CompilerConfig()
-    val stmts = compiledStatements(cfg, factorialIterSource)
     val depths =
-        listOf(3, 4, 5).map { n ->
-            lastStats(runCompiledMonitored(cfg, factorialIterSource, "(factorial $n)")).depth
+        ns.map { n ->
+            val machine = compiledMachine(measuredCall(iterativeFactorialSource, "factorial(${n}L)"))
+            val outcome = either<GuestError, Unit> { machine.run() }
+            outcome.fold({ error -> error("the compiled run faulted: ${error.category}") }, { })
+            machine.stack.maxDepth
         }
-    return listOf(
-        "direct tail transfers: ${tailTransferCount(stmts)}",
-        "saves in the whole compilation: ${stmts.count { it.startsWith("(save ") }}",
-        "depth at n = 3: ${depths[0]}",
-        "depth at n = 4: ${depths[1]}",
-        "depth at n = 5: ${depths[2]}",
-        "the depths are equal: ${depths[0] == depths[1] && depths[1] == depths[2]}",
-    )
+    return rows + "compiled maximum depth independent of n: ${depths.distinct().size == 1}"
 }

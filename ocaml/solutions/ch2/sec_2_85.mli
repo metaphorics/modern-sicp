@@ -74,7 +74,7 @@ val has_cycle : edge list -> bool
 (** [ex_2_85a ()] is [(acyclic_tower, self_coercion_cycle,
     three_step_cycle)]: the tower's chain of coercions has no cycle;
     Exercise 2.81's Louis Reasoner self-coercion
-    [("scheme-number", "scheme-number")] is a one-edge cycle, the
+    [("real", "real")] is a one-edge cycle, the
     exact graph shape behind that exercise's infinite recursion; and
     an [a -> b -> c -> a] chain is a three-edge cycle. *)
 val ex_2_85a : unit -> bool * bool * bool

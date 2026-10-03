@@ -1,32 +1,56 @@
 (* SPDX-License-Identifier: GPL-3.0-only *)
 
-(** The evaluator environment: a chain of mutable frames, newest first, as
-    in the plan's environment model. [Env.t] and [Value.env] are the same
-    type; the representation is owned by [Value] because compound
-    procedures capture it. *)
+(** The evaluator environment: a lexical chain of immutable bindings,
+    newest first, the environment model of SICP section 4.1.3.  Closures
+    capture it; mutation lives in references, never in the environment,
+    so every closure over one reference observes the same cell (grammar
+    section 5).
 
-(** An environment. The newest frame is searched first; [define] extends it
-    and [set] mutates the nearest enclosing binding. *)
+    A [let rec] group binds its names through fresh cells before its
+    right-hand sides run, so a recursive closure captures the whole
+    group exactly as grammar section 4 requires.  A cell read while the
+    group's right-hand sides are still running answers the value the
+    cell will hold: the statically constructive recursive values the
+    pinned compiler admits (grammar section 4), such as a closure whose
+    captured environment names the closure itself.
+
+    [Env.t] and [Value.env] are the same type; the representation is
+    owned by [Value] because closures capture it. *)
+
+(** An environment. *)
 type t = Value.env
 
-(** [empty ()] is the environment with one fresh global frame. *)
-val empty : unit -> t
+(** A cell of a recursive binding group; [fill] completes it. *)
+type cell = Value.t option ref
 
-(** [extend names values outer] is a new environment whose fresh frame
-    binds each name of [names] to the value at the same position of
-    [values], in front of [outer]. Returns [Error (Arity_mismatch ...)]
-    when the two lists differ in length. *)
-val extend : string list -> Value.t list -> t -> (t, Eval_error.t) result
+(** [empty] is the environment with no bindings. *)
+val empty : t
 
-(** [find_binding env name] is the value [name] is bound to in the nearest
-    frame of [env] that binds it, or [None] when no frame does. *)
-val find_binding : t -> string -> Value.t option
+(** [extend bindings env] is [env] with the newest frame of [bindings]
+    in front; a name in [bindings] shadows any outer binding. *)
+val extend : (string * Value.t) list -> t -> t
 
-(** [define env name value] binds [name] to [value] in the newest frame of
-    [env], shadowing any outer binding. *)
-val define : t -> string -> Value.t -> unit
+(** [bind name value env] is [extend [(name, value)] env]. *)
+val bind : string -> Value.t -> t -> t
 
-(** [set env name value] rebinds [name] to [value] in the nearest
-    enclosing frame that binds it, or returns [Error (Unbound_variable
-    name)] when no frame does. *)
-val set : t -> string -> Value.t -> (unit, Eval_error.t) result
+(** [extend_recursive names env] is the environment binding each name of
+    [names] to a fresh empty cell in front of [env], paired with those
+    cells in order. *)
+val extend_recursive : string list -> t -> t * cell list
+
+(** [fill cell value] completes the recursive binding [cell]. *)
+val fill : cell -> Value.t -> unit
+
+(** [find env name] is the value [name] is bound to in the nearest
+    binding of [env], or [None] when no binding does. *)
+val find : t -> string -> Value.t option
+
+(** [get_exn env name] is the value [name] is bound to, or raises
+    [Not_found] when no binding does. *)
+val get_exn : t -> string -> Value.t
+
+(** [find_at env n] is the binding at position [n] of [env], counting
+    from 0 at the newest, as its name and value; [None] when [n] is
+    negative or past the end, or when the binding is a recursive cell
+    not yet filled. *)
+val find_at : t -> int -> (string * Value.t) option

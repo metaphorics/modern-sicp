@@ -18,6 +18,6 @@ public class E4_18Test :
         test("Exercise 4.18: the alternative strategy reads the reserved name at initializer time").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            altStrategyTranscript() shouldBe "Error: type mismatch: dy is read before it is assigned\n"
+            altStrategyTranscript() shouldBe "UnassignedRead"
         }
     })

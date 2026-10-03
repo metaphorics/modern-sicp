@@ -29,5 +29,5 @@ mod ex_4_18 {
 fn ex_4_18() {
     let (text_strategy, alternative) = ex_4_18::ex_4_18().expect("solved");
     assert_eq!(text_strategy, "10");
-    assert!(alternative.contains("before its define runs"));
+    assert!(alternative.contains("definition"));
 }

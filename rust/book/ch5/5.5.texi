@@ -2,12 +2,12 @@
 @section Compilation
 
 The explicit-control evaluator of @ref{5.4} is a register machine whose
-controller interprets Scheme programs.  In this section we will see how to run
-Scheme programs on a register machine whose controller is not a Scheme
+controller interprets guest programs.  In this section we will see how to run
+guest programs on a register machine whose controller is not a guest
 interpreter.
 
 The explicit-control evaluator machine is universal---it can carry out any
-computational process that can be described in Scheme.  The evaluator's
+computational process that can be described in the guest language.  The evaluator's
 controller orchestrates the use of its data paths to perform the desired
 computation.  Thus, the evaluator's data paths are universal: They are
 sufficient to perform any computation we desire, given an appropriate
@@ -45,7 +45,7 @@ In this section, we explore the alternative strategy of @newterm{compilation}.
 A compiler for a given source language and machine translates a source program
 into an equivalent program (called the @newterm{object program}) written in the
 machine's native language.  The compiler that we implement in this section
-translates programs written in Scheme into sequences of instructions to be
+translates programs written in the guest language into sequences of instructions to be
 executed using the explicit-control evaluator machine's data
 paths.@footnote{Actually, the machine that runs compiled code can be simpler
 than the interpreter machine, because we won't use the @code{exp} and
@@ -66,7 +66,7 @@ modified.  In addition, because the entire library of primitives is present,
 new programs can be constructed and added to the system during debugging.
 
 In view of the complementary advantages of compilation and interpretation,
-modern program-development environments pursue a mixed strategy.  Lisp
+modern program-development environments pursue a mixed strategy.  Some
 interpreters are generally organized so that interpreted procedures and
 compiled procedures can call each other.  This enables a programmer to compile
 those parts of a program that are assumed to be debugged, thus gaining the
@@ -157,15 +157,25 @@ main goal in this section is to illustrate the compilation process in a
 simplified (but still interesting) context.
 
 In this edition the compiler is implemented by @code{ch05::sec_5_5}.
-Its @code{Seq} type keeps the register requirements, register changes,
-and controller statements together; the first two are used by
-@code{preserving_instruction_sequences} when it combines code.  The
-statements remain in the register-machine language of @ref{5.2}; the
-compiler that constructs and combines them is Rust.  The public
-@code{compile_program} entry reads the object-language source and returns
-one such sequence.  @code{Linkage} is an enum with @code{Next},
-@code{Return}, and @code{Lab} cases, and @code{Config} selects the
-compiler extensions explored in the exercises.
+Its @code{Seq} type keeps the needed registers, the modified registers,
+and the controller statements together; @code{Seq::empty},
+@code{Seq::new}, @code{Seq::append}, and @code{Seq::preserving} build and
+combine them, with the free @code{parallel_merge} for alternative
+branches.  The statements are typed @code{Instr} values in the
+register-machine language of @ref{5.2}; the compiler that constructs and
+combines them is Rust.  The public @code{compile_program} entry reads
+the checked program and returns a @code{CompiledProgram} holding the
+typed program (@code{sema}), the flat labeled stream (@code{instrs}),
+and the entry label (@code{entry}).  Control transfers are typed
+instructions too: @code{Instr::Bind} dispatches on patterns,
+@code{Instr::MakeClosure} builds closures,
+@code{PerformOp::CallFun} enters a labeled function,
+@code{PerformOp::CallValue} calls the closure in @code{val}, and
+@code{PerformOp::Return} returns.  The classic target and linkage
+analysis of this section is the design language; the listings below show
+that shape, while the machine runs the typed sequences.  The compiler
+extensions explored in the exercises are variants of these listings, not
+a runtime configuration.
 
 @menu
 * 5.5.1::            Structure of the Compiler
@@ -191,17 +201,16 @@ The compiler's @code{compile} function is the top-level dispatch.  It
 corresponds to the @code{eval} procedure of @ref{4.1.1}, the
 @code{analyze} procedure of @ref{4.1.7}, and the @code{eval-dispatch}
 entry point of the explicit-control evaluator in @ref{5.4.1}.  The
-Rust implementation applies syntax predicates and selectors to the
-reader's @code{Value} list structure, then dispatches to a specialized
+engine applies syntax predicates and selectors to the
+checked typed expression data, then dispatches to a specialized
 @newterm{code generator} for each expression type:
 
 @example rust
-let seq = compile_program(
-    &default_config(),
-    &new_state(),
-    "(if (= n 1) 1 (* (factorial (- n 1)) n))",
-    &Linkage::Return,
-)?;
+// The body of factorial, compiled for the val target with the
+// return linkage of the next subsection.
+let mut labels = Labels::new();
+let mut closures = Vec::new();
+let seq = compile_expr(&factorial_body, &mut labels, &mut closures);
 @end example
 
 @subsubheading Targets and linkages
@@ -262,17 +271,17 @@ compound expression is accomplished by combining the output from simpler code
 generators for component expressions, just as evaluation of a compound
 expression is accomplished by evaluating the component expressions.
 
-The simplest method for combining instruction sequences is a procedure called
-@code{append-instruction-sequences}.  It takes as arguments any number of
-instruction sequences that are to be executed sequentially; it appends them and
-returns the combined sequence.  That is, if @math{{⟨\kern0.1em seq_1⟩}} 
-and @math{{⟨\kern0.1em seq_2⟩}} are sequences of instructions, then 
-evaluating
+The simplest method for combining instruction sequences is
+@code{Seq::append}.  It takes two instruction sequences that are to be
+executed sequentially; it appends them and returns the combined sequence
+(longer chains nest one call per join).  That is, if
+@math{{⟨\kern0.1em seq_1⟩}} and @math{{⟨\kern0.1em seq_2⟩}} are sequences
+of instructions, then evaluating
 
 @example rust
-let seq1 = empty_instruction_sequence();
-let seq2 = empty_instruction_sequence();
-let combined = append_sequences(&[seq1, seq2]);
+let seq1 = Seq::empty();
+let seq2 = Seq::empty();
+let combined = seq1.append(seq2);
 @end example
 
 @noindent
@@ -285,73 +294,43 @@ produces the sequence
 
 @noindent
 Whenever registers might need to be saved, the compiler's code generators use
-@code{preserving}, which is a more subtle method for combining instruction
-sequences.  @code{Preserving} takes three arguments: a set of registers and two
-instruction sequences that are to be executed sequentially.  It appends the
-sequences in such a way that the contents of each register in the set is
-preserved over the execution of the first sequence, if this is needed for the
-execution of the second sequence.  That is, if the first sequence modifies the
-register and the second sequence actually needs the register's original
-contents, then @code{preserving} wraps a @code{save} and a @code{restore} of
-the register around the first sequence before appending the sequences.
-Otherwise, @code{preserving} simply returns the appended instruction sequences.
-Thus, for example,
-@code{(preserving (list ⟨@var{reg₁}⟩ ⟨@var{reg₂}⟩) ⟨@var{seg₁}⟩ ⟨@var{seg₂}⟩)}
-produces one of the following four sequences of instructions, depending on how
-@math{{⟨\kern0.1em seq_1⟩}} and @math{{⟨\kern0.1em seq_2⟩}} 
-use @math{{⟨\kern0.1em reg_1⟩}} and @math{{⟨\kern0.1em reg_2⟩}}:
-@displaymath
-\matrix{
-\hbox{⟨}\kern0.1em{seq_1}\hbox{⟩}                     &
-\hbox{(save}                            &
-\hbox{(save}                            &
-\hbox{(save} \kern1ex \hbox{⟨}\kern0.1em{reg_2}\hbox{⟩}\hbox{)}    \cr
-\hbox{⟨}\kern0.1em{seq_2}\hbox{⟩}  		        &
-\kern1ex \hbox{⟨}\kern0.1em{reg_1}\hbox{⟩}\hbox{)}    &
-\kern1ex \hbox{⟨}\kern0.1em{reg_2}\hbox{⟩}\hbox{)}    &
-\hbox{(save} \kern1ex \hbox{⟨}\kern0.1em{reg_1}\hbox{⟩}\hbox{)}    \cr
-                                        &
-\hbox{⟨}\kern0.1em{seq_1}\hbox{⟩}                     &
-\hbox{⟨}\kern0.1em{seq_1}\hbox{⟩}                     &
-\hbox{⟨}\kern0.1em{seq_1}\hbox{⟩}                                  \cr
-                                        &
-\hbox{(restore}                         &
-\hbox{(restore}                         &
-\hbox{(restore} \kern1ex \hbox{⟨}\kern0.1em{reg_1}\hbox{⟩}\hbox{)} \cr
-                                        &
-\kern1ex \hbox{⟨}\kern0.1em{reg_1}\hbox{⟩}\hbox{)}    &
-\kern1ex \hbox{⟨}\kern0.1em{reg_2}\hbox{⟩}\hbox{)}    &
-\hbox{(restore} \kern1ex \hbox{⟨}\kern0.1em{reg_2}\hbox{⟩}\hbox{)} \cr
-                                        &
-\hbox{⟨}\kern0.1em{seq_2}\hbox{⟩}                     &
-\hbox{⟨}\kern0.1em{seq_2}\hbox{⟩}                     &
-\hbox{⟨}\kern0.1em{seq_2}\hbox{⟩}
-}
-@end displaymath
-@ifinfo
+@code{Seq::preserving}, which is a more subtle method for combining instruction
+sequences.  @code{first.preserving(regs, second)} takes a list of registers and
+two instruction sequences that are to be executed sequentially.  It saves,
+before the first sequence runs, each listed register the first sequence needs
+and the second sequence modifies; runs both sequences; then restores each
+saved register.  A listed register the first sequence never reads, or the
+second never clobbers, needs no protection, so @code{preserving} emits no
+@code{save} or @code{restore} for it.  Thus, for example, preserving
+@code{env} and @code{continue} across two sequences produces the layout
 
-@smallexample
-<seq_1> | (save <reg_1>)    | (save <reg_2>)    | (save <reg_2>)
-<seq_2> | <seq_1>           | <seq_1>           | (save <reg_1>)
-        | (restore <reg_1>) | (restore <reg_2>) | <seq_1>
-        | <seq_2>           | <seq_2>           | (restore <reg_1>)
-        |                   |                   | (restore <reg_2>)
-        |                   |                   | <seq_2>
-@end smallexample
+@example
+⟨@emph{save each listed register needed by seq1 and modified by seq2}⟩
+⟨@var{seq₁}⟩
+⟨@var{seq₂}⟩
+⟨@emph{restore each saved register}⟩
+@end example
 
-@end ifinfo
+@noindent
+in Rust notation:
+
+@example rust
+let combined = seq1.preserving(&["env", "continue"], seq2);
+@end example
 
 @noindent
 By using @code{preserving} to combine instruction sequences the compiler avoids
 unnecessary stack operations.  This also isolates the details of whether or not
 to generate @code{save} and @code{restore} instructions within the
-@code{preserving} procedure, separating them from the concerns that arise in
-writing each of the individual code generators.  In fact no @code{save} or
-@code{restore} instructions are explicitly produced by the code generators.
+@code{Seq::preserving} method, separating them from the concerns that arise in
+writing each of the individual code generators.  Most @code{save} and
+@code{restore} instructions come from @code{preserving}; only a few
+operand-shuffling sequences (argument collection, indexing, ranges) emit
+their own.
 
 In principle, we could represent an instruction sequence simply as a list of
-instructions.  @code{Append-instruction-sequences} could then combine
-instruction sequences by performing an ordinary list @code{append}.  However,
+instructions.  @code{Seq::append} could then combine
+instruction sequences by concatenating the statement lists.  However,
 @code{preserving} would then be a complex operation, because it would have to
 analyze each instruction sequence to determine how the sequence uses its
 registers.  @code{Preserving} would be inefficient as well as complex, because
@@ -383,40 +362,40 @@ the actual instructions (also called @newterm{statements}) in the sequence.
 
 @end itemize
 
-@noindent
-We will represent an instruction sequence as a list of its three parts.  The
-constructor for instruction sequences is thus
+We represent an instruction sequence as the three-part @code{Seq} struct.
+The constructor for instruction sequences is thus @code{Seq::new}, taking
+the needed registers, the modified registers, and the statements:
 
 @example rust
-let seq = make_instruction_sequence(
-    &["env", "continue"],
-    &["val"],
-    vec!["(assign val (op lookup-variable-value) (const x) (reg env))".to_owned()],
-);
+let seq = Seq::new(&[], &["val"], vec![Instr::Assign(
+    "val".to_owned(),
+    Operand::Const(5),
+)]);
 @end example
 
 @noindent
-For example, the two-instruction sequence that looks up the value of the
-variable @code{x} in the current environment, assigns the result to @code{val},
-and then returns, requires registers @code{env} and @code{continue} to have
-been initialized, and modifies register @code{val}.  This sequence would
-therefore be constructed as
+For example, the classic return shape for the constant 5 is the
+two-instruction sequence that assigns 5 to @code{val} and then returns
+through @code{continue}.  It requires register @code{continue} to have
+been initialized, and modifies register @code{val}.  Rendered in the
+@code{Seq} type, that shape is constructed as
 
 @example rust
-let seq = make_instruction_sequence(
-    &["env", "continue"],
+let seq = Seq::new(
+    &["continue"],
     &["val"],
     vec![
-        "(assign val (op lookup-variable-value) (const x) (reg env))".to_owned(),
-        "(goto (reg continue))".to_owned(),
+        Instr::Assign("val".to_owned(), Operand::Const(5)),
+        Instr::Goto(Operand::Reg("continue".to_owned())),
     ],
+);
 @end example
 
 @noindent
 We sometimes need to construct an instruction sequence with no statements:
 
 @example rust
-let empty = empty_instruction_sequence();
+let empty = Seq::empty();
 @end example
 
 @noindent
@@ -429,13 +408,40 @@ application, the explicit-control evaluator always saves and restores the
 @code{env} register around the evaluation of the operator, saves and restores
 @code{env} around the evaluation of each operand (except the final one), saves
 and restores @code{argl} around the evaluation of each operand, and saves and
-restores @code{proc} around the evaluation of the operand sequence.  For each
-of the following combinations, say which of these @code{save} and
-@code{restore} operations are superfluous and thus could be eliminated by the
-compiler's @code{preserving} mechanism:
+restores @code{proc} around the evaluation of the operand sequence.  Compile
+each complete guest program below, inspect the emitted @code{Save} and
+@code{Restore} statements, and say which register values must survive each
+subexpression and which stack operations the liveness analysis can omit:
 
 @example rust
-let examples = ["(f 'x 'y)", "((f) 'x 'y)", "(f (g 'x) y)", "(f (g 'x) 'y)"];
+fn main() @{
+    let f = |x: i64, y: i64| x + y;
+    let x = 1;
+    let y = 2;
+    println!("@{@}", f(x, y));
+@}
+@end example
+
+@example rust
+fn twice(
+    f: Box<dyn Fn(i64) -> i64>,
+) -> Box<dyn Fn(i64) -> i64> @{
+    Box::new(move |x| f(f(x)))
+@}
+
+fn main() @{
+    let inc: Box<dyn Fn(i64) -> i64> = Box::new(|x| x + 1);
+    println!("@{@}", twice(inc)(5));
+@}
+@end example
+
+@example rust
+fn main() @{
+    let g = |x: i64| x * 2;
+    let f = |x: i64, y: i64| x + y;
+    let x = 1;
+    println!("@{@}", f(g(x), 2));
+@}
 @end example
 @end quotation
 
@@ -471,48 +477,58 @@ In this section and the next we implement the code generators to which the
 
 @subsubheading Compiling linkage code
 
-In general, each code generator ends with instructions from
+In the classic design, each code generator ends with instructions from
 @code{compile-linkage}.  A @code{return} linkage emits
 @code{(goto (reg continue))}, which needs @code{continue} but modifies
 no registers.  A @code{next} linkage emits no additional instruction.
 For a label linkage, the compiler emits a @code{goto} to that label,
-which needs or modifies no registers.  Rust's @code{Linkage} enum
-represents these choices, and @code{compile_linkage} returns a
-@code{Seq} whose @code{stmts} field contains controller instructions
-as text:
+which needs or modifies no registers.  Rendered in this edition's
+@code{Seq} type, those three classic shapes are:
 
 @example rust
-let branch = compile_linkage(&Linkage::Lab("branch25".to_owned()));
-assert_eq!(branch.stmts[0], "(goto (label branch25))");
+// Linkage `next`: nothing to emit, the sequence continues.
+let next = Seq::empty();
+// Linkage `return`: jump through the continue register.
+let ret = Seq::new(&["continue"], &[],
+    vec![Instr::Goto(Operand::Reg(String::from("continue")))]);
+// Linkage to a label.
+let branch = Seq::new(&[], &[],
+    vec![Instr::Goto(Operand::Label(String::from("branch25")))]);
 @end example
 
-The three linkages are available directly in the Rust API:
+@noindent
+The live machine has no @code{continue} register.  This edition's
+@code{compile_expr} always produces @code{val}, chains control flow
+with @code{Label}, @code{Goto}, and @code{Branch}, and returns with
+@code{PerformOp::Return}:
 
 @example rust
-let next = compile_linkage(&Linkage::Next);
-let ret = compile_linkage(&Linkage::Return);
-let branch = compile_linkage(&Linkage::Lab("branch25".to_owned()));
+let done = Seq::new(&[], &[], vec![Instr::Perform(
+    PerformOp::Return,
+    vec![],
+)]);
 @end example
 
-The linkage code is appended to an instruction sequence by @code{preserving}
-the @code{continue} register, since a @code{return} linkage will require the
-@code{continue} register: If the given instruction sequence modifies
-@code{continue} and the linkage code needs it, @code{continue} will be saved
-and restored.
-
-@example rust
-let seq = empty_instruction_sequence();
-let linked = end_with_linkage(&default_config(), &Linkage::Return, &seq);
-@end example
+@noindent
+The classic linkage join preserves @code{continue} across the join,
+saving it when the sequence modifies it and the linkage code needs it.
+That join is the classic use of the @code{preserving} combinator taught
+in @ref{5.5.1}.
 
 @subsubheading Compiling simple expressions
 
-The code generators for self-evaluating expressions, quotations, and variables
+The code generators for self-evaluating expressions and variables
 construct instruction sequences that assign the required value to the target
 register and then proceed as specified by the linkage descriptor.
 
 @example rust
-let seq = compile_program(&default_config(), &new_state(), "5", &Linkage::Next)?;
+let mut labels = Labels::new();
+let mut closures = Vec::new();
+let seq = compile_expr(
+    &checked_expr,
+    &mut labels,
+    &mut closures,
+);  @r{// the literal 5}
 @end example
 
 @noindent
@@ -532,10 +548,10 @@ compilation of a complex expression that might modify the registers in
 arbitrary ways.
 
 @example rust
-let seq = compile_program(
-    &default_config(), &new_state(),
-    "(set! x (+ x 1))", &Linkage::Next,
-)?;
+// x = x + 1: the assignment's code leaves its unit result in val.
+let mut labels = Labels::new();
+let mut closures = Vec::new();
+let seq = compile_expr(&assign_expr, &mut labels, &mut closures);
 @end example
 
 @noindent
@@ -580,8 +596,13 @@ example, successive calls to @code{(make-label 'a)} would return @code{a1},
 generation of unique variable names in the query language, as follows:
 
 @example rust
-let label_state = new_state();
-let sequence = compile_program(&default_config(), &label_state, "(if p x y)", &Linkage::Next)?;
+let mut labels = Labels::new();
+let mut closures = Vec::new();
+let sequence = compile_expr(
+    &checked_expr,
+    &mut labels,
+    &mut closures,
+);  @r{// if p then x else y}
 @end example
 } In this arrangement of code, we must branch around the true branch if the
 test is false.  The only slight complication is in how the linkage for the true
@@ -591,16 +612,22 @@ If the linkage is @code{next}, the true branch ends with a jump around the code
 for the false branch to the label at the end of the conditional.
 
 @example rust
-let seq = compile_program(&default_config(), &new_state(), "(if p x y)", &Linkage::Next)?;
+let mut labels = Labels::new();
+let mut closures = Vec::new();
+let seq = compile_expr(
+    &checked_expr,
+    &mut labels,
+    &mut closures,
+);  @r{// if p then x else y}
 @end example
 
 @noindent
 @code{Env} is preserved around the predicate code because it could be needed by
 the true and false branches, and @code{continue} is preserved because it could
-be needed by the linkage code in those branches.  The code for the true and
-false branches (which are not executed sequentially) is appended using a
-special combiner @code{parallel-instruction-sequences} described in 
-@ref{5.5.4}.
+be needed by the linkage code in those branches.  The true and false branches
+are laid out with @code{TestBool}, @code{Branch}, and @code{Goto} and chained
+with @code{append}; @code{parallel_merge} (@ref{5.5.4}) is the exported
+combiner for joining alternative branches' liveness.
 
 Note that @code{cond} is a derived expression, so all that the compiler needs
 to do handle it is to apply the @code{cond->if} transformer (from 
@@ -618,7 +645,13 @@ for the rest of the sequence) and @code{continue} (possibly needed for the
 linkage at the end of the sequence) are preserved.
 
 @example rust
-let seq = compile_program(&default_config(), &new_state(), "(begin (f x) (g y))", &Linkage::Return)?;
+let mut labels = Labels::new();
+let mut closures = Vec::new();
+let seq = compile_expr(
+    &checked_expr,
+    &mut labels,
+    &mut closures,
+);  @r{// the block f(x); g(y)}
 @end example
 
 @subsubheading Compiling @code{lambda} expressions
@@ -659,27 +692,38 @@ at the point of definition) with the entry point to the compiled procedure body
 (a newly generated label).@footnote{@anchor{Footnote 323} We need
 machine operations to implement a data structure for representing compiled
 procedures, analogous to the structure for compound procedures described in
-@ref{4.1.3}:
+@ref{4.1.3}.  This edition builds the procedure object with the typed
+@code{Instr::MakeClosure} instruction, which the VM runs into a
+@code{HostValue::Closure} value:
 
 @example rust
-let procedure = compiled_procedure_word(Value::sym("entry2"), Value::Nil);
-let (entry, environment) =
-    compiled_procedure_parts(&procedure).expect("compiled procedure word");
+let make = Instr::MakeClosure @{
+    kind: ClosureKind::Fn,
+    body: body_label.clone(),
+    params: vec![param_slot],
+    captures: Vec::new(),
+    bind_base: base,
+    frame_slots: slots,
+@};
 @end example
 }
 
 @example rust
-let seq = compile_program(&default_config(), &new_state(), "(lambda (x) (+ x 1))", &Linkage::Next)?;
+let mut labels = Labels::new();
+let mut closures = Vec::new();
+let seq = compile_expr(
+    &checked_expr,
+    &mut labels,
+    &mut closures,
+);  @r{// the closure |x| x + 1}
 @end example
 
 @noindent
-@code{Compile-lambda} uses the special combiner
-@code{tack-on-instruction-sequence} rather than
-@code{append-instruction-sequences} (@ref{5.5.4}) to append the procedure body to the
-@code{lambda} expression code, because the body is not part of the sequence of
-instructions that will be executed when the combined sequence is entered;
-rather, it is in the sequence only because that was a convenient place to put
-it.
+@code{Compile-lambda} hands the procedure body to the @code{closures}
+table rather than @code{Seq::append} (@ref{5.5.4}), because the body is
+not part of the sequence of instructions that will be executed when the
+combined sequence is entered; rather, @code{compile_program} emits it
+out of line after the main stream.
 
 @code{Compile-lambda-body} constructs the code for the body of the procedure.
 This code begins with a label for the entry point.  Next come instructions that
@@ -693,7 +737,13 @@ body.  The sequence is compiled with linkage @code{return} and target
 procedure result in @code{val}.
 
 @example rust
-let seq = compile_program(&default_config(), &new_state(), "(lambda (x) (+ x 1))", &Linkage::Next)?;
+let mut labels = Labels::new();
+let mut closures = Vec::new();
+let seq = compile_expr(
+    &checked_expr,
+    &mut labels,
+    &mut closures,
+);  @r{// the closure |x| x + 1}
 @end example
 
 @node	5.5.3, 5.5.4, 5.5.2, 5.5
@@ -734,7 +784,13 @@ modify @code{proc}, which will be needed for the actual procedure application).
 linkage in the procedure call.
 
 @example rust
-let seq = compile_program(&default_config(), &new_state(), "(f 84 96)", &Linkage::Next)?;
+let mut labels = Labels::new();
+let mut closures = Vec::new();
+let seq = compile_expr(
+    &checked_expr,
+    &mut labels,
+    &mut closures,
+);  @r{// the call f(84, 96)}
 @end example
 
 @noindent
@@ -757,32 +813,46 @@ argument-list construction is thus as follows:
 ⟨@emph{compilation of first operand, targeted to @code{val}}⟩
 (assign argl (op cons) (reg val) (reg argl))
 @end example
+That is the classic list-building shape; this edition instead saves each
+operand value on the stack and collects them with one @code{MakeVec}, as
+shown below.
 
 @noindent
-@code{Argl} must be preserved around each operand evaluation except the first
-(so that arguments accumulated so far won't be lost), and @code{env} must be
-preserved around each operand evaluation except the last (for use by subsequent
-operand evaluations).
+In the classic machine, @code{argl} must be preserved around each operand
+evaluation except the first (so that arguments accumulated so far won't be
+lost), and @code{env} must be preserved around each operand evaluation
+except the last (for use by subsequent operand evaluations).  This
+edition's stack discipline saves each operand value instead, so no such
+preserving is needed.
 
 Compiling this argument code is a bit tricky, because of the special treatment
 of the first operand to be evaluated and the need to preserve @code{argl} and
-@code{env} in different places.  The @code{construct-arglist} procedure takes
-as arguments the code that evaluates the individual operands.  If there are no
-operands at all, it simply emits the instruction
+@code{env} in different places.  The @code{compile_operands} helper takes
+the individual operand expressions.  It evaluates each operand into
+@code{val} and saves the value; one @code{MakeVec} then collects the
+saved values into @code{val}, which moves to @code{argl}.  If there are
+no operands at all, the collection still runs with a zero count:
 
 @example rust
-let seq = make_instruction_sequence(&[], &["argl"], vec!["(assign argl (const ()))".to_owned()]);
+let no_args = Seq::new(&[], &["val"], vec![Instr::Assign(
+    "val".to_owned(),
+    Operand::Op(PerformOp::MakeVec, vec![Operand::Const(0)]),
+)]);
 @end example
 
 @noindent
-Otherwise, @code{construct-arglist} creates code that initializes @code{argl}
-with the last argument, and appends code that evaluates the rest of the
-arguments and adjoins them to @code{argl} in succession.  To process
-the arguments from last to first, we must reverse the list of operand code
-sequences from the order supplied by @code{compile-application}.
+Otherwise, @code{compile_operands} evaluates the operands in source
+order, saving each value on the stack as it goes, so the final
+@code{MakeVec} collects them first to last.
 
 @example rust
-let seq = compile_program(&default_config(), &new_state(), "(f 84 96)", &Linkage::Next)?;
+let mut labels = Labels::new();
+let mut closures = Vec::new();
+let seq = compile_expr(
+    &checked_expr,
+    &mut labels,
+    &mut closures,
+);  @r{// the call f(84, 96)}
 @end example
 
 @subsubheading Applying procedures
@@ -820,13 +890,19 @@ the primitive branch.  (This is similar to the linkage used for the true branch
 in @code{compile-if}.)
 
 @example rust
-let seq = compile_program(&default_config(), &new_state(), "(f 84 96)", &Linkage::Next)?;
+let mut labels = Labels::new();
+let mut closures = Vec::new();
+let seq = compile_expr(
+    &checked_expr,
+    &mut labels,
+    &mut closures,
+);  @r{// the call f(84, 96)}
 @end example
 
 @noindent
 The primitive and compound branches, like the true and false branches in
-@code{compile-if}, are appended using @code{parallel-instruction-sequences}
-rather than the ordinary @code{append-instruction-sequences}, because they will
+@code{compile-if}, are joined with @code{parallel_merge}
+rather than the ordinary @code{Seq::append}, because they will
 not be executed sequentially.
 
 @subsubheading Applying compiled procedures
@@ -946,11 +1022,11 @@ and Pascal, do not do this, and therefore these languages cannot represent
 iterative processes in terms of procedure call alone.  The difficulty with tail
 recursion in these languages is that their implementations use the stack to
 store procedure arguments and local variables as well as return addresses.  The
-Scheme implementations described in this book store arguments and variables in
-memory to be garbage-collected.  The reason for using the stack for variables
+evaluator implementations described in this book store arguments and variables in
+an owned frame arena that lives for the whole run.  The reason for using the stack for variables
 and arguments is that it avoids the need for garbage collection in languages
 that would not otherwise require it, and is generally believed to be more
-efficient.  Sophisticated Lisp compilers can, in fact, use the stack for
+efficient.  Sophisticated compilers can, in fact, use the stack for
 arguments without destroying tail recursion.  (See @ref{Hanson 1990} for a
 description.)  There is also some debate about whether stack allocation is
 actually more efficient than garbage collection in the first place, but the
@@ -959,13 +1035,14 @@ and @ref{Miller and Rozas 1994} for opposing views on this issue.)}
 
 @code{Compile-proc-appl} generates the above procedure-application code by
 considering four cases, depending on whether the target for the call is
-@code{val} and whether the linkage is @code{return}.  Observe that the
-instruction sequences are declared to modify all the registers, since executing
-the procedure body can change the registers in arbitrary ways.@footnote{The
-variable @code{all-regs} is bound to the list of names of all the registers:
+@code{val} and whether the linkage is @code{return}.  Observe that the call
+sequence runs over the machine's whole register file, since executing the
+procedure body can change the registers in arbitrary ways.@footnote{The
+register file is the four names returned by @code{register_names}:
 
 @example rust
-let primitives = open_coded_primitives();
+let all_regs = register_names();
+// => ["val", "tmp", "argl", "flag"]
 @end example
 }
 Also note that the code sequence for the case with target @code{val} and
@@ -975,7 +1052,13 @@ be sure that @code{continue} will have the correct value when we enter the
 compiled procedure.
 
 @example rust
-let seq = compile_program(&default_config(), &new_state(), "(f 84 96)", &Linkage::Return)?;
+let mut labels = Labels::new();
+let mut closures = Vec::new();
+let seq = compile_expr(
+    &checked_expr,
+    &mut labels,
+    &mut closures,
+);  @r{// the call f(84, 96)}
 @end example
 
 @node	5.5.4, 5.5.5, 5.5.3, 5.5
@@ -990,7 +1073,13 @@ So to determine the registers needed and modified by instruction sequences we
 use the selectors
 
 @example rust
-let seq = compile_program(&default_config(), &new_state(), "(f x)", &Linkage::Next)?;
+let mut labels = Labels::new();
+let mut closures = Vec::new();
+let seq = compile_expr(
+    &checked_expr,
+    &mut labels,
+    &mut closures,
+);  @r{// "(f x)"}
 let needs = &seq.needs;
 let modifies = &seq.modifies;
 let statements = &seq.stmts;
@@ -1001,7 +1090,13 @@ and to determine whether a given
 sequence needs or modifies a given register we use the predicates
 
 @example rust
-let seq = compile_program(&default_config(), &new_state(), "(f x)", &Linkage::Next)?;
+let mut labels = Labels::new();
+let mut closures = Vec::new();
+let seq = compile_expr(
+    &checked_expr,
+    &mut labels,
+    &mut closures,
+);  @r{// "(f x)"}
 let needs_register = seq.needs.iter().any(|name| name == "env");
 let modifies_register = seq.modifies.iter().any(|name| name == "val");
 @end example
@@ -1010,101 +1105,67 @@ let modifies_register = seq.modifies.iter().any(|name| name == "val");
 In terms of these predicates and selectors, we can implement the various
 instruction sequence combiners used throughout the compiler.
 
-The basic combiner is @code{append-instruction-sequences}.  This takes as
-arguments an arbitrary number of instruction sequences that are to be executed
-sequentially and returns an instruction sequence whose statements are the
-statements of all the sequences appended together.  The subtle point is to
-determine the registers that are needed and modified by the resulting sequence.
-It modifies those registers that are modified by any of the sequences; it needs
-those registers that must be initialized before the first sequence can be run
-(the registers needed by the first sequence), together with those registers
-needed by any of the other sequences that are not initialized (modified) by
-sequences preceding it.
-
-The sequences are appended two at a time by @code{append-2-sequences}.  This
-takes two instruction sequences @code{seq1} and @code{seq2} and returns the
-instruction sequence whose statements are the statements of @code{seq1}
-followed by the statements of @code{seq2}, whose modified registers are those
-registers that are modified by either @code{seq1} or @code{seq2}, and whose
-needed registers are the registers needed by @code{seq1} together with those
-registers needed by @code{seq2} that are not modified by @code{seq1}.  (In
-terms of set operations, the new set of needed registers is the union of the
-set of registers needed by @code{seq1} with the set difference of the registers
-needed by @code{seq2} and the registers modified by @code{seq1}.)  Thus,
-@code{append-instruction-sequences} is implemented as follows:
+The basic combiner is the @code{Seq::append} method.  This takes two
+instruction sequences that are to be executed sequentially and returns an
+instruction sequence whose statements are the statements of both
+sequences appended together (longer chains nest one call per join).
+The combined sequence needs the registers needed by either sequence and
+modifies the registers modified by either:
 
 @example rust
-let seq1 = empty_instruction_sequence();
-let seq2 = empty_instruction_sequence();
-let combined = append_2_sequences(&seq1, &seq2);
+let seq1 = Seq::empty();
+let seq2 = Seq::empty();
+let combined = seq1.append(seq2);
 @end example
 
 @noindent
-This procedure uses some simple operations for manipulating sets represented as
-lists, similar to the (unordered) set representation described in 
-@ref{2.3.3}:
+The register sets are ordered @code{BTreeSet<String>} values joined by
+union, as with the set operations of @ref{2.3.3}.
+
+@noindent
+@code{Seq::preserving}, the second major instruction sequence combiner,
+takes a list of registers and two instruction sequences to execute in
+order.  @code{first.preserving(regs, second)} emits a @code{save} of
+each listed register the first sequence needs and the second modifies,
+then the statements of both sequences, then the matching
+@code{restore}s:@footnote{Note that @code{Seq::append} takes exactly two
+sequences; longer chains nest, as in the
+@code{saves.append(self).append(body).append(restores)} inside
+@code{preserving} itself.}
 
 @example rust
-let seq1 = empty_instruction_sequence();
-let seq2 = empty_instruction_sequence();
-let combined = append_sequences(&[seq1, seq2]);
+let seq1 = Seq::empty();
+let seq2 = Seq::empty();
+let combined = seq1.preserving(&["env", "continue"], seq2);
 @end example
 
 @noindent
-@code{Preserving}, the second major instruction sequence combiner, takes a list
-of registers @code{regs} and two instruction sequences @code{seq1} and
-@code{seq2} that are to be executed sequentially.  It returns an instruction
-sequence whose statements are the statements of @code{seq1} followed by the
-statements of @code{seq2}, with appropriate @code{save} and @code{restore}
-instructions around @code{seq1} to protect the registers in @code{regs} that
-are modified by @code{seq1} but needed by @code{seq2}.  To accomplish this,
-@code{preserving} first creates a sequence that has the required @code{save}s
-followed by the statements of @code{seq1} followed by the required
-@code{restore}s.  This sequence needs the registers being saved and restored in
-addition to the registers needed by @code{seq1}, and modifies the registers
-modified by @code{seq1} except for the ones being saved and restored.  This
-augmented sequence and @code{seq2} are then appended in the usual way.  The
-following procedure implements this strategy recursively, walking down the list
-of registers to be preserved:@footnote{Note that @code{preserving} calls
-@code{append} with three arguments.  Though the definition of @code{append}
-shown in this book accepts only two arguments, Scheme standardly provides an
-@code{append} procedure that takes an arbitrary number of arguments.}
+Procedure bodies travel out of line, not tacked on, in this edition:
+@code{compile-lambda} compiles the body with @code{compile_block} and
+pushes it onto the @code{closures} table, which @code{compile_program}
+emits after the main stream with each body closed by
+@code{PerformOp::Return}.  Because the body is not in line to be
+executed as part of the combined sequence, its register use never
+merges into the enclosing sequence's needed and modified sets:
 
 @example rust
-let seq1 = empty_instruction_sequence();
-let seq2 = empty_instruction_sequence();
-let combined = preserving_instruction_sequences(
-    &default_config(), &["env", "continue"], &seq1, &seq2,
-);
+closures.push((body_label.clone(), body_seq));
 @end example
 
 @noindent
-Another sequence combiner, @code{tack-on-instruction-sequence}, is used by
-@code{compile-lambda} to append a procedure body to another sequence.  Because
-the procedure body is not ``in line'' to be executed as part of the combined
-sequence, its register use has no impact on the register use of the sequence in
-which it is embedded.  We thus ignore the procedure body's sets of needed and
-modified registers when we tack it onto the other sequence.
+Alternative branches that follow a test never run sequentially; for any
+particular evaluation of the test, one branch or the other is entered.
+The exported @code{parallel_merge} combiner unions the liveness of two
+such branches: the merged sequence needs the registers needed by either
+branch and modifies the registers modified by either.  This edition's
+@code{if} lays its branches out with @code{TestBool}, @code{Branch},
+and @code{Goto} and chains them with @code{append}; @code{parallel_merge}
+is the exported combiner for joining alternative branches' liveness:
 
 @example rust
-let seq = empty_instruction_sequence();
-let body_seq = empty_instruction_sequence();
-let combined = tack_on_instruction_sequence(&seq, &body_seq);
-@end example
-
-@noindent
-@code{Compile-if} and @code{compile-procedure-call} use a special combiner
-called @code{parallel-instruction-sequences} to append the two alternative
-branches that follow a test.  The two branches will never be executed
-sequentially; for any particular evaluation of the test, one branch or the
-other will be entered.  Because of this, the registers needed by the second
-branch are still needed by the combined sequence, even if these are modified by
-the first branch.
-
-@example rust
-let then_seq = empty_instruction_sequence();
-let else_seq = empty_instruction_sequence();
-let branches = parallel_instruction_sequences(&then_seq, &else_seq);
+let then_seq = Seq::empty();
+let else_seq = Seq::empty();
+let branches = parallel_merge(&then_seq, &else_seq);
 @end example
 
 @node	5.5.5, 5.5.6, 5.5.4, 5.5
@@ -1112,14 +1173,20 @@ let branches = parallel_instruction_sequences(&then_seq, &else_seq);
 
 Now that we have seen all the elements of the compiler, let us examine an
 example of compiled code to see how things fit together.  We will compile the
-definition of a recursive @code{factorial} procedure by calling @code{compile}:
+definition of a recursive @code{factorial} procedure by calling
+@code{compile_program}:
 
 @example rust
-let seq = compile_program(
-    &default_config(), &new_state(),
-    "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))",
-    &Linkage::Next,
-)?;
+// The definition of factorial, admitted and compiled as one
+// top-level function; the program's functions compile in order.
+let factorial_source = concat!(
+    "fn factorial(n: i64) -> i64 @{ ",
+    "if n == 1 @{ 1 @} else @{ factorial(n - 1) * n @} @}",
+);
+let program = admit(factorial_source)?;
+let compiled = compile_program(&program);
+// compiled.entry is the "fun@{id@}" entry label;
+// compiled.instrs is the flat labeled stream.
 @end example
 
 @noindent
@@ -1192,7 +1259,14 @@ sequence with target @code{val} and linkage @code{return}.  The sequence in
 this case consists of a single @code{if} expression:
 
 @example rust
-let seq = compile_program(&default_config(), &new_state(), "(if (= n 1) 1 (* (factorial (- n 1)) n))", &Linkage::Return)?;
+let mut labels = Labels::new();
+let mut closures = Vec::new();
+@r{// "(if (= n 1) 1 (* (factorial (- n 1)) n))"}
+let seq = compile_expr(
+    &checked_expr,
+    &mut labels,
+    &mut closures,
+);
 @end example
 
 @noindent
@@ -1273,15 +1347,21 @@ The code for the false branch is another procedure call, where the procedure
 is the value of the symbol @code{*}, and the arguments are @code{n} and the
 result of another procedure call (a call to @code{factorial}).  Each of these
 calls sets up @code{proc} and @code{argl} and its own primitive and compound
-branches.  @ref{Figure 5.17} shows the complete compilation of the definition
-of the @code{factorial} procedure.  Notice that the possible @code{save} and
-@code{restore} of @code{continue} and @code{env} around the predicate, shown
-above, are in fact generated, because these registers are modified by the
-procedure call in the predicate and needed for the procedure call and the
-@code{return} linkage in the branches.
+branches.  @ref{Figure 5.17} shows, in the classic register-machine
+notation, the complete compilation of the definition of the
+@code{factorial} procedure: the same shape the typed
+@code{CompiledProgram.instrs} carries, with @code{MakeClosure} building
+the procedure, @code{Perform(CallFun, …)} and
+@code{Perform(CallValue, …)} applying it, and
+@code{Perform(Return, …)} returning.  Notice that the possible
+@code{save} and @code{restore} of @code{continue} and @code{env} around
+the predicate, shown above, are in fact generated, because these
+registers are modified by the procedure call in the predicate and
+needed for the procedure call and the @code{return} linkage in the
+branches.
 
 @quotation
-@strong{@anchor{Figure 5.17}Figure 5.17:} @math{\downarrow} Compilation of the definition of the @code{factorial} procedure.
+@strong{@anchor{Figure 5.17}Figure 5.17:} @math{\downarrow} Compilation of the definition of the @code{factorial} procedure, in the classic notation.
 
 @example
 @r{;; construct the procedure and skip over code}
@@ -1358,7 +1438,8 @@ false-branch4
           (const factorial) 
           (reg env))
   (save proc)  @r{; save @code{factorial} procedure}
-@r{;; compute @code{(- n 1)}, which is the argument for @code{factorial}}
+  @r{;; compute @code{(- n 1)},}
+  @r{;; which is the argument for @code{factorial}}
   (assign proc 
           (op lookup-variable-value)
           (const -) 
@@ -1440,8 +1521,12 @@ after-lambda1
 of a factorial procedure, which is slightly different from the one given above:
 
 @example rust
-let source = "(define (factorial-alt n) (if (= n 1) 1 (* n (factorial-alt (- n 1)))))";
-let seq = compile_program(&default_config(), &new_state(), source, &Linkage::Next)?;
+let source = concat!(
+    "fn factorial_alt(n: i64) -> i64 @{ ",
+    "if n == 1 @{ 1 @} else @{ n * factorial_alt(n - 1) @} @}",
+);
+let program = admit(source)?;
+let compiled = compile_program(&program);
 @end example
 
 Compile this procedure and compare the resulting code with that produced for
@@ -1454,8 +1539,10 @@ execute more efficiently than the other?
 procedure
 
 @example rust
-let source = "(define (factorial n) (define (iter product counter) (if (> counter n) product (iter (* counter product) (+ counter 1)))) (iter 1 1))";
-let seq = compile_program(&default_config(), &new_state(), source, &Linkage::Next)?;
+let source =
+    "fn factorial(n: i64) -> i64 @{ factorial_iter(1, 1, n) @}";
+let program = admit(source)?;
+let compiled = compile_program(&program);
 @end example
 
 Annotate the resulting code, showing the essential difference between the code
@@ -1469,7 +1556,7 @@ produce the code shown in @ref{Figure 5.18}?
 @end quotation
 
 @quotation
-@strong{@anchor{Figure 5.18}Figure 5.18:} @math{\downarrow} An example of compiler output.  See
+@strong{@anchor{Figure 5.18}Figure 5.18:} @math{\downarrow} An example of compiler output in the classic notation; the typed stream carries the same shape as @code{Instr} values.  See
 @ref{Exercise 5.35}.
 
 @example
@@ -1686,7 +1773,16 @@ the value of @code{x} while evaluating the expression @code{(* x y z)} in an
 application of the procedure that is returned by
 
 @example rust
-let cenv = vec![vec!["a".into(), "b".into(), "c".into(), "d".into(), "e".into()], vec!["x".into(), "y".into()]];
+let cenv = vec![
+    vec![
+        "a".into(),
+        "b".into(),
+        "c".into(),
+        "d".into(),
+        "e".into(),
+    ],
+    vec!["x".into(), "y".into()],
+];
 let x = find_variable("x", &cenv);
 let y = find_variable("y", &cenv);
 @end example
@@ -1695,9 +1791,15 @@ let y = find_variable("y", &cenv);
 Since a @code{let} expression is just syntactic sugar for a @code{lambda}
 combination, this expression is equivalent to
 
-@example rust
-let source = "((lambda (x y) (lambda (a b c d e) ((lambda (y z) (* x y z)) (* a b x) (+ c d x)))) 3 4)";
-let seq = compile_program(&default_config(), &new_state(), source, &Linkage::Next)?;
+@example
+// The nested-closure example in the object notation of 4.1.2:
+// three scopes whose names shadow one another, so the variable
+// lookups exercise the frame structure.
+Call(Lambda([x, y],
+      Lambda([a, b, c, d, e],
+        Call(Lambda([y, z], x * y * z),
+             [a * b * x, c + d + x]))),
+    [3, 4])
 @end example
 
 @noindent
@@ -1738,7 +1840,17 @@ expression @code{⟨}@var{e2}@code{⟩}, @code{x} is at (1, 0), @code{y} is at (
 is at (0, 2).
 
 @example rust
-let cenv = vec![vec!["y".into(), "z".into()], vec!["a".into(), "b".into(), "c".into(), "d".into(), "e".into()], vec!["x".into(), "y".into()]];
+let cenv = vec![
+    vec!["y".into(), "z".into()],
+    vec![
+        "a".into(),
+        "b".into(),
+        "c".into(),
+        "d".into(),
+        "e".into(),
+    ],
+    vec!["x".into(), "y".into()],
+];
 let x = find_variable("x", &cenv);
 let y = find_variable("y", &cenv);
 let c = find_variable("c", &cenv);
@@ -1796,7 +1908,17 @@ the compile-time environment during the compilation of expression @code{⟨}@var
 @code{((y z) (a b c d e) (x y))}.  @code{Find-variable} should produce
 
 @example rust
-let cenv = vec![vec!["y".into(), "z".into()], vec!["a".into(), "b".into(), "c".into(), "d".into(), "e".into()], vec!["x".into(), "y".into()]];
+let cenv = vec![
+    vec!["y".into(), "z".into()],
+    vec![
+        "a".into(),
+        "b".into(),
+        "c".into(),
+        "d".into(),
+        "e".into(),
+    ],
+    vec!["x".into(), "y".into()],
+];
 let c_address = find_variable("c", &cenv);
 @end example
 @end quotation
@@ -1847,8 +1969,11 @@ mechanism described in @ref{Exercise 5.38} would still open-code it as a
 primitive, ignoring the new binding.  For example, consider the procedure
 
 @example rust
-let cfg = Config @{ open_code: true, ..default_config() @};
-let seq = compile_program(&cfg, &new_state(), "(lambda (+ * a b x y) (+ (* a x) (* b y)))", &Linkage::Next)?;
+// The open-coded form of a*x + b*y, emitted by the exercise's
+// extension over the checked expression.
+let mut labels = Labels::new();
+let mut closures = Vec::new();
+let seq = compile_expr(&sum_expr, &mut labels, &mut closures);
 @end example
 
 @noindent
@@ -1868,19 +1993,24 @@ procedures.  (The code will work correctly as long as the program does not
 We have not yet explained how to load compiled code into the evaluator machine
 or how to run it.  We will assume that the explicit-control-evaluator machine
 has been defined as in @ref{5.4.4}, with the additional operations
-specified in @ref{Footnote 323}.  We will implement a procedure
-@code{compile-and-go} that compiles a Scheme expression, loads the resulting
-object code into the evaluator machine, and causes the machine to run the code
-in the evaluator global environment, print the result, and enter the
-evaluator's driver loop.  We will also modify the evaluator so that interpreted
+specified in @ref{Footnote 323}.  This edition's entry point is
+@code{compiled_run}: it admits a guest program, compiles it, and runs the
+resulting instruction sequences on the compiled machine, which prints the
+program's output.  We will also modify the evaluator so that interpreted
 expressions can call compiled procedures as well as interpreted ones.  We can
 then put a compiled procedure into the machine and use the evaluator to call
 it:
 
 @example rust
-let mut evaluator = compile_and_go(&default_config(), &new_state(),
-    "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))", "(factorial 5)")?;
-evaluator.run()?;
+// compiled_run: admit the guest factorial, compile it, and run
+// it on the compiled path.
+let factorial_source = concat!(
+    "fn factorial(n: i64) -> i64 @{ ",
+    "if n == 1 @{ 1 @} else @{ factorial(n - 1) * n @} @}\n",
+    "fn main() @{ println!(\"@{@}\", factorial(5)); @}",
+);
+let program = admit(factorial_source)?;
+let outcome = compiled_run(&program)?;
 @end example
 
 @noindent
@@ -1928,13 +2058,10 @@ machine.  To start the machine at its ordinary read-eval-print loop, we could
 use
 
 @example rust
-let mut evaluator = compile_and_go(
-    &default_config(),
-    &new_state(),
-    "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))",
-    "(factorial 5)",
-)?;
-evaluator.run()?;
+// compile-and-run: the same compiled entry reached from inside
+// the evaluator machine (exercise 5.48), on the source above.
+let program = admit(factorial_source)?;
+let outcome = compiled_run(&program)?;
 @end example
 }
 
@@ -1953,14 +2080,17 @@ containing the location of an instruction sequence that puts a result into
 point jumps to the location designated by @code{val}, but first assigns
 @code{continue} so that execution will return to @code{print-result}, which
 prints the value in @code{val} and then goes to the beginning of the
-evaluator's read-eval-print loop.  Rust renders compiled procedure words
-without exposing their entry and environment, using
-@code{render_compiled_word}:
+evaluator's read-eval-print loop.
 
-@example rust
-let procedure = compiled_procedure_word(Value::sym("entry2"), Value::Nil);
-let displayed = render_compiled_word(&procedure);
-@end example
+@noindent
+The compiled procedure value (@code{HostValue::FnPtr} for top-level
+functions, @code{HostValue::Closure} for closures built by
+@code{Instr::MakeClosure}) carries the entry label and the environment
+the procedure closes over; the machine's call path
+(@code{PerformOp::CallFun} over a @code{fun@{id@}} label,
+@code{PerformOp::CallValue} over the closure in @code{val}) reads that
+entry.
+
 
 @example
 external-entry
@@ -1975,21 +2105,25 @@ Now we can use the following procedure to compile a procedure definition,
 execute the compiled code, and run the read-eval-print loop so we can try the
 procedure.  Because we want the compiled code to return to the location in
 @code{continue} with its result in @code{val}, we compile the expression with a
-target of @code{val} and a linkage of @code{return}.  To transform the
-object code produced by the compiler into executable instructions for the
-evaluator register machine, we use the procedure @code{assemble} from the
-register-machine simulator (@ref{5.2.2}).  We then initialize the
+target of @code{val} and a linkage of @code{return}.  To run the
+object code produced by the compiler on the evaluator register machine, this
+edition uses @code{compiled_run}, which executes the compiled sequences over
+the same leaf semantics the simulator uses (@ref{5.2.2}).  We then initialize the
 @code{val} register to point to the list of instructions, set the @code{flag}
 so that the evaluator will go to @code{external-entry}, and start the
 evaluator.
 
 @example rust
-let compiled_source =
-    "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))";
-let object_program = "(factorial 5)";
-let mut evaluator =
-    compile_and_go(&default_config(), &new_state(), compiled_source, object_program)?;
-evaluator.run()?;
+// compiled_run: admit the guest factorial and its main, then run
+// the compiled path.
+let compiled_source = concat!(
+    "fn factorial(n: i64) -> i64 @{ ",
+    "if n == 1 @{ 1 @} else @{ factorial(n - 1) * n @} @}\n",
+    "fn main() @{ println!(\"@{@}\", factorial(5)); @}",
+);
+let program = admit(compiled_source)?;
+let outcome = compiled_run(&program)?;
+// => 120
 @end example
 
 @noindent
@@ -1997,17 +2131,18 @@ If we have set up stack monitoring, as at the end of @ref{5.4.4}, we
 can examine the stack usage of compiled code:
 
 @example rust
-let mut evaluator = compile_and_go(&default_config(), &new_state(),
-    "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))", "(factorial 5)")?;
-evaluator.run()?;
-let transcript = evaluator.transcript();
+let (outcome, stats) = compiled_run_counted(&program);
+let transcript = &outcome.stdout;
+@r{…} // stats: the monitored machine's push count and depth
 @end example
 
 @noindent
-Compare this example with the evaluation of @code{(factorial 5)} using the
-interpreted version of the same procedure, shown at the end of 
-@ref{5.4.4}.  The interpreted version required 144 pushes and a maximum stack
-depth of 28.  This illustrates the optimization that results from our
+Compare this example with the evaluation of the same procedure by the
+interpreted machine of @ref{5.4.4}.  The interpreted version spends pushes on
+every call and a depth proportional to the recursion, while the compiled
+version needs fewer pushes and a shallower maximum depth; exercises
+@ref{Exercise 5.45} and @ref{Exercise 5.46} measure both on this edition's
+machines.  This illustrates the optimization that results from our
 compilation strategy.
 
 @subsubheading Interpretation and compilation
@@ -2017,7 +2152,7 @@ execution strategies of interpretation and compilation.@footnote{We can do even
 better by extending the compiler to allow compiled code to call interpreted
 procedures.  See @ref{Exercise 5.47}.}  An interpreter raises the machine to
 the level of the user program; a compiler lowers the user program to the level
-of the machine language.  We can regard the Scheme language (or any programming
+of the machine language.  We can regard the guest language (or any programming
 language) as a coherent family of abstractions erected on the machine language.
 Interpreters are good for interactive program development and debugging because
 the steps of program execution are organized in terms of these abstractions,
@@ -2048,26 +2183,26 @@ check whether the input buffer has overflowed in the finger daemon. (See
 
 The alternatives of interpretation and compilation also lead to different
 strategies for porting languages to new computers. Suppose that we wish to
-implement Lisp for a new machine.  One strategy is to begin with the
+implement the guest language for a new machine.  One strategy is to begin with the
 explicit-control evaluator of @ref{5.4} and translate its instructions
 to instructions for the new machine.  A different strategy is to begin with the
 compiler and change the code generators so that they generate code for the new
-machine.  The second strategy allows us to run any Lisp program on the new
-machine by first compiling it with the compiler running on our original Lisp
+machine.  The second strategy allows us to run any guest program on the new
+machine by first compiling it with the compiler running on our current
 system, and linking it with a compiled version of the run-time
 library.@footnote{Of course, with either the interpretation or the compilation
 strategy we must also implement for the new machine storage allocation, input
 and output, and all the various operations that we took as ``primitive'' in our
 discussion of the evaluator and compiler.  One strategy for minimizing work
-here is to write as many of these operations as possible in Lisp and then
-compile them for the new machine.  Ultimately, everything reduces to a small
+here is to write as many of these operations as possible in the guest
+language and then compile them for the new machine.  Ultimately, everything reduces to a small
 kernel (such as garbage collection and the mechanism for applying actual
 machine primitives) that is hand-coded for the new machine.} Better yet, we can
 compile the compiler itself, and run this on the new machine to compile other
-Lisp programs.@footnote{This strategy leads to amusing tests of correctness of
+guest programs.@footnote{This strategy leads to amusing tests of correctness of
 the compiler, such as checking whether the compilation of a program on the new
 machine, using the compiled compiler, is identical with the compilation of the
-program on the original Lisp system.  Tracking down the source of differences
+program on the original system.  Tracking down the source of differences
 is fun but often frustrating, because the results are extremely sensitive to
 minuscule details.}  Or we can compile one of the interpreters of 
 @ref{4.1} to produce an interpreter that runs on the new machine.
@@ -2117,8 +2252,12 @@ one in @ref{Exercise 5.45} to determine the effectiveness of compiling the
 tree-recursive Fibonacci procedure
 
 @example rust
-let source = "(define (fib n) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2)))))";
-let seq = compile_program(&default_config(), &new_state(), source, &Linkage::Next)?;
+let source = concat!(
+    "fn fib(n: i64) -> i64 @{ ",
+    "if n < 2 @{ n @} else @{ fib(n - 1) + fib(n - 2) @} @}",
+);
+let program = admit(source)?;
+let compiled = compile_program(&program);
 @end example
 
 @noindent
@@ -2153,25 +2292,32 @@ read-eval-print-loop @r{…}
 @end example
 
 To test your code, start by defining a procedure @code{f} that calls a
-procedure @code{g}.  Use @code{compile-and-go} to compile the definition of
+procedure @code{g}.  Use @code{compiled_run} to compile the definition of
 @code{f} and start the evaluator.  Now, typing at the evaluator, define
 @code{g} and try to call @code{f}.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 5.48}Exercise 5.48:} The @code{compile-and-go}
+@strong{@anchor{Exercise 5.48}Exercise 5.48:} The @code{compiled_run}
 interface implemented in this section is awkward, since the compiler can be
 called only once (when the evaluator machine is started).  Augment the
 compiler-interpreter interface by providing a @code{compile-and-run} primitive
 that can be called from within the explicit-control evaluator as follows:
 
-In Rust, @code{compile_block} compiles a source expression into a
-separately loadable controller block; making that block callable from the
-object-language evaluator is the exercise:
+In Rust, @code{compile_block} compiles a checked block into a sequence,
+tabling closure bodies in its third argument; making that sequence
+callable from the object-language evaluator is the exercise:
 
 @example rust
-let (entry, block) =
-    compile_block(&default_config(), &new_state(), "(+ 1 2)")?;
+// A checked block compiled into
+// a separately loadable sequence.
+let mut closures = Vec::new();
+let seq =
+    compile_block(
+        &checked_block,
+        &mut Labels::new(),
+        &mut closures,
+    );
 @end example
 @end quotation
 
@@ -2187,35 +2333,51 @@ setup, since we can arrange to call the procedures @code{compile} and
 
 @quotation
 @strong{@anchor{Exercise 5.50}Exercise 5.50:} Use the compiler to compile the
-metacircular evaluator of @ref{4.1} and run this program using the
-register-machine simulator.  (To compile more than one definition at a time,
-you can package the definitions in a @code{begin}.)  The resulting interpreter
-will run very slowly because of the multiple levels of interpretation, but
-getting all the details to work is an instructive exercise.
+guest self-interpreter of @ref{4.1}---the evaluator witness
+@code{spec/host-subsets/rust/programs/selfinterp.rs}---and run this program on
+the compiled path.  (The witness is one admitted source unit, so no packaging
+is needed.)  The resulting interpreter will run very slowly because of the
+multiple levels of interpretation, but getting all the details to work is an
+instructive exercise.
 
 @example rust
-let mut evaluator = compile_and_go(
-    &default_config(),
-    &new_state(),
-    ch05::sec_5_5::METACIRCULAR,
-    "(m-eval '(factorial 5) the-global-environment)",
-)?;
-evaluator.run()?;
+// spec/host-subsets/rust/programs/
+// selfinterp.rs: the evaluator
+// witness of the language contract, admitted as guest source.
+let self_interpreter =
+    include_str!(
+        "spec/host-subsets/rust/programs/selfinterp.rs",
+    );
+let evaluator = admit(self_interpreter)?;
+let outcome = compiled_run(&evaluator);
+// => 120
+// => 42
+// => 42
+// => 1
+// => 2
 @end example
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 5.51}Exercise 5.51:} Develop a rudimentary
-implementation of Scheme in C (or some other low-level language of your choice)
-by translating the explicit-control evaluator of @ref{5.4} into C.  In
-order to run this code you will need to also provide appropriate
-storage-allocation routines and other run-time support.
+implementation of the guest language in C (or some other low-level language of
+your choice) by translating the explicit-control evaluator of @ref{5.4} into
+C.  In order to run this code you will need to also provide appropriate
+storage-allocation routines and other run-time support---the tagged-word
+runtime and the storage allocation of @ref{5.3}.  This edition keeps the C
+translation as a real C target that the external C toolchain builds and runs.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 5.52}Exercise 5.52:} As a counterpoint to 
-@ref{Exercise 5.51}, modify the compiler so that it compiles Scheme procedures
-into sequences of C instructions.  Compile the metacircular evaluator of
-@ref{4.1} to produce a Scheme interpreter written in C.
+@strong{@anchor{Exercise 5.52}Exercise 5.52:} As a counterpoint to
+@ref{Exercise 5.51}, modify the compiler so that it compiles guest procedures
+into sequences of C instructions.  Compile the guest self-interpreter of
+@ref{4.1} to produce a guest interpreter written in C.  In this edition
+@code{emit_c} emits the typed sequences as a complete C program over a
+tagged-word run-time preamble, and the C toolchain builds and runs the result
+wherever the backend lowers every reached operation.  Two emitted operations,
+@code{mc_bind} and @code{mc_apply_closure}, have no runnable lowering yet, so
+the interpreted witness's five-line transcript is the goal for a backend that
+lowers them, not a claim about the current artifacts.
 @end quotation
 

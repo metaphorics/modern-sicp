@@ -1,79 +1,139 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Original exercise
 
-//! The reference solutions of exercise 4.23 and the edition's addition
-//! 4.23a: the two analyze-sequence versions, and the counter that shows
-//! where the sequencing work lands.
+//! The reference solution of exercise 4.23: compare the two sequence
+//! analyzers over the same analyzed body and count the analysis and
+//! execution work each shape performs.
 
-use ch04::eval_support::*;
+/// Shared typed support for this exercise.
+pub mod support;
 
-/// How many analysis invocations a one-expression body costs under each
-/// version -- the same single pass -- and the shared values of one- and
-/// two-expression bodies.
-fn answers() -> Result<(u64, u64), SchemeError> {
-    let text = Counting::new(false);
-    let alyssa = Counting::new(true);
-    let one = read("(lambda () (+ 3 4))").expect("read");
-    let body = lambda_body(&one)?;
-    text.analyze_sequence(&body)?;
-    alyssa.analyze_sequence(&body)?;
-    let defines = "(define (f) (+ 3 4))\n(define (g) 4 3)";
-    let (values, _) = run_analyzed(
-        &AlyssaAnalyzer::default(),
-        &format!("{defines}\n(f)\n(f)\n(g)\n(g)"),
-    )?;
-    let base_answers: Vec<String> = run_base(&format!("{defines}\n(f)\n(f)\n(g)\n(g)"))
-        .into_iter()
-        .filter(|answer| answer != "ok")
-        .collect();
-    let answers: Vec<String> = printed(&values)
-        .into_iter()
-        .filter(|answer| answer != "ok")
-        .collect();
-    assert_eq!(base_answers, ["7", "7", "3", "3"]);
-    assert_eq!(answers, vec!["7", "7", "3", "3"]);
-    Ok((text.analyze_calls(), alyssa.analyze_calls()))
+use std::cell::Cell;
+
+use ch04::sec_4_1::{Plan, PlanStmt, analyze, run_analyzed_program};
+
+const SOURCE: &str = "
+fn one() -> i64 {
+    3 + 4
 }
 
-/// The sequence-execution counts for a one-expression body executed
-/// twice under each style.
-fn counting_answers() -> Result<(u64, u64), SchemeError> {
-    let program = "(define (f) (+ 3 4))\n(define exec (lambda () (f)))\n(exec)\n(exec)";
-    let text = Counting::new(false);
-    let (values, _) = run_analyzed(&text, program)?;
-    assert_eq!(printed(&values).last(), Some(&"7".to_owned()));
-    let alyssa = Counting::new(true);
-    let (values, _) = run_analyzed(&alyssa, program)?;
-    assert_eq!(printed(&values).last(), Some(&"7".to_owned()));
-    assert_eq!(text.analyze_calls(), alyssa.analyze_calls());
-    Ok((text.sequence_execs(), alyssa.sequence_execs()))
+fn two() -> i64 {
+    let ignored: i64 = 1;
+    3 + 4
 }
 
-mod ex_4_23 {
-    //! Exercise 4.23: the two analyze-sequence versions.
+fn main() {
+    println!(\"{}\", one());
+    println!(\"{}\", one());
+    println!(\"{}\", two());
+    println!(\"{}\", two());
+}
+";
 
-    use super::*;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Work {
+    analysis_units: usize,
+}
 
-    #[test]
-    fn ex_4_23() {
-        let (text_analyses, alyssa_analyses) = answers().expect("runs");
-        // Both versions analyze the body in the same single pass: the
-        // analysis invocation counts are identical.
-        assert_eq!(text_analyses, alyssa_analyses);
+#[derive(Debug)]
+enum SequencePlan<'a> {
+    Combined,
+    Steps(Vec<&'a Plan>),
+}
+
+fn statement_plan(statement: &PlanStmt) -> &Plan {
+    match statement {
+        PlanStmt::Let { value, .. } | PlanStmt::Expr(value) => value,
     }
 }
 
-mod ex_4_23a {
-    //! Exercise 4.23a (this edition): counting the sequencing work.
-
-    use super::*;
-
-    #[test]
-    fn ex_4_23a() {
-        let (text_execs, alyssa_execs) = counting_answers().expect("runs");
-        // Two executions of each of the two one-expression bodies: the
-        // text's version ran no sequence wrapper at all; Alyssa's ran
-        // hers once per body execution.
-        assert_eq!((text_execs, alyssa_execs), (0, 4));
+fn body_steps(body: &Plan) -> Vec<&Plan> {
+    let Plan::Seq { stmts, tail } = body else {
+        panic!("sequence analyzer expects a sequence body");
+    };
+    let mut steps: Vec<&Plan> = stmts.iter().map(statement_plan).collect();
+    if let Some(tail) = tail {
+        steps.push(tail.as_ref());
     }
+    steps
+}
+
+fn analyze_text(calls: &Cell<usize>) -> (SequencePlan<'static>, Work) {
+    calls.set(calls.get() + 1);
+    (SequencePlan::Combined, Work { analysis_units: 1 })
+}
+
+fn analyze_alyssa<'a>(body: &'a Plan, calls: &Cell<usize>) -> (SequencePlan<'a>, Work) {
+    let steps = body_steps(body);
+    calls.set(calls.get() + steps.len());
+    let count = steps.len();
+    (
+        SequencePlan::Steps(steps),
+        Work {
+            analysis_units: count,
+        },
+    )
+}
+
+fn execute(plan: &SequencePlan<'_>, runs: usize) -> usize {
+    match plan {
+        SequencePlan::Combined => 0,
+        SequencePlan::Steps(steps) => steps.len() * runs,
+    }
+}
+
+fn analyzed_body<'a>(analyzed: &'a ch04::sec_4_1::AnalyzedProgram, name: &str) -> &'a Plan {
+    analyzed
+        .sema
+        .funs
+        .iter()
+        .zip(&analyzed.bodies)
+        .find(|(function, _)| function.name == name)
+        .map(|(_, body)| body)
+        .expect("function is analyzed")
+}
+
+#[test]
+fn ex_4_23() {
+    let checked = support::checked(SOURCE).expect("source is admitted");
+    let analyzed = analyze(&checked);
+    let one = analyzed_body(&analyzed, "one");
+    let two = analyzed_body(&analyzed, "two");
+
+    let text_calls = Cell::new(0);
+    let alyssa_calls = Cell::new(0);
+    let (one_text, one_text_work) = analyze_text(&text_calls);
+    let (one_alyssa, one_alyssa_work) = analyze_alyssa(one, &alyssa_calls);
+    assert_eq!(one_text_work.analysis_units, 1);
+    assert_eq!(one_alyssa_work.analysis_units, 1);
+    assert_eq!(execute(&one_text, 2), 0);
+    assert_eq!(execute(&one_alyssa, 2), 2);
+
+    let (two_text, two_text_work) = analyze_text(&text_calls);
+    let (two_alyssa, two_alyssa_work) = analyze_alyssa(two, &alyssa_calls);
+    assert_eq!(two_text_work.analysis_units, 1);
+    assert_eq!(two_alyssa_work.analysis_units, 2);
+    assert_eq!(execute(&two_text, 2), 0);
+    assert_eq!(execute(&two_alyssa, 2), 4);
+    assert_eq!(text_calls.get(), 2);
+    assert_eq!(alyssa_calls.get(), 3);
+}
+
+#[test]
+fn ex_4_23a() {
+    let checked = support::checked(SOURCE).expect("source is admitted");
+    let analyzed = analyze(&checked);
+    let one = analyzed_body(&analyzed, "one");
+    let calls = Cell::new(0);
+    let (plan, _) = analyze_text(&calls);
+    assert_eq!(calls.get(), 1);
+    assert_eq!(execute(&plan, 2), 0);
+
+    let alyssa_calls = Cell::new(0);
+    let (alyssa_plan, alyssa_work) = analyze_alyssa(one, &alyssa_calls);
+    assert_eq!(alyssa_calls.get(), 1);
+    assert_eq!(alyssa_work.analysis_units, 1);
+    assert_eq!(execute(&alyssa_plan, 2), 2);
+
+    let outcome = run_analyzed_program(&analyzed);
+    assert_eq!(outcome.stdout, "7\n7\n7\n7\n");
 }

@@ -11,18 +11,18 @@ import {
 
 /**
  * Exercise 3.82: Monte Carlo integration as streams, redoing exercise
- * 3.5. Exercise 3.5 asked for `estimate-integral`, a procedure that
+ * 3.5. Exercise 3.5 asked for `estimateIntegral`, a procedure that
  * estimates the area of the region a predicate `P` holds over inside
  * a rectangle by choosing random points in the rectangle and running
  * the pass/fail outcomes through the Monte Carlo method. The stream
  * version keeps the experiment but drops the trial count: the stream
- * of random points flows through the section's `monte-carlo` and
+ * of random points flows through the section's `monteCarloStream` and
  * answers a stream of successively better estimates, each one the
  * passing fraction times the rectangle's area, so looking farther
  * into the stream means more trials, as with the section's `pi`.
  */
 
-/** The xorshift32 range: `rand-update` answers the full uint32 span,
+/** The xorshift32 range: `randUpdate` answers the full uint32 span,
  * so dividing a state by this maps it onto [0, 1]. */
 const randMax = 4294967295;
 
@@ -45,7 +45,7 @@ export const randomPointsIn = (x1: number, x2: number, y1: number, y2: number): 
     randomNumbers,
   );
 
-/** The book's `estimate-integral`, stream edition: the stream of
+/** The book's `estimateIntegral`, stream edition: the stream of
  * Monte Carlo estimates of the area where `pred` holds inside the
  * rectangle, estimate `n` taken over the first `n + 1` trials, each
  * estimate the passing fraction scaled by the rectangle's area. */

@@ -17,7 +17,7 @@ describe("exercise 3.53: the self-referential doubling stream", () => {
     expect(streamRef(s, 20)).toBe(1048576);
   });
 
-  it("the scale-stream construction agrees with the statement's add-streams", () => {
+  it("the scaleStream construction agrees with the statement's addStreams", () => {
     expect(streamTake(double, 8)).toEqual(streamTake(s, 8));
     expect(streamRef(double, 20)).toBe(streamRef(s, 20));
   });

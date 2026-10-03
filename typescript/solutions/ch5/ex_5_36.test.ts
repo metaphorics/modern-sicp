@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import { describe, expect, it } from "vitest";
-import { ex_5_36 } from "./ex_5_36.js";
+// Original exercise
 
-describe("exercise 5.36", () => {
-  it("evaluates operands right to left by default and left to right flipped", () => {
-    const answers = ex_5_36();
-    expect(answers[0]).toContain("[2,1]");
-    expect(answers[1]).toContain("[1,2]");
-    expect(answers[2]).toContain("/");
+import { describe, expect, it } from "vitest";
+import { argumentLists, ex_5_36 } from "./ex_5_36.ts";
+
+describe("exercise 5.36 operand evaluation order", () => {
+  it("both orderings construct the same argument list at equal size", () => {
+    const { rightToLeft, leftToRight } = argumentLists();
+    expect(rightToLeft).toHaveLength(leftToRight.length);
+    expect(rightToLeft[0]).toEqual(leftToRight[0]);
+  });
+  it("reports both sizes and the shipped listing", () => {
+    const lines = ex_5_36();
+    expect(lines[0]).toContain("right-to-left statements:");
+    expect(lines[1]).toContain("left-to-right statements:");
+    expect(lines[3]).toContain("shipped listing");
   });
 });

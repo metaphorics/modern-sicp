@@ -61,11 +61,11 @@ let rec apply_generic_fixed op args =
 ;;
 
 let install_louis_setup () =
-  put_coercion "scheme-number" "scheme-number" (fun n -> n);
+  put_coercion "real" "real" (fun n -> n);
   put_coercion "complex" "complex" (fun z -> z);
-  put "exp" [ "scheme-number"; "scheme-number" ] (function
-    | [ Num x; Num y ] -> Tagged (attach_tag "scheme-number" (Num (x ** y)))
-    | _ -> invalid_arg "exp: scheme-number expects two numbers")
+  put "exp" [ "real"; "real" ] (function
+    | [ Num x; Num y ] -> Tagged (attach_tag "real" (Num (x ** y)))
+    | _ -> invalid_arg "exp: real expects two numbers")
 ;;
 
 let complex_sample = Tagged (attach_tag "complex" (Num 0.0))

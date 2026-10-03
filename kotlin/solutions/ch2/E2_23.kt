@@ -3,29 +3,25 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.VInt
-import sicp.runtime.VNil
-import sicp.runtime.Value
-import sicp.runtime.vlist
+import sicp.runtime.Datum
+import sicp.runtime.Empty
+import sicp.runtime.Whole
+import sicp.runtime.datumList
 
-/**
- * The book's `for-each`: applies [action] to every element of [items],
- * from left to right, for its side effects; it returns nothing useful,
- * like a Kotlin `Unit`-returning procedure.
- */
+/** Apply [action] to each pair-chain element in order. */
 public fun forEachValue(
-    items: Value,
-    action: (Value) -> Unit,
+    items: Datum,
+    action: (Datum) -> Unit,
 ) {
-    if (items !is VNil) {
-        action(carOf(items))
-        forEachValue(cdrOf(items), action)
+    if (items !== Empty) {
+        action(firstPart(items))
+        forEachValue(secondPart(items), action)
     }
 }
 
-/** The values a recording action collects while `forEachValue` runs over `(57 321 88)`. */
+/** Values collected by a recording action over the sample sequence. */
 public fun ex_2_23(): List<Long> {
     val seen = mutableListOf<Long>()
-    forEachValue(vlist(VInt(57L), VInt(321L), VInt(88L))) { v -> seen.add(numOf(v)) }
+    forEachValue(datumList(Whole(57L), Whole(321L), Whole(88L))) { value -> seen.add(wholeNumber(value)) }
     return seen
 }

@@ -1,0 +1,30 @@
+(* Recursive factorial machine (lesson: stack, save/restore, computed goto). *)
+Machine
+  { registers = [ "n"; "val"; "continue" ]
+  ; operations =
+      [ ("=", [ Int_type; Int_type ], Bool_type)
+      ; ("*", [ Int_type; Int_type ], Int_type)
+      ; ("-", [ Int_type; Int_type ], Int_type)
+      ]
+  ; inputs = [ ("n", Int 6) ]
+  ; controller =
+      [ Assign ("continue", Label_ref "done")
+      ; Label "loop"
+      ; Test ("=", [ Reg "n"; Const (Int 1) ])
+      ; Branch "base"
+      ; Save "continue"
+      ; Save "n"
+      ; Assign_op ("n", "-", [ Reg "n"; Const (Int 1) ])
+      ; Assign ("continue", Label_ref "after")
+      ; Goto "loop"
+      ; Label "after"
+      ; Restore "n"
+      ; Restore "continue"
+      ; Assign_op ("val", "*", [ Reg "n"; Reg "val" ])
+      ; Goto_reg "continue"
+      ; Label "base"
+      ; Assign ("val", Const (Int 1))
+      ; Goto_reg "continue"
+      ; Label "done"
+      ]
+  }

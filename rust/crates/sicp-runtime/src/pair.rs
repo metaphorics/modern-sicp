@@ -8,7 +8,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::error::SchemeError;
+use crate::error::SicpError;
 use crate::value::Value;
 
 /// The mutable pair of 3.3.1: both fields under `RefCell`, so
@@ -53,11 +53,11 @@ pub fn eq_pair(a: &Pair, b: &Pair) -> bool {
 /// The book's `car` over a dynamic value.
 ///
 /// # Errors
-/// [`SchemeError::TypeMismatch`] when `v` is not a pair.
-pub fn car(v: &Value) -> Result<Value, SchemeError> {
+/// [`SicpError::TypeMismatch`] when `v` is not a pair.
+pub fn car(v: &Value) -> Result<Value, SicpError> {
     match v {
         Value::Pair(cell) => Ok(cell.car.borrow().clone()),
-        other => Err(SchemeError::TypeMismatch(format!(
+        other => Err(SicpError::TypeMismatch(format!(
             "car of a non-pair: {other}"
         ))),
     }
@@ -66,11 +66,11 @@ pub fn car(v: &Value) -> Result<Value, SchemeError> {
 /// The book's `cdr` over a dynamic value.
 ///
 /// # Errors
-/// [`SchemeError::TypeMismatch`] when `v` is not a pair.
-pub fn cdr(v: &Value) -> Result<Value, SchemeError> {
+/// [`SicpError::TypeMismatch`] when `v` is not a pair.
+pub fn cdr(v: &Value) -> Result<Value, SicpError> {
     match v {
         Value::Pair(cell) => Ok(cell.cdr.borrow().clone()),
-        other => Err(SchemeError::TypeMismatch(format!(
+        other => Err(SicpError::TypeMismatch(format!(
             "cdr of a non-pair: {other}"
         ))),
     }
@@ -79,7 +79,7 @@ pub fn cdr(v: &Value) -> Result<Value, SchemeError> {
 #[cfg(test)]
 mod tests {
     use super::{car, cdr, cons_cell, eq_pair, set_car, set_cdr};
-    use crate::error::SchemeError;
+    use crate::error::SicpError;
     use crate::value::Value;
 
     #[test]
@@ -114,11 +114,11 @@ mod tests {
     fn selectors_reject_non_pairs() {
         assert!(matches!(
             car(&Value::int(3)),
-            Err(SchemeError::TypeMismatch(_))
+            Err(SicpError::TypeMismatch(_))
         ));
         assert!(matches!(
             cdr(&Value::sym("x")),
-            Err(SchemeError::TypeMismatch(_))
+            Err(SicpError::TypeMismatch(_))
         ));
     }
 

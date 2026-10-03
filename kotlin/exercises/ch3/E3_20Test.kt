@@ -5,17 +5,19 @@ package sicp.ch3.exercises
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.core.test.Enabled
-import sicp.runtime.VInt
+import sicp.runtime.Whole
 
 public class E3_20Test :
     FunSpec({
-        test("Exercise 3.20: the mutation through alias is visible from x").config(
+        test("Exercise 3.20: mutation through an alias is visible through x").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            val x = proceduralCons(VInt(1L), VInt(2L))
+            val x = proceduralPair(Whole(1L), Whole(2L))
             val alias = x
-            alias.setCar(VInt(17L))
+            alias.setFirst(Whole(17L))
             org.junit.jupiter.api.Assertions
-                .assertEquals(VInt(17L), x.car())
+                .assertEquals(Whole(17L), x.first())
+            org.junit.jupiter.api.Assertions
+                .assertEquals(Whole(2L), x.second())
         }
     })

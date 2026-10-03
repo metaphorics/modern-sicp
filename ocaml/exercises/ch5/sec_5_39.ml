@@ -1,7 +1,7 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(* Exercise 5.39: the lexical-address-lookup and lexical-address-set! operations. This is the pending scaffold of the solution with the same
+(* Exercise 5.39: the lexical-address lookup operation. This is the pending scaffold of the solution with the same
    name under solutions/ch5: every entry raises the pending marker
    until the exercise is solved. *)
 

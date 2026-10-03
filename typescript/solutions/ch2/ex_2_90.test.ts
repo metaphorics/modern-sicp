@@ -20,7 +20,7 @@ describe("exercise 2.90: sparse and dense term lists", () => {
   it("doubles a polynomial through either interface", () => {
     const doubledSparse = addPoly90(sparseB(), sparseB());
     expect(doubledSparse._tag === "Ok" && showPoly90(doubledSparse.value)).toBe(
-      "(polynomial x (100 2) (2 4) (0 2))",
+      "[polynomial, x, [100, 2], [2, 4], [0, 2]]",
     );
     const dense = denseB();
     if (dense._tag !== "Ok") {
@@ -28,7 +28,7 @@ describe("exercise 2.90: sparse and dense term lists", () => {
     }
     const doubledDense = addPoly90(dense.value, dense.value);
     expect(doubledDense._tag === "Ok" && showPoly90(doubledDense.value)).toBe(
-      "(polynomial x (100 2) (2 4) (0 2))",
+      "[polynomial, x, [100, 2], [2, 4], [0, 2]]",
     );
   });
 

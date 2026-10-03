@@ -12,6 +12,12 @@ public class E5_19Test :
         test("Exercise 5.19: a breakpoint session on the gcd machine").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            breakpointSession() shouldBe emptyList()
+            breakpointSession() shouldBe
+                listOf(
+                    "break at test-b: a = 40, b = 6",
+                    "break at test-b: a = 4, b = 2",
+                    "finished: gcd(206, 40) = 2",
+                    "cancel and restart: gcd(206, 40) = 2",
+                )
         }
     })

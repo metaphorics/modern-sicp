@@ -7,15 +7,16 @@ import sicp.runtime.PendingSolution
 
 /**
  * Exercise 4.31: laziness as an upward-compatible extension. The
- * declaration syntax `(name lazy)` / `(name lazy-memo)` rides the typed
- * parser; the evaluator binds strict parameters by evaluation, `lazy`
- * parameters as call-by-name thunks, and `lazy-memo` parameters as
- * call-by-need thunks, forcing at the demand sites.
+ * declaration syntax -- the call-by-name and call-by-need parameter kinds -- rides the typed
+ * parser; the evaluator binds strict parameters by evaluation, the
+ * call-by-name kind as unmemoized thunks, and the call-by-need kind as
+ * memoized thunks, forcing at the demand sites.
  *
- * Expected answers: the mixed declaration `(f a (b lazy) c (d lazy-memo))`
- * prints `(1 5 5 4 30 30)` with count 5; the all-`lazy-memo` declaration
- * counts 4; a `lazy` parameter skips its dangerous argument, answering 7,
- * while a strict one dies with `Error: division by zero`.
+ * Expected answers: the mixed declaration (the call-by-name and call-by-need kinds mixed)
+ * prints `[1, 5, 5, 4, 30, 30]` with count 5; the all-call-by-need
+ * declaration counts 4; a call-by-name parameter skips its dangerous
+ * argument, answering 7,
+ * while a strict one raises `DivisionByZero`.
  */
 public fun annotatedMixedTranscript(): String = throw PendingSolution()
 

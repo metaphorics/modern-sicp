@@ -8,7 +8,7 @@ use ch03::sec_3_1::RANDOM_INIT;
 
 mod ex_3_06 {
     use ch03::sec_3_1::{RANDOM_INIT, rand_update};
-    use sicp_runtime::SchemeError;
+    use sicp_runtime::SicpError;
 
     /// A message to the resettable generator: the book's `generate` and
     /// `reset` symbols became values.
@@ -32,11 +32,11 @@ mod ex_3_06 {
     /// Starts the message-passing generator at `seed`.
     ///
     /// # Errors
-    /// Returns [`SchemeError::ZeroSeed`] when `seed` is zero, matching the
+    /// Returns [`SicpError::ZeroSeed`] when `seed` is zero, matching the
     /// section's generator.
-    pub fn make_rand(seed: u64) -> Result<MessageRand, SchemeError> {
+    pub fn make_rand(seed: u64) -> Result<MessageRand, SicpError> {
         if seed == 0 {
-            return Err(SchemeError::ZeroSeed);
+            return Err(SicpError::ZeroSeed);
         }
         Ok(MessageRand { x: seed })
     }

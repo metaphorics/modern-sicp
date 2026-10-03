@@ -104,7 +104,7 @@
 
 @documentencoding UTF-8
 
-@dircategory The Algorithmic Language Scheme
+@dircategory Modern SICP in Kotlin
 @direntry
 * SICP: (sicp). Structure and Interpretation of Computer Programs
 @end direntry
@@ -121,7 +121,8 @@
 
 @subtitle @abbr{Second Edition}@* Unofficial Texinfo Format @value{utfversion}
 
-@author Harold Abelson and Gerald Jay Sussman with Julie Sussman, foreword by Alan J. Perlis
+@author Harold Abelson and Gerald Jay Sussman
+@author with Julie Sussman, foreword by Alan J. Perlis
 
 @page
 @vskip 0pt plus 1filll
@@ -243,7 +244,7 @@ The language of this book
 * 0.7::              Testing
 * 0.8::              Reading this book
 
-Programming in Lisp
+Programming in Kotlin
 
 * 1.1::              The Elements of Programming
 * 1.2::              Procedures and the Processes They Generate
@@ -363,8 +364,8 @@ Streams
 Metalinguistic Abstraction
 
 * 4.1::              The Metacircular Evaluator
-* 4.2::              Variations on a Scheme: Lazy Evaluation
-* 4.3::              Variations on a Scheme: Nondeterministic Computing
+* 4.2::              Variations on the Guest Language --- Lazy Evaluation
+* 4.3::              Variations on the Guest Language --- Nondeterministic Computing
 * 4.4::              Logic Programming
 
 The Metacircular Evaluator
@@ -377,13 +378,13 @@ The Metacircular Evaluator
 * 4.1.6::            Internal Definitions
 * 4.1.7::            Separating Syntactic Analysis from Execution
 
-Variations on a Scheme: Lazy Evaluation
+Variations on the Guest Language --- Lazy Evaluation
 
 * 4.2.1::            Normal Order and Applicative Order
 * 4.2.2::            An Interpreter with Lazy Evaluation
 * 4.2.3::            Streams as Lazy Lists
 
-Variations on a Scheme: Nondeterministic Computing
+Variations on the Guest Language --- Nondeterministic Computing
 
 * 4.3.1::            Amb and Search
 * 4.3.2::            Examples of Nondeterministic Programs
@@ -760,7 +761,7 @@ Creative Commons Attribution-ShareAlike 4.0 International License.
 @noindent
 Adapted by the Modern @abbr{SICP} editions from the Unofficial Texinfo
 Format and the @abbr{HTML}5 and @abbr{EPUB}3 edition (sarabander/sicp).
-Changes: the prose is rewritten in %NAME%; every program is re-expressed;
+Changes: the prose is rewritten in Kotlin; every program is re-expressed;
 section and exercise numbers are unchanged; a Chapter 0 primer is added.
 
 @noindent

@@ -1,53 +1,38 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 2, exercise 2.53 (replaced)
+// Chapter 2, exercise 2.53
 
 package sicp.ch2.exercises
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.runtime.VBool
-import sicp.runtime.VPair
-import sicp.runtime.VSym
-import sicp.runtime.Value
-import sicp.runtime.vlist
-
-private fun memq(
-    item: Value,
-    x: Value,
-): Value =
-    when {
-        x is VPair && x.car == item -> x
-        x is VPair -> memq(item, x.cdr)
-        else -> VBool(false)
-    }
+import sicp.runtime.Symbol
+import sicp.runtime.Truth
+import sicp.runtime.datumList
+import sicp.runtime.renderDatum
 
 public class E2_53Test :
     FunSpec({
         val predictions = ex_2_53()
 
-        test("prediction 1: list of three symbols") {
-            predictions[0] shouldBe vlist(VSym("a"), VSym("b"), VSym("c")).toString()
+        test("prediction 1 renders a flat symbol sequence") {
+            predictions[0] shouldBe renderDatum(datumList(Symbol("a"), Symbol("b"), Symbol("c")))
         }
-        test("prediction 2: a singleton list holding a singleton list") {
-            predictions[1] shouldBe vlist(vlist(VSym("george"))).toString()
+        test("prediction 2 renders a singleton nested sequence") {
+            predictions[1] shouldBe renderDatum(datumList(datumList(Symbol("george"))))
         }
-        test("predictions 3 and 4: cdr and cadr of the pairs list") {
-            val pairs = vlist(vlist(VSym("x1"), VSym("x2")), vlist(VSym("y1"), VSym("y2")))
-            val cdrOfPairs = (pairs as VPair).cdr
-            predictions[2] shouldBe cdrOfPairs.toString()
-            predictions[3] shouldBe (cdrOfPairs as VPair).car.toString()
+        test("prediction 3 renders the tail containing the second inner sequence") {
+            predictions[2] shouldBe renderDatum(datumList(datumList(Symbol("y1"), Symbol("y2"))))
         }
-        test("prediction 5: the car of a short list is a symbol, not a pair") {
-            val shortList = vlist(VSym("a"), VSym("short"), VSym("list"))
-            val carOfShortList = (shortList as VPair).car
-            predictions[4] shouldBe if (carOfShortList is VPair) "#t" else "#f"
+        test("prediction 4 renders the second inner sequence itself") {
+            predictions[3] shouldBe renderDatum(datumList(Symbol("y1"), Symbol("y2")))
         }
-        test("prediction 6: memq fails when the match is buried inside a sublist") {
-            val nested = vlist(vlist(VSym("red"), VSym("shoes")), vlist(VSym("blue"), VSym("socks")))
-            predictions[5] shouldBe memq(VSym("red"), nested).toString()
+        test("prediction 5 renders the false pair-shape observation") {
+            predictions[4] shouldBe renderDatum(Truth(false))
         }
-        test("prediction 7: memq finds a flat match") {
-            val flat = vlist(VSym("red"), VSym("shoes"), VSym("blue"), VSym("socks"))
-            predictions[6] shouldBe memq(VSym("red"), flat).toString()
+        test("prediction 6 does not find a symbol buried in a nested sequence") {
+            predictions[5] shouldBe renderDatum(Truth(false))
+        }
+        test("prediction 7 renders the matching suffix of a flat sequence") {
+            predictions[6] shouldBe renderDatum(datumList(Symbol("red"), Symbol("shoes"), Symbol("blue"), Symbol("socks")))
         }
     })

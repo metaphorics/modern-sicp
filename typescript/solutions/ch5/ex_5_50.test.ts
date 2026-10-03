@@ -1,14 +1,33 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import { describe, expect, it } from "vitest";
-import { ex_5_50 } from "./ex_5_50.js";
+// Original exercise
 
-describe("exercise 5.50", { timeout: 600_000 }, () => {
-  it("compiles the metacircular evaluator and prices the levels", () => {
-    const answers = ex_5_50();
-    expect(answers[0]).toContain("120");
-    expect(answers[0]).toContain("(tick tick tick)");
-    const l0 = Number(answers[1]?.split("= ")[1]);
-    const l2 = Number(answers[3]?.split("= ")[1]);
-    expect(l2).toBeGreaterThan(100 * Math.max(l0, 1));
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import { runSelfInterpretation } from "../../packages/ch5/src/06-selfinterp.ts";
+
+const SELF_INTERPRETER_SOURCE = readFileSync(
+  new URL(
+    "../../../spec/host-subsets/typescript/witnesses/metacircular-evaluator.ts",
+    import.meta.url,
+  ),
+  "utf8",
+);
+
+import { ex_5_50 } from "./ex_5_50.ts";
+
+describe("exercise 5.50 compiled self-interpretation", () => {
+  it("all three engines answer the guest program with the same value and transcript", () => {
+    const direct = runSelfInterpretation("direct", SELF_INTERPRETER_SOURCE);
+    expect(direct.outcome.tag).toBe("ok");
+    expect(runSelfInterpretation("eceval", SELF_INTERPRETER_SOURCE).transcript).toEqual(
+      direct.transcript,
+    );
+    expect(runSelfInterpretation("compiled", SELF_INTERPRETER_SOURCE).transcript).toEqual(
+      direct.transcript,
+    );
+  });
+  it("the solution returns the shared guest session transcript", () => {
+    expect(ex_5_50()).toEqual(runSelfInterpretation("direct", SELF_INTERPRETER_SOURCE).transcript);
+    expect(ex_5_50().length).toBeGreaterThan(0);
   });
 });

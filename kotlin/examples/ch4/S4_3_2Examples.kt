@@ -1,153 +1,144 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.3
 // Chapter 4, section 4.3.2, examples of nondeterministic programs: the
-// multiple dwelling logic puzzle and the natural-language parser, with
-// the session results the section's prose pins.
+// multiple-dwelling logic puzzle and the natural-language parser, with
+// the session answers the section's prose pins. The parser consumes its
+// word list through ordinary writes, which the undo trail rolls back when
+// a parse branch dies, so a failed extension leaves the input as it was.
 
 package sicp.ch4.examples
 
-import arrow.core.raise.either
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.ch4.AmbEvaluator
-import sicp.ch4.ambDriver
-import sicp.ch4.printValue
+import sicp.ch4.SearchModule
+import sicp.ch4.SearchRun
 
-private val PRELUDE =
+private val DWELLING: String =
     """
-    (define (require p) (if (not p) (amb)))
-    (define (an-element-of items)
-      (require (not (null? items)))
-      (amb (car items) (an-element-of (cdr items))))
-    (define (an-integer-between low high)
-      (require (<= low high))
-      (amb low (an-integer-between (+ low 1) high)))
-    (define (member item x)
-      (cond ((null? x) false)
-            ((equal? item (car x)) true)
-            (else (member item (cdr x)))))
-    (define (memq item x)
-      (cond ((null? x) false)
-            ((eq? item (car x)) true)
-            (else (memq item (cdr x)))))
-    (define (distinct? items)
-      (cond ((null? items) true)
-            ((null? (cdr items)) true)
-            ((member (car items) (cdr items)) false)
-            (else (distinct? (cdr items)))))
-    (define (multiple-dwelling)
-      (let ((baker (amb 1 2 3 4 5))
-            (cooper (amb 1 2 3 4 5))
-            (fletcher (amb 1 2 3 4 5))
-            (miller (amb 1 2 3 4 5))
-            (smith (amb 1 2 3 4 5)))
-        (require (distinct? (list baker cooper fletcher miller smith)))
-        (require (not (= baker 5)))
-        (require (not (= cooper 1)))
-        (require (not (= fletcher 5)))
-        (require (not (= fletcher 1)))
-        (require (> miller cooper))
-        (require (not (= (abs (- smith fletcher)) 1)))
-        (require (not (= (abs (- fletcher cooper)) 1)))
-        (list (list 'baker baker)
-              (list 'cooper cooper)
-              (list 'fletcher fletcher)
-              (list 'miller miller)
-              (list 'smith smith))))
-    (define *unparsed* '())
-    (define nouns '(noun student professor cat class))
-    (define verbs '(verb studies lectures eats sleeps))
-    (define articles '(article the a))
-    (define prepositions '(prep for to in by with))
-    (define (parse-word word-list)
-      (require (not (null? *unparsed*)))
-      (require (memq (car *unparsed*) (cdr word-list)))
-      (let ((found-word (car *unparsed*)))
-        (set! *unparsed* (cdr *unparsed*))
-        (list (car word-list) found-word)))
-    (define (parse-simple-noun-phrase)
-      (list 'simple-noun-phrase
-            (parse-word articles)
-            (parse-word nouns)))
-    (define (parse-prepositional-phrase)
-      (list 'prep-phrase
-            (parse-word prepositions)
-            (parse-noun-phrase)))
-    (define (parse-noun-phrase)
-      (define (maybe-extend noun-phrase)
-        (amb noun-phrase
-             (maybe-extend (list 'noun-phrase
-                                 noun-phrase
-                                 (parse-prepositional-phrase)))))
-      (maybe-extend (parse-simple-noun-phrase)))
-    (define (parse-verb-phrase)
-      (define (maybe-extend verb-phrase)
-        (amb verb-phrase
-             (maybe-extend (list 'verb-phrase
-                                 verb-phrase
-                                 (parse-prepositional-phrase)))))
-      (maybe-extend (parse-word verbs)))
-    (define (parse-sentence)
-      (list 'sentence
-            (parse-noun-phrase)
-            (parse-verb-phrase)))
-    (define (parse input)
-      (set! *unparsed* input)
-      (let ((sent (parse-sentence)))
-        (require (null? *unparsed*))
-        sent))
+    fun distinct(a: Long, b: Long, c: Long, d: Long, e: Long): Boolean =
+        a != b && a != c && a != d && a != e && b != c && b != d && b != e && c != d && c != e && d != e
+
+    fun main() {
+        val baker = choose(1L, 2L, 3L, 4L, 5L)
+        val cooper = choose(1L, 2L, 3L, 4L, 5L)
+        val fletcher = choose(1L, 2L, 3L, 4L, 5L)
+        val miller = choose(1L, 2L, 3L, 4L, 5L)
+        val smith = choose(1L, 2L, 3L, 4L, 5L)
+        demand(distinct(baker, cooper, fletcher, miller, smith))
+        demand(baker != 5L)
+        demand(cooper != 1L)
+        demand(fletcher != 5L)
+        demand(fletcher != 1L)
+        demand(miller > cooper)
+        demand(fletcher - cooper != 1L)
+        demand(cooper - fletcher != 1L)
+        demand(smith - fletcher != 1L)
+        demand(fletcher - smith != 1L)
+        println(
+            "[[baker, ${'$'}{baker}], [cooper, ${'$'}{cooper}], " +
+                "[fletcher, ${'$'}{fletcher}], [miller, ${'$'}{miller}], [smith, ${'$'}{smith}]]",
+        )
+    }
     """.trimIndent()
 
-private fun firstAnswers(
-    query: String,
-    count: Int,
-): List<String> =
-    either {
-        val driver = ambDriver(::AmbEvaluator, PRELUDE)
-        val answers = mutableListOf<String>()
-        var next = driver.solve(query)
-        while (next != null && answers.size < count) {
-            answers.add(printValue(next))
-            next = driver.tryAgain()
-        }
-        answers
-    }.fold(
-        { e -> throw AssertionError(e.toString()) },
+private val PARSER: String =
+    """
+    val articles: List<String> = listOf("the", "a")
+    val nouns: List<String> = listOf("student", "professor", "cat", "class")
+    val verbs: List<String> = listOf("studies", "lectures", "eats", "sleeps")
+    val prepositions: List<String> = listOf("for", "to", "in", "by", "with")
+
+    var unparsed: List<String> = listOf<String>()
+
+    fun parseWord(kind: String, words: List<String>): String {
+        demand(!unparsed.isEmpty())
+        demand(words.contains(unparsed.get(0)))
+        val word = unparsed.get(0)
+        unparsed = unparsed.drop(1)
+        return "[" + kind + ", " + word + "]"
+    }
+
+    fun parsePrepositionalPhrase(): String =
+        "[prep-phrase, " + parseWord("prep", prepositions) + ", " + parseNounPhrase() + "]"
+
+    fun parseNounPhrase(): String =
+        extendNoun("[simple-noun-phrase, " + parseWord("article", articles) + ", " + parseWord("noun", nouns) + "]")
+
+    fun extendNoun(phrase: String): String =
+        choose(phrase, extendNoun("[noun-phrase, " + phrase + ", " + parsePrepositionalPhrase() + "]"))
+
+    fun parseVerbPhrase(): String = extendVerb(parseWord("verb", verbs))
+
+    fun extendVerb(phrase: String): String =
+        choose(phrase, extendVerb("[verb-phrase, " + phrase + ", " + parsePrepositionalPhrase() + "]"))
+
+    fun parseSentence(): String =
+        "[sentence, " + parseNounPhrase() + ", " + parseVerbPhrase() + "]"
+
+    fun parseThen(input: List<String>): String {
+        unparsed = input
+        val sentence = parseSentence()
+        demand(unparsed.isEmpty())
+        println(sentence)
+        return sentence
+    }
+
+    fun main() {
+        ifFail(
+            { parseThen(listOf("the", "cat", "eats")) },
+            {
+                ifFail(
+                    { parseThen(listOf("the", "student", "with", "the", "cat", "sleeps", "in", "the", "class")) },
+                    { parseThen(listOf("the", "professor", "lectures", "to", "the", "student", "with", "the", "cat")) },
+                )
+            },
+        )
+    }
+    """.trimIndent()
+
+private fun searchRun(source: String): SearchRun =
+    SearchModule.run(source).fold(
+        { e -> throw AssertionError("admission rejected the unit: ${e.category}: ${e.message}") },
         { it },
     )
 
 public class S4_3_2ExamplesTest :
     FunSpec({
         test("multiple dwelling has exactly one solution") {
-            firstAnswers("(multiple-dwelling)", 2) shouldBe
-                listOf("((baker 3) (cooper 2) (fletcher 4) (miller 5) (smith 1))")
+            val run = searchRun(DWELLING)
+            run.result.output shouldBe "[[baker, 3], [cooper, 2], [fletcher, 4], [miller, 5], [smith, 1]]\n"
+            run.result.error shouldBe null
         }
 
         test("the simple sentence parses") {
-            firstAnswers("(parse '(the cat eats))", 1) shouldBe
-                listOf("(sentence (simple-noun-phrase (article the) (noun cat)) (verb eats))")
+            searchRun(PARSER).result.output.contains(
+                "[sentence, [simple-noun-phrase, [article, the], [noun, cat]], [verb, eats]]",
+            ) shouldBe true
         }
 
         test("the nested prepositional phrase parses") {
-            firstAnswers("(parse '(the student with the cat sleeps in the class))", 1) shouldBe
-                listOf(
-                    "(sentence (noun-phrase (simple-noun-phrase (article the) (noun student)) " +
-                        "(prep-phrase (prep with) (simple-noun-phrase (article the) (noun cat)))) " +
-                        "(verb-phrase (verb sleeps) (prep-phrase (prep in) " +
-                        "(simple-noun-phrase (article the) (noun class)))))",
-                )
+            searchRun(PARSER).result.output.contains(
+                "[sentence, [noun-phrase, [simple-noun-phrase, [article, the], [noun, student]], " +
+                    "[prep-phrase, [prep, with], [simple-noun-phrase, [article, the], [noun, cat]]]], " +
+                    "[verb-phrase, [verb, sleeps], [prep-phrase, [prep, in], " +
+                    "[simple-noun-phrase, [article, the], [noun, class]]]]]",
+            ) shouldBe true
         }
 
-        test("the ambiguous sentence has two parses") {
-            firstAnswers("(parse '(the professor lectures to the student with the cat))", 2) shouldBe
-                listOf(
-                    "(sentence (simple-noun-phrase (article the) (noun professor)) " +
-                        "(verb-phrase (verb-phrase (verb lectures) (prep-phrase (prep to) " +
-                        "(simple-noun-phrase (article the) (noun student)))) " +
-                        "(prep-phrase (prep with) (simple-noun-phrase (article the) (noun cat)))))",
-                    "(sentence (simple-noun-phrase (article the) (noun professor)) " +
-                        "(verb-phrase (verb lectures) (prep-phrase (prep to) (noun-phrase " +
-                        "(simple-noun-phrase (article the) (noun student)) (prep-phrase (prep with) " +
-                        "(simple-noun-phrase (article the) (noun cat)))))))",
-                )
+        test("the ambiguous sentence has two parses, in the section's order") {
+            searchRun(PARSER).result.output shouldBe
+                "[sentence, [simple-noun-phrase, [article, the], [noun, cat]], [verb, eats]]\n" +
+                "[sentence, [noun-phrase, [simple-noun-phrase, [article, the], [noun, student]], " +
+                "[prep-phrase, [prep, with], [simple-noun-phrase, [article, the], [noun, cat]]]], " +
+                "[verb-phrase, [verb, sleeps], [prep-phrase, [prep, in], " +
+                "[simple-noun-phrase, [article, the], [noun, class]]]]]\n" +
+                "[sentence, [simple-noun-phrase, [article, the], [noun, professor]], " +
+                "[verb-phrase, [verb-phrase, [verb, lectures], [prep-phrase, [prep, to], " +
+                "[simple-noun-phrase, [article, the], [noun, student]]]], " +
+                "[prep-phrase, [prep, with], [simple-noun-phrase, [article, the], [noun, cat]]]]]\n" +
+                "[sentence, [simple-noun-phrase, [article, the], [noun, professor]], " +
+                "[verb-phrase, [verb, lectures], [prep-phrase, [prep, to], [noun-phrase, " +
+                "[simple-noun-phrase, [article, the], [noun, student]], [prep-phrase, [prep, with], " +
+                "[simple-noun-phrase, [article, the], [noun, cat]]]]]]]\n"
         }
     })

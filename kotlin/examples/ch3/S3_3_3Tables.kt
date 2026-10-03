@@ -6,152 +6,140 @@ package sicp.ch3.examples
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
-import sicp.runtime.VInt
-import sicp.runtime.VNil
-import sicp.runtime.VPair
-import sicp.runtime.VSym
-import sicp.runtime.Value
-import sicp.runtime.cons
-import sicp.runtime.equalv
-import sicp.runtime.setCdr
-import sicp.runtime.vlist
+import sicp.runtime.Datum
+import sicp.runtime.Empty
+import sicp.runtime.PairCell
+import sicp.runtime.Symbol
+import sicp.runtime.Whole
+import sicp.runtime.datumList
+import sicp.runtime.pair
+import sicp.runtime.structurallyEqual
 
-/** The book's one-dimensional table of 3.3.3: a headed list of records
- * over the mutable pair. The first backbone pair is the object that
- * represents the table itself: its car holds the dummy `*table*` marker
- * (a subtable carries its own key there), its cdr the chain of records. */
+/** A one-dimensional table backed by a linked chain of host `PairCell` records.
+ * The header's first field is the `*table*` marker; its second points to records. */
 public class Table(
-    /** The book's ``equality'' test for keys; the default is `equal?`,
-     * and exercise 3.24 hands the constructor a different one. */
-    public val sameKey: (Value, Value) -> Boolean = ::equalv,
+    /** The host-data equality test for keys; exercise 3.24 supplies another one. */
+    public val sameKey: (Datum, Datum) -> Boolean = ::structurallyEqual,
 ) {
-    private val header: VPair = VPair(VSym("*table*"), VNil)
+    private val header: PairCell = pair(Symbol("*table*"), Empty)
 
-    /** The book's assoc: the first record whose key passes the table's
-     * key test, or null. The scan runs over the records it is handed,
-     * so it never sees the dummy record. */
-    public fun assoc(
-        key: Value,
-        records: Value,
-    ): VPair? {
-        if (records !is VPair) {
+    /** Find the record whose key matches, or return null when no record matches. */
+    public fun findRecord(
+        key: Datum,
+        records: Datum,
+    ): PairCell? {
+        if (records !is PairCell) {
             return null
         }
-        val record = records.car
-        return if (record is VPair && sameKey(key, record.car)) {
+        val record = records.first
+        return if (record is PairCell && sameKey(key, record.first)) {
             record
         } else {
-            assoc(key, records.cdr)
+            findRecord(key, records.second)
         }
     }
 
-    /** The book's lookup: the value stored under key, or null (the
-     * book's false). */
-    public fun lookup(key: Value): Value? = assoc(key, header.cdr)?.cdr
+    /** Return the datum under [key], or null when it is absent. */
+    public fun lookup(key: Datum): Datum? = findRecord(key, header.second)?.second
 
-    /** The book's insert!: an existing record gets the new value in
-     * place; a fresh record is spliced in right after the header, the
-     * fixed location the header exists to provide. */
+    /** Insert or replace a datum under [key]. */
     public fun insert(
-        key: Value,
-        value: Value,
+        key: Datum,
+        value: Datum,
     ) {
-        val record = assoc(key, header.cdr)
+        val record = findRecord(key, header.second)
         if (record == null) {
-            header.setCdr(cons(VPair(key, value), header.cdr))
+            header.second = pair(pair(key, value), header.second)
             return
         }
-        record.setCdr(value)
+        record.second = value
     }
 
     /** The book's two-dimensional lookup: key1 names a subtable on the
      * backbone, key2 a record within it. */
     public fun lookup2d(
-        key1: Value,
-        key2: Value,
-    ): Value? {
-        val subtable = assoc(key1, header.cdr) ?: return null
-        return assoc(key2, subtable.cdr)?.cdr
+        key1: Datum,
+        key2: Datum,
+    ): Datum? {
+        val subtable = findRecord(key1, header.second) ?: return null
+        return findRecord(key2, subtable.second)?.second
     }
 
-    /** The book's two-dimensional insert!: a subtable is a headed list
-     * whose header carries key1 where the top table carries `*table*`. */
+    /** Insert or replace a datum under a pair of keys. */
     public fun insert2d(
-        key1: Value,
-        key2: Value,
-        value: Value,
+        key1: Datum,
+        key2: Datum,
+        value: Datum,
     ) {
-        val subtable = assoc(key1, header.cdr)
+        val subtable = findRecord(key1, header.second)
         if (subtable == null) {
-            header.setCdr(
-                cons(VPair(key1, vlist(VPair(key2, value))), header.cdr),
-            )
+            header.second = pair(pair(key1, datumList(pair(key2, value))), header.second)
             return
         }
-        val record = assoc(key2, subtable.cdr)
+        val record = findRecord(key2, subtable.second)
         if (record != null) {
-            record.setCdr(value)
+            record.second = value
             return
         }
-        subtable.setCdr(cons(VPair(key2, value), subtable.cdr))
+        subtable.second = pair(pair(key2, value), subtable.second)
     }
 }
 
-/** The book's make-table. */
+/** Build the table used in the examples. */
 public fun makeTable(): Table = Table()
 
 public class S3_3_3TablesTest :
     FunSpec({
         test("the headed table of figure 3.22: a: 1, b: 2, c: 3") {
             val table = makeTable()
-            table.insert(VSym("a"), VInt(1))
-            table.insert(VSym("b"), VInt(2))
-            table.insert(VSym("c"), VInt(3))
-            table.lookup(VSym("a")) shouldBe VInt(1)
-            table.lookup(VSym("b")) shouldBe VInt(2)
-            table.lookup(VSym("c")) shouldBe VInt(3)
+            table.insert(Symbol("a"), Whole(1))
+            table.insert(Symbol("b"), Whole(2))
+            table.insert(Symbol("c"), Whole(3))
+            table.lookup(Symbol("a")) shouldBe Whole(1)
+            table.lookup(Symbol("b")) shouldBe Whole(2)
+            table.lookup(Symbol("c")) shouldBe Whole(3)
         }
 
-        test("lookup of a missing key is null, the book's false") {
+        test("lookup of a missing key is null") {
             val table = makeTable()
-            table.insert(VSym("a"), VInt(1))
-            table.lookup(VSym("z")).shouldBeNull()
+            table.insert(Symbol("a"), Whole(1))
+            table.lookup(Symbol("z")).shouldBeNull()
         }
 
         test("inserting under an existing key overwrites the record in place") {
             val table = makeTable()
-            table.insert(VSym("b"), VInt(2))
-            table.insert(VSym("b"), VInt(20))
-            table.lookup(VSym("b")) shouldBe VInt(20)
+            table.insert(Symbol("b"), Whole(2))
+            table.insert(Symbol("b"), Whole(20))
+            table.lookup(Symbol("b")) shouldBe Whole(20)
         }
 
         test("the figure 3.23 two-dimensional table") {
             val table = makeTable()
-            table.insert2d(VSym("letters"), VSym("a"), VInt(97))
-            table.insert2d(VSym("letters"), VSym("b"), VInt(98))
-            table.insert2d(VSym("math"), VSym("+"), VInt(43))
-            table.insert2d(VSym("math"), VSym("-"), VInt(45))
-            table.insert2d(VSym("math"), VSym("*"), VInt(42))
-            table.lookup2d(VSym("letters"), VSym("b")) shouldBe VInt(98)
-            table.lookup2d(VSym("math"), VSym("*")) shouldBe VInt(42)
-            table.lookup2d(VSym("math"), VSym("/")).shouldBeNull()
+            table.insert2d(Symbol("letters"), Symbol("a"), Whole(97))
+            table.insert2d(Symbol("letters"), Symbol("b"), Whole(98))
+            table.insert2d(Symbol("math"), Symbol("+"), Whole(43))
+            table.insert2d(Symbol("math"), Symbol("-"), Whole(45))
+            table.insert2d(Symbol("math"), Symbol("*"), Whole(42))
+            table.lookup2d(Symbol("letters"), Symbol("b")) shouldBe Whole(98)
+            table.lookup2d(Symbol("math"), Symbol("*")) shouldBe Whole(42)
+            table.lookup2d(Symbol("math"), Symbol("/")).shouldBeNull()
         }
 
         test("a two-dimensional insert under an existing pair of keys overwrites") {
             val table = makeTable()
-            table.insert2d(VSym("math"), VSym("+"), VInt(43))
-            table.insert2d(VSym("math"), VSym("+"), VInt(99))
-            table.lookup2d(VSym("math"), VSym("+")) shouldBe VInt(99)
+            table.insert2d(Symbol("math"), Symbol("+"), Whole(43))
+            table.insert2d(Symbol("math"), Symbol("+"), Whole(99))
+            table.lookup2d(Symbol("math"), Symbol("+")) shouldBe Whole(99)
         }
 
         test("get and put over one local operation table") {
             val operationTable = makeTable()
-            val get = { key1: Value, key2: Value -> operationTable.lookup2d(key1, key2) }
-            val put = { key1: Value, key2: Value, value: Value ->
+            val get = { key1: Datum, key2: Datum -> operationTable.lookup2d(key1, key2) }
+            val put = { key1: Datum, key2: Datum, value: Datum ->
                 operationTable.insert2d(key1, key2, value)
             }
-            put(VSym("real-part"), VSym("rectangular"), VInt(0))
-            get(VSym("real-part"), VSym("rectangular")) shouldBe VInt(0)
-            get(VSym("real-part"), VSym("polar")).shouldBeNull()
+            put(Symbol("real-part"), Symbol("rectangular"), Whole(0))
+            get(Symbol("real-part"), Symbol("rectangular")) shouldBe Whole(0)
+            get(Symbol("real-part"), Symbol("polar")).shouldBeNull()
         }
     })

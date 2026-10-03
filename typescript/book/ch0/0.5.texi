@@ -38,7 +38,9 @@ c2()
 @end example
 
 @example typescript
-const makeWithdrawer = (balance: number): ((amount: number) => number) => @{
+const makeWithdrawer = (
+  balance: number,
+): ((amount: number) => number) => @{
   let b = balance;
   return (amount) => @{
     b -= amount;
@@ -94,7 +96,7 @@ alias === cell
 This is the price and the point of chapter 3: two names for one mutable
 object behave as one object. The interpreted pairs of @ref{3.3.1} are
 built exactly here, a pair whose fields may be assigned, and
-@code{eq?} on pairs is @code{===}, so identity is the question the book
+For a pair, @code{===} is identity, so identity is the question the book
 asks of them. The persistent structures of @ref{0.4} exist precisely so
 that the rest of the book never has to reason about such sharing.
 

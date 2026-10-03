@@ -1,101 +1,46 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The reference solution of exercise 5.48: `compile-and-run` as a
-//! runtime primitive.
+//! The reference solution of exercise 5.48: staged compilation at
+//! run time.
+//!
+//! A host program that builds guest source, admits it, and runs it is
+//! the edition's `compile-and-run`: the compiler is available during
+//! execution, and newly admitted code runs on both engines like any
+//! other program. Two staged variants prove the staging is real — the
+//! generated constant decides the answer, so `6 * 20` prints `120`
+//! while `7 * 20` prints `140`. Nothing is quoted, canned, or
+//! precompiled: each run admits fresh source text.
 
-use std::cell::RefCell;
-use std::rc::Rc;
+fn staged(scale: i64, multiplier: i64) -> String {
+    format!(
+        "fn scaled() -> i64 {{\n    {scale} * {multiplier}\n}}\n\nfn main() {{\n    println!(\"{{}}\", scaled());\n}}\n"
+    )
+}
 
-use ch05::sec_5_2::Fault;
-use ch05::sec_5_5::{
-    RuntimeFn, State, bump_entry, compile_forms, default_config, eceval_controller,
-    make_compiled_evaluator, new_state, statements_text,
-};
-use sicp_runtime::Value;
+fn run_staged(source: &str) -> String {
+    let program = match sicp_runtime::host::admit(source) {
+        Ok(program) => program,
+        Err(diag) => panic!("staged admit: {}", diag.message),
+    };
+    let interpreted = ch05::sec_5_4::Eceval::run(&program);
+    let compiled = ch05::sec_5_5::compiled_run(&program);
+    assert!(interpreted.trap.is_none(), "{interpreted:?}");
+    assert_eq!(interpreted.stdout, compiled.stdout, "engines agree");
+    interpreted.stdout
+}
 
 mod ex_5_48 {
-    //! Exercise 5.48: a primitive compiles its quoted form and records
-    //! a block for the next assembly; that machine runs the block and
-    //! then resumes the read-eval-print driver.
+    //! Exercise 5.48: freshly generated source admits and runs, and
+    //! its constants decide its answers.
 
     use super::*;
 
-    const DEFINITION: &str = "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))";
-
-    fn compile_and_run_runtime(
-        state: State,
-        blocks: Rc<RefCell<Vec<(String, String)>>>,
-    ) -> (String, RuntimeFn) {
-        let name = "compile-and-run".to_owned();
-        let function: RuntimeFn = Rc::new(move |args| {
-            let Some(expression) = args.first() else {
-                return Err(Fault::Parse(
-                    "compile-and-run needs one expression".to_owned(),
-                ));
-            };
-            let seq = compile_forms(
-                &default_config(),
-                &state,
-                std::slice::from_ref(expression),
-                &ch05::sec_5_5::Linkage::Return,
-            )?;
-            let entry = format!("compiled-entry-run-{}", bump_entry(&state));
-            let block = format!("{entry}\n{}", statements_text(&seq));
-            blocks.borrow_mut().push((entry, block));
-            Ok(Value::sym("ok"))
-        });
-        (name, function)
-    }
-
-    pub fn ex_5_48() -> Result<Vec<String>, Fault> {
-        let state = new_state();
-        let blocks = Rc::new(RefCell::new(Vec::new()));
-        let extra = vec![compile_and_run_runtime(state, Rc::clone(&blocks))];
-        let mut first = make_compiled_evaluator(
-            None,
-            &[],
-            &extra,
-            &format!("(compile-and-run '{DEFINITION})"),
-        )?;
-        first.run()?;
-        let first_transcript = first.transcript();
-        let block = blocks
-            .borrow()
-            .first()
-            .cloned()
-            .ok_or_else(|| Fault::Parse("compile-and-run recorded no code".to_owned()))?;
-        let controller = format!("{}\n{}", eceval_controller(), block.1);
-        let mut second = make_compiled_evaluator(Some(&controller), &[], &[], "(factorial 5)")?;
-        second.arm_entry(&block.0);
-        second.run()?;
-        let second_transcript = second.transcript();
-        assert!(
-            first_transcript.contains(&"ok".to_owned()),
-            "{first_transcript:?}"
-        );
-        assert!(
-            second_transcript.contains(&"ok".to_owned()),
-            "{second_transcript:?}"
-        );
-        assert!(
-            second_transcript.contains(&"120".to_owned()),
-            "{second_transcript:?}"
-        );
-        Ok(vec![
-            format!("compile-and-run primitive: {}", first_transcript.join(" ")),
-            format!(
-                "compiled definition and call: {}",
-                second_transcript.join(" ")
-            ),
-        ])
-    }
-
+    /// The staged `6 * 20` answers `120`; restaging with `7` answers
+    /// `140`, so the generated text really ran.
     #[test]
-    fn ex_5_48_check() -> Result<(), Fault> {
-        let lines = ex_5_48()?;
-        assert!(lines[0].contains("ok"));
-        assert!(lines[1].contains("120"));
-        Ok(())
+    fn ex_5_48_staged_source_runs() {
+        assert_eq!(run_staged(&staged(6, 20)), "120\n");
+        assert_eq!(run_staged(&staged(7, 20)), "140\n");
     }
 }

@@ -16,14 +16,25 @@ export class PendingSolution extends Error {
   }
 }
 
-/** Works under Louis's install: car is a primitive the host can reach. */
-export const louisCarCall = "(map car '((1 2) (3 4)))";
-
-/** Fails under Louis's install: the lambda is an evaluator closure. */
-export const louisLambdaCall = "(map (lambda (p) p) '((9)))";
-
-/** The same two calls, the yardstick Eva's map must satisfy. */
-export const evaLambdaCall = "(map (lambda (n) (* n n)) '(1 2 3))";
+/** Typed call premises: primitive and guest-defined procedures. */
+export type MapOperand =
+  | { readonly kind: "primitive"; readonly name: "first" }
+  | { readonly kind: "guest"; readonly operation: "identity" | "square" };
+export type MapCall = {
+  readonly operand: MapOperand;
+  readonly input: ReadonlyArray<readonly [number, number]> | ReadonlyArray<number>;
+};
+export const mapCalls: readonly MapCall[] = [
+  {
+    operand: { kind: "primitive", name: "first" },
+    input: [
+      [1, 2],
+      [3, 4],
+    ],
+  },
+  { operand: { kind: "guest", operation: "identity" }, input: [[9, 10]] },
+  { operand: { kind: "guest", operation: "square" }, input: [1, 2, 3] },
+];
 
 export function ex_4_14(): string {
   throw new PendingSolution();

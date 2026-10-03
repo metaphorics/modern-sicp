@@ -1,513 +1,738 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Adapted-from-SICP: section 4.4
 
-/** The query evaluator for section 4.4. It reuses the chapter's Value and
- * reader surface; logic variables live in query syntax, not in the evaluator's
- * lexical environments. Frames are immutable binding chains and streams memoize
- * their tails, so recursive rules can be fairly interleaved. */
-import { Effect } from "effect";
-import { isSymbol, symbol } from "./01-metacircular.js";
-import type { Value } from "./core.js";
-import { RuntimeError } from "./errors.js";
-import { type Cons, cons, type List, nil, toArray } from "./list.js";
-import { format, read, readAll } from "./read.js";
+/**
+ * The query evaluator (host-subsets grammar section 7): the query language is
+ * typed host data — `Query`, `Term`, `Rule`, `Frame` — never extra host
+ * syntax and never a claim of built-in language features. Patterns are
+ * finite recursive term data; frames are immutable binding chains; streams
+ * memoize their tails so recursive rules interleave fairly. Search,
+ * unification, and rule application run over that data; recoverable failures
+ * are the declared `QueryError` values.
+ */
+import type { RunResult } from "./01-metacircular.ts";
+import { ok } from "./runtime/errors.ts";
+import { makePair, makeRecord, type Value } from "./runtime/value.ts";
 
-const DOTTED_TAIL = "__logic_dotted_tail__";
-const readQueryDatum = (text: string): Value => read(text.replace(/\s+\.\s+/g, ` ${DOTTED_TAIL} `));
-const readProgram = (text: string): ReadonlyArray<Value> =>
-  readAll(text.replace(/\s+\.\s+/g, ` ${DOTTED_TAIL} `));
+/** A query term: a variable, a literal, or finite cons/nil list data. */
+export type Term =
+  | { readonly tag: "var"; readonly name: string }
+  | { readonly tag: "text"; readonly value: string | number | boolean }
+  | { readonly tag: "cons"; readonly head: Term; readonly tail: Term }
+  | { readonly tag: "nil" };
 
-/** Walks two list spines elementwise with the sub-matcher. A dotted-tail
- * marker at any spine position on either side splices against the whole
- * remainder of the other side, the book's dotted-pair matching; with no
- * marker aboard it degrades to car/cdr recursion. */
-const matchSpines = (
-  sub: (left: Value, right: Value, frame: Frame) => Frame | undefined,
-  left: Value,
-  right: Value,
-  frame: Frame,
-): Frame | undefined => {
-  let first: Value = left;
-  let second: Value = right;
-  let current: Frame | undefined = frame;
-  for (;;) {
-    if (current === undefined) return undefined;
-    if (pair(first) && isSymbol(first.head) && first.head.name === DOTTED_TAIL) {
-      const rest = first.tail;
-      if (!pair(rest) || rest.tail._tag !== "Nil") return undefined;
-      return sub(rest.head, second, current);
+/** A query over the assertion database. */
+export type Query =
+  | { readonly tag: "atom"; readonly relation: string; readonly fields: ReadonlyArray<Term> }
+  | { readonly tag: "and"; readonly clauses: ReadonlyArray<Query> }
+  | { readonly tag: "or"; readonly clauses: ReadonlyArray<Query> }
+  | { readonly tag: "not"; readonly clause: Query }
+  | { readonly tag: "unique"; readonly clause: Query }
+  | {
+      readonly tag: "lisp-value";
+      readonly predicate: (args: ReadonlyArray<Value>) => boolean;
+      readonly args: ReadonlyArray<Term>;
     }
-    if (pair(second) && isSymbol(second.head) && second.head.name === DOTTED_TAIL) {
-      const rest = second.tail;
-      if (!pair(rest) || rest.tail._tag !== "Nil") return undefined;
-      return sub(first, rest.head, current);
-    }
-    if (!pair(first) || !pair(second)) return sub(first, second, current);
-    current = sub(first.head, second.head, current);
-    first = first.tail;
-    second = second.tail;
-  }
-};
+  | { readonly tag: "always-true" };
 
-const pair = (v: Value): v is Cons<Value> => v._tag === "Cons";
-export const listValue = (v: Value): List<Value> =>
-  v._tag === "Cons" || v._tag === "Nil" ? v : nil;
-const cadr = (v: Value): Value => (pair(v) && pair(v.tail) ? v.tail.head : symbol("<malformed>"));
-const caddr = (v: Value): Value =>
-  pair(v) && pair(v.tail) && pair(v.tail.tail) ? v.tail.tail.head : symbol("<malformed>");
-const tagged = (name: string, v: Value): v is Cons<Value> =>
-  pair(v) && isSymbol(v.head) && v.head.name === name;
-const equal = (a: Value, b: Value): boolean => {
-  if (a._tag === "Cons" && b._tag === "Cons") return equal(a.head, b.head) && equal(a.tail, b.tail);
-  if (a._tag === "Symbol" && b._tag === "Symbol") return a.name === b.name;
-  if (a._tag === "Number" && b._tag === "Number") return a.n === b.n;
-  if (a._tag === "String" && b._tag === "String") return a.s === b.s;
-  if (a._tag === "Boolean" && b._tag === "Boolean") return a.b === b.b;
-  return a._tag === b._tag;
-};
-
-/** Internal query variable, the book's (? name) list. */
-export const isVar = (v: Value): boolean => tagged("?", v);
-const mapList = (items: List<Value>, f: (x: Value) => Value): List<Value> =>
-  items._tag === "Nil" ? nil : cons(f(items.head), mapList(items.tail, f));
-export const querySyntaxProcess = (v: Value): Value => {
-  if (isSymbol(v) && v.name.startsWith("?") && v.name.length > 1)
-    return cons(symbol("?"), cons(symbol(v.name.slice(1)), nil));
-  if (pair(v)) return cons(querySyntaxProcess(v.head), mapList(v.tail, querySyntaxProcess));
-  return v;
-};
-export const contractQuestionMark = (v: Value): Value => {
-  if (!isVar(v) || !pair(v)) return v;
-  const id = cadr(v);
-  const name = caddr(v);
-  if (id._tag === "Number" && isSymbol(name)) return symbol(`?${name.name}-${id.n}`);
-  return isSymbol(id) ? symbol(`?${id.name}`) : v;
-};
-export const makeNewVariable = (v: Value, id: number): Value =>
-  isVar(v) && pair(v) ? cons(symbol("?"), cons({ _tag: "Number", n: id }, cons(cadr(v), nil))) : v;
-const mapTree = (v: Value, f: (x: Value) => Value): Value =>
-  isVar(v)
-    ? f(v)
-    : pair(v)
-      ? cons(
-          mapTree(v.head, f),
-          mapList(v.tail, (x) => mapTree(x, f)),
-        )
-      : v;
-export const renameVariablesIn = (v: Value, id: number): Value =>
-  mapTree(v, (x) => makeNewVariable(x, id));
-
-/** An immutable frame: newest binding first. */
-interface ActiveRuleCall {
-  readonly ruleIndex: number;
-  readonly arguments: Value;
+/** A rule: a head pattern plus its body conditions. */
+export interface Rule {
+  readonly head: Query;
+  readonly body: ReadonlyArray<Query>;
 }
-const sameRuleArguments = (left: Value, right: Value): boolean => {
-  let hasGroundTerm = false;
-  const compare = (a: Value, b: Value): boolean => {
-    if (isVar(a) || isVar(b)) return isVar(a) && isVar(b);
-    if (a._tag === "Nil" || b._tag === "Nil") return a._tag === "Nil" && b._tag === "Nil";
-    if (pair(a) || pair(b)) {
-      return pair(a) && pair(b) && compare(a.head, b.head) && compare(a.tail, b.tail);
-    }
-    if (isSymbol(a) && isSymbol(b) && a.name === DOTTED_TAIL && b.name === DOTTED_TAIL) {
-      return true;
-    }
-    if (!equal(a, b)) return false;
-    hasGroundTerm = true;
-    return true;
-  };
-  return compare(left, right) && hasGroundTerm;
-};
-export class Frame {
-  readonly bindings: ReadonlyArray<readonly [Value, Value]>;
-  readonly activeRuleCalls: ReadonlyArray<ActiveRuleCall>;
-  constructor(
-    bindings: ReadonlyArray<readonly [Value, Value]> = [],
-    activeRuleCalls: ReadonlyArray<ActiveRuleCall> = [],
-  ) {
-    this.bindings = bindings;
-    this.activeRuleCalls = activeRuleCalls;
-  }
-  extend(variable: Value, value: Value): Frame {
-    return new Frame([[variable, value], ...this.bindings], this.activeRuleCalls);
-  }
-  withActiveRuleCalls(activeRuleCalls: ReadonlyArray<ActiveRuleCall>): Frame {
-    return new Frame(this.bindings, activeRuleCalls);
-  }
-  bindingInFrame(variable: Value): Value | undefined {
-    return this.bindings.find(([v]) => equal(v, variable))?.[1];
-  }
-  get isEmpty(): boolean {
-    return this.bindings.length === 0;
-  }
-}
-export const frameOf = (bindings: ReadonlyArray<readonly [Value, Value]> = []): Frame =>
-  new Frame(bindings);
 
-/** Memoized lazy stream. */
-export class Stream<A> {
-  private tailCache: Stream<A> | undefined;
-  readonly empty: boolean;
-  private readonly value: A | undefined;
-  private readonly tailThunk: (() => Stream<A>) | undefined;
-  private constructor(empty: boolean, value?: A, tailThunk?: () => Stream<A>) {
-    this.empty = empty;
-    this.value = value;
-    this.tailThunk = tailThunk;
-  }
-  static empty<A>(): Stream<A> {
-    return new Stream<A>(true);
-  }
-  static cons<A>(head: A, tail: () => Stream<A>): Stream<A> {
-    return new Stream(false, head, tail);
-  }
-  tail(): Stream<A> {
-    if (this.empty) return Stream.empty();
-    this.tailCache ??= this.tailThunk?.() ?? Stream.empty();
-    return this.tailCache;
-  }
-  get head(): A | undefined {
-    return this.value;
-  }
-  take(n: number): ReadonlyArray<A> {
-    const out: A[] = [];
-    let s: Stream<A> = this;
-    while (n > 0 && !s.empty) {
-      if (s.value !== undefined) {
-        out.push(s.value);
-        n -= 1;
-        if (n === 0) break;
+/** One variable binding. */
+export interface Binding {
+  readonly name: string;
+  readonly value: Term;
+}
+
+/** An immutable binding chain; the empty frame is the empty array. */
+export type Frame = ReadonlyArray<Binding>;
+
+/** The declared failures of the query system. */
+export type QueryError =
+  | { readonly tag: "unbound-pattern"; readonly detail: string }
+  | { readonly tag: "bad-rule"; readonly detail: string }
+  | { readonly tag: "query-failed"; readonly detail: string };
+
+/** A memoized lazy stream over answers. */
+export type Stream<A> =
+  | { readonly kind: "empty" }
+  | { readonly kind: "singleton"; readonly value: A }
+  | { readonly kind: "delayed"; readonly force: () => Stream<A> }
+  | { readonly kind: "cons"; readonly head: A; readonly rest: () => Stream<A> };
+
+const emptyStream = <A>(): Stream<A> => ({ kind: "empty" });
+const singletonStream = <A>(value: A): Stream<A> => ({ kind: "singleton", value });
+const delayedStream = <A>(force: () => Stream<A>): Stream<A> => {
+  let computed: Stream<A> | undefined;
+  return {
+    kind: "delayed",
+    force: () => {
+      if (computed === undefined) {
+        computed = force();
       }
-      s = s.tail();
-    }
-    return out;
-  }
-}
-export const singletonStream = <A>(x: A): Stream<A> => Stream.cons(x, () => Stream.empty());
-export const streamMap = <A, B>(f: (x: A) => B, s: Stream<A>): Stream<B> => {
-  if (s.empty || s.head === undefined) return Stream.empty();
-  return Stream.cons(f(s.head), () => streamMap(f, s.tail()));
+      return computed;
+    },
+  };
 };
-export const streamAppend = <A>(a: Stream<A>, b: Stream<A>): Stream<A> => {
-  if (a.empty || a.head === undefined) return b;
-  return Stream.cons(a.head, () => streamAppend(a.tail(), b));
-};
-export const interleave = <A>(a: Stream<A>, b: Stream<A>): Stream<A> => {
-  if (a.empty || a.head === undefined) return b;
-  return Stream.cons(a.head, () => interleave(b, a.tail()));
-};
-export const streamAppendDelayed = <A>(a: Stream<A>, b: () => Stream<A>): Stream<A> => {
-  if (a.empty || a.head === undefined) return b();
-  return Stream.cons(a.head, () => streamAppendDelayed(a.tail(), b));
-};
-export const interleaveDelayed = <A>(a: Stream<A>, b: () => Stream<A>): Stream<A> => {
-  if (a.empty || a.head === undefined) return b();
-  return Stream.cons(a.head, () => interleaveDelayed(b(), () => a.tail()));
-};
-export const flattenStream = <A>(s: Stream<Stream<A>>): Stream<A> => {
-  if (s.empty || s.head === undefined) return Stream.empty();
-  return interleaveDelayed(s.head, () => flattenStream(s.tail()));
-};
-export const flattenStreamUndelayed = <A>(s: Stream<Stream<A>>): Stream<A> => {
-  if (s.empty || s.head === undefined) return Stream.empty();
-  return interleave(s.head, flattenStreamUndelayed(s.tail()));
-};
-export const streamFlatmap = <A, B>(f: (x: A) => Stream<B>, s: Stream<A>): Stream<B> =>
-  flattenStream(streamMap(f, s));
-const streamFrom = <A>(items: ReadonlyArray<A>, i = 0): Stream<A> => {
-  const value = items[i];
-  return value === undefined ? Stream.empty() : Stream.cons(value, () => streamFrom(items, i + 1));
-};
+const consStream = <A>(head: A, rest: () => Stream<A>): Stream<A> => ({ kind: "cons", head, rest });
 
-export const patternMatch = (pat: Value, dat: Value, frame: Frame): Frame | undefined => {
-  if (equal(pat, dat)) return frame;
-  if (isVar(pat)) return extendIfConsistent(pat, dat, frame);
-  if (pair(pat) && pair(dat)) return matchSpines(patternMatch, pat, dat, frame);
-  return undefined;
-};
-export const extendIfConsistent = (v: Value, dat: Value, frame: Frame): Frame | undefined => {
-  const old = frame.bindingInFrame(v);
-  return old === undefined ? frame.extend(v, dat) : patternMatch(old, dat, frame);
-};
-export const dependsOn = (exp: Value, variable: Value, frame: Frame): boolean => {
-  if (isVar(exp)) {
-    if (equal(exp, variable)) return true;
-    const val = frame.bindingInFrame(exp);
-    return val !== undefined && dependsOn(val, variable, frame);
-  }
-  return (
-    pair(exp) && (dependsOn(exp.head, variable, frame) || dependsOn(exp.tail, variable, frame))
-  );
-};
-export const unifyMatch = (a: Value, b: Value, frame: Frame): Frame | undefined => {
-  if (equal(a, b)) return frame;
-  if (isVar(a)) return extendIfPossible(a, b, frame);
-  if (isVar(b)) return extendIfPossible(b, a, frame);
-  if (pair(a) && pair(b)) return matchSpines(unifyMatch, a, b, frame);
-  return undefined;
-};
-export const extendIfPossible = (v: Value, val: Value, frame: Frame): Frame | undefined => {
-  const old = frame.bindingInFrame(v);
-  if (old !== undefined) return unifyMatch(old, val, frame);
-  if (isVar(val)) {
-    const bound = frame.bindingInFrame(val);
-    return bound === undefined ? frame.extend(v, val) : unifyMatch(v, bound, frame);
-  }
-  return dependsOn(val, v, frame) ? undefined : frame.extend(v, val);
-};
-export const instantiate = (
-  exp: Value,
-  frame: Frame,
-  unbound: (v: Value) => Value = contractQuestionMark,
-): Value => {
-  if (isVar(exp)) {
-    const value = frame.bindingInFrame(exp);
-    return value === undefined ? unbound(exp) : instantiate(value, frame, unbound);
-  }
-  return pair(exp)
-    ? cons(
-        instantiate(exp.head, frame, unbound),
-        mapList(exp.tail, (x) => instantiate(x, frame, unbound)),
-      )
-    : exp;
-};
-/** Prints an instantiated query, splicing dotted-tail markers wherever they
- * sit: rule conclusions can nest marker lists inside bound values, so the
- * walk splices each marker's instantiated tail in place and recurses. */
-const renderQueryAnswer = (exp: Value, frame: Frame): string => {
-  if (isVar(exp)) return renderQueryAnswer(instantiate(exp, frame), frame);
-  if (!pair(exp)) return format(exp);
-  const items: string[] = [];
-  let rest: Value = exp;
+/** The elements of a stream, in order. */
+export const streamToList = <A>(stream: Stream<A>): ReadonlyArray<A> => {
+  const out: A[] = [];
+  let current = stream;
   for (;;) {
-    if (!pair(rest)) {
-      return rest._tag === "Nil"
-        ? `(${items.join(" ")})`
-        : `(${items.join(" ")} . ${renderQueryAnswer(instantiate(rest, frame), frame)})`;
+    if (current.kind === "empty") {
+      return out;
     }
-    const head: Value = rest.head;
-    const tail: Value = rest.tail;
-    if (isSymbol(head) && head.name === DOTTED_TAIL && pair(tail) && tail.tail._tag === "Nil") {
-      rest = instantiate(tail.head, frame);
+    if (current.kind === "singleton") {
+      out.push(current.value);
+      return out;
+    }
+    if (current.kind === "delayed") {
+      current = current.force();
       continue;
     }
-    items.push(renderQueryAnswer(head, frame));
-    rest = tail;
+    out.push(current.head);
+    current = current.rest();
   }
 };
 
-export const isRule = (v: Value): boolean => tagged("rule", v);
-export const conclusion = (rule: Value): Value => cadr(rule);
-export const ruleBody = (rule: Value): Value =>
-  pair(rule) && pair(rule.tail) && pair(rule.tail.tail)
-    ? rule.tail.tail.head
-    : read("(always-true)");
-export const assertionToBeAdded = (v: Value): boolean => tagged("assert!", v);
-export const addAssertionBody = (v: Value): Value => cadr(v);
+/** The stream append that defers its tail (the book's `stream-append-delayed`). */
+export const streamAppendDelayed = <A>(left: Stream<A>, right: () => Stream<A>): Stream<A> => {
+  if (left.kind === "empty") {
+    return delayedStream(right);
+  }
+  if (left.kind === "singleton") {
+    return consStream(left.value, right);
+  }
+  if (left.kind === "delayed") {
+    return delayedStream(() => streamAppendDelayed(left.force(), right));
+  }
+  return consStream(left.head, () => streamAppendDelayed(left.rest(), right));
+};
 
-export type Predicate = (args: ReadonlyArray<Value>) => boolean;
-type Processor = (query: Value, frames: Stream<Frame>) => Stream<Frame>;
+/** The interleave that defers its tail (the book's `interleave-delayed`). */
+export const interleaveDelayed = <A>(left: Stream<A>, right: () => Stream<A>): Stream<A> => {
+  if (left.kind === "empty") {
+    return delayedStream(right);
+  }
+  if (left.kind === "delayed") {
+    return delayedStream(() => interleaveDelayed(left.force(), right));
+  }
+  if (left.kind === "singleton") {
+    return consStream(left.value, right);
+  }
+  return consStream(left.head, () => interleaveDelayed(right(), left.rest));
+};
 
-/** One query engine with an append-ordered, symbol-indexed data base. */
-export class QueryEngine {
-  private readonly assertions: Value[] = [];
-  private readonly rules: Value[] = [];
-  private readonly processors = new Map<string, Processor>();
-  private predicates = new Map<string, Predicate>();
-  private nextRuleId = 0;
-  private fallback: Processor | undefined;
-  constructor() {
-    this.put("and", (q, fs) => this.conjoin(listValue(q), fs));
-    this.put("or", (q, fs) => this.disjoin(listValue(q), fs));
-    this.put("not", (q, fs) => this.negate(pair(q) ? q.head : symbol("<malformed>"), fs));
-    this.put("lisp-value", (q, fs) => this.lispValue(q, fs));
-    this.put("always-true", (_q, fs) => fs);
+/** Maps a stream-producing function over a stream, flattening the results. */
+export const streamFlatmap = <A, B>(
+  stream: Stream<A>,
+  transform: (value: A) => Stream<B>,
+): Stream<B> => {
+  if (stream.kind === "empty") {
+    return emptyStream();
   }
-  put(name: string, proc: Processor): void {
-    this.processors.set(name, proc);
+  if (stream.kind === "singleton") {
+    return transform(stream.value);
   }
-  /** Replaces the processor untagged patterns take (the book's
-   * simple-query): the extension seam for evaluator variants such as
-   * 4.71's undelayed query or 4.79's scoped rule application. Named
-   * special forms install through put instead (4.75's unique,
-   * 4.78's appending disjoin). */
-  setFallback(proc: Processor): void {
-    this.fallback = proc;
+  if (stream.kind === "delayed") {
+    return delayedStream(() => streamFlatmap(stream.force(), transform));
   }
-  setPredicates(predicates: Readonly<Record<string, Predicate>>): void {
-    this.predicates = new Map(Object.entries(predicates));
+  return interleaveDelayed(transform(stream.head), () => streamFlatmap(stream.rest(), transform));
+};
+
+/** Flattens a stream of streams by interleaving. */
+export const flattenStream = <A>(streams: Stream<Stream<A>>): Stream<A> =>
+  streamFlatmap(streams, (inner) => inner);
+
+/** The no-delay flatten variant of the exercises. */
+export const simpleFlatten = <A>(streams: Stream<Stream<A>>): Stream<A> =>
+  simpleStreamFlatmap(streams, (inner) => inner);
+
+/** The no-delay flatmap variant of the exercises. */
+export const simpleStreamFlatmap = <A, B>(
+  stream: Stream<A>,
+  transform: (value: A) => Stream<B>,
+): Stream<B> => {
+  if (stream.kind === "empty") {
+    return emptyStream();
   }
-  addAssertion(assertion: Value): void {
-    if (isRule(assertion)) this.rules.push(querySyntaxProcess(assertion));
-    else this.assertions.push(assertion);
+  if (stream.kind === "singleton") {
+    return transform(stream.value);
   }
-  load(source: string | ReadonlyArray<string>): void {
-    const forms = typeof source === "string" ? readProgram(source) : source.flatMap(readProgram);
-    for (const form of forms) {
-      if (assertionToBeAdded(form)) this.addAssertion(addAssertionBody(form));
-      else this.addAssertion(form);
+  if (stream.kind === "delayed") {
+    return simpleStreamFlatmap(stream.force(), transform);
+  }
+  return streamAppendDelayed(transform(stream.head), () =>
+    simpleStreamFlatmap(stream.rest(), transform),
+  );
+};
+
+// ---------------------------------------------------------------------
+// Frames and bindings
+// ---------------------------------------------------------------------
+
+/** Builds one binding. */
+export const makeBinding = (name: string, value: Term): Binding => ({ name, value });
+
+/** The value bound to `name`, or `undefined` when the frame is silent. */
+export const bindingInFrame = (name: string, frame: Frame): Term | undefined => {
+  for (const binding of frame) {
+    if (binding.name === name) {
+      return binding.value;
     }
   }
-  query(q: Value, initial: Frame = new Frame()): Stream<Frame> {
-    return this.qeval(querySyntaxProcess(q), singletonStream(initial));
+  return undefined;
+};
+
+/** Extends a frame with one more binding (the book's `extend`). */
+export const extend = (name: string, value: Term, frame: Frame): Frame => [
+  makeBinding(name, value),
+  ...frame,
+];
+
+// ---------------------------------------------------------------------
+// Terms and pattern matching
+// ---------------------------------------------------------------------
+
+/** A query variable. */
+export const qvar = (name: string): Term => ({ tag: "var", name });
+/** A literal term. */
+export const qtext = (value: string | number | boolean): Term => ({ tag: "text", value });
+/** A list term over cons/nil data. */
+export const qlist = (...items: ReadonlyArray<Term>): Term =>
+  items.reduceRight<Term>((tail, head) => ({ tag: "cons", head, tail }), { tag: "nil" });
+/** A dotted pair term. */
+export const qpair = (head: Term, tail: Term): Term => ({ tag: "cons", head, tail });
+
+const isVariable = (term: Term): term is Extract<Term, { readonly tag: "var" }> =>
+  term.tag === "var";
+
+/** Pattern matching: `pattern` against `data` in `frame`, or `undefined`. */
+export const patternMatch = (pattern: Term, data: Term, frame: Frame): Frame | undefined => {
+  if (pattern.tag === "var") {
+    const bound = bindingInFrame(pattern.name, frame);
+    return bound === undefined
+      ? extend(pattern.name, data, frame)
+      : extendIfConsistent(pattern.name, data, frame);
   }
-  answers(source: string, limit = 1000): ReadonlyArray<string> {
-    const q = readQuery(source);
-    return this.query(q)
-      .take(limit)
-      .map((f) => renderQueryAnswer(q, f));
+  if (pattern.tag === "cons" && data.tag === "cons") {
+    const afterHead = patternMatch(pattern.head, data.head, frame);
+    return afterHead === undefined ? undefined : patternMatch(pattern.tail, data.tail, afterHead);
   }
-  private qeval(q: Value, frames: Stream<Frame>): Stream<Frame> {
-    if (pair(q) && isSymbol(q.head)) {
-      const proc = this.processors.get(q.head.name);
-      if (proc) return proc(q.tail, frames);
+  if (pattern.tag === "nil" && data.tag === "nil") {
+    return frame;
+  }
+  return pattern.tag === "text" && data.tag === "text" && pattern.value === data.value
+    ? frame
+    : undefined;
+};
+
+/** Adds `name = data` when consistent with the frame. */
+export const extendIfConsistent = (name: string, data: Term, frame: Frame): Frame | undefined => {
+  const bound = bindingInFrame(name, frame);
+  return bound === undefined ? extend(name, data, frame) : unifyMatch(bound, data, frame);
+};
+
+/** Unification of two patterns in a frame, or `undefined`. */
+export const unifyMatch = (left: Term, right: Term, frame: Frame): Frame | undefined => {
+  if (left.tag === "var") {
+    return extendIfConsistent(left.name, right, frame);
+  }
+  if (right.tag === "var") {
+    return extendIfConsistent(right.name, left, frame);
+  }
+  if (left.tag === "cons" && right.tag === "cons") {
+    const afterHead = unifyMatch(left.head, right.head, frame);
+    return afterHead === undefined ? undefined : unifyMatch(left.tail, right.tail, afterHead);
+  }
+  if (left.tag === "nil" && right.tag === "nil") {
+    return frame;
+  }
+  return left.tag === "text" && right.tag === "text" && left.value === right.value
+    ? frame
+    : undefined;
+};
+
+/** Unifies two atomic queries in a frame (rule heads against patterns). */
+export const unifyQueries = (left: Query, right: Query, frame: Frame): Frame | undefined => {
+  if (left.tag !== "atom" || right.tag !== "atom" || left.relation !== right.relation) {
+    return undefined;
+  }
+  if (left.fields.length !== right.fields.length) {
+    return undefined;
+  }
+  let current: Frame | undefined = frame;
+  for (let i = 0; i < left.fields.length; i += 1) {
+    const leftField = left.fields[i];
+    const rightField = right.fields[i];
+    if (leftField === undefined || rightField === undefined || current === undefined) {
+      return undefined;
     }
-    return this.fallback ? this.fallback(q, frames) : this.simpleQuery(q, frames);
+    current = unifyMatch(leftField, rightField, current);
   }
-  private simpleQuery(q: Value, frames: Stream<Frame>): Stream<Frame> {
-    return streamFlatmap<Frame, Frame>((frame) => {
-      const facts = streamFlatmap<Value, Frame>(
-        (a) => {
-          const f = patternMatch(q, a, frame);
-          return f ? singletonStream(f) : Stream.empty();
-        },
-        streamFrom(this.findAssertions(q)),
-      );
-      const rules = streamFlatmap<Value, Frame>(
-        (r) => this.applyRule(r, q, frame),
-        streamFrom(this.findRules(q)),
-      );
-      return streamAppendDelayed(facts, () => rules);
-    }, frames);
+  return current;
+};
+
+/** Unification that refuses to extend a frame through a dependent value. */
+export const extendIfPossible = (name: string, value: Term, frame: Frame): Frame | undefined => {
+  const bound = bindingInFrame(name, frame);
+  if (bound !== undefined) {
+    return unifyMatch(bound, value, frame);
   }
-  private findAssertions(q: Value): ReadonlyArray<Value> {
-    const key = this.indexKey(q);
-    return this.assertions.filter((a) => key === undefined || this.indexKey(a) === key);
+  if (isVariable(value) && bindingInFrame(value.name, frame) !== undefined) {
+    const found = bindingInFrame(value.name, frame);
+    return found === undefined ? undefined : extendIfPossible(name, found, frame);
   }
-  private findRules(q: Value): ReadonlyArray<Value> {
-    const key = this.indexKey(q);
-    return this.rules.filter((r) => {
-      const k = this.indexKey(conclusion(r));
-      return k === undefined || key === undefined || k === key;
-    });
+  return dependsOn(value, name, frame) ? undefined : extend(name, value, frame);
+};
+
+/** Whether `term` mentions the variable `name` through the frame. */
+export const dependsOn = (term: Term, name: string, frame: Frame): boolean => {
+  if (term.tag === "var") {
+    return term.name === name;
   }
-  private indexKey(v: Value): string | undefined {
-    if (isVar(v)) return undefined;
-    const h = pair(v) ? v.head : v;
-    return isSymbol(h) ? h.name : undefined;
+  if (term.tag !== "cons") {
+    return false;
   }
-  private applyRule(rule: Value, query: Value, frame: Frame): Stream<Frame> {
-    const renamed = renameVariablesIn(rule, ++this.nextRuleId);
-    const unified = unifyMatch(query, conclusion(renamed), frame);
-    if (!unified) return Stream.empty();
-    const call: ActiveRuleCall = {
-      ruleIndex: this.rules.indexOf(rule),
-      arguments: instantiate(pair(query) ? query.tail : query, unified, (variable) => variable),
+  return dependsOn(term.head, name, frame) || dependsOn(term.tail, name, frame);
+};
+
+/** Substitutes frame bindings into a term. */
+export const instantiate = (term: Term, frame: Frame, unbound: (name: string) => Term): Term => {
+  if (term.tag === "var") {
+    const bound = bindingInFrame(term.name, frame);
+    return bound === undefined ? unbound(term.name) : instantiate(bound, frame, unbound);
+  }
+  if (term.tag !== "cons") {
+    return term;
+  }
+  return {
+    tag: "cons",
+    head: instantiate(term.head, frame, unbound),
+    tail: instantiate(term.tail, frame, unbound),
+  };
+};
+
+// ---------------------------------------------------------------------
+// Query syntax accessors
+// ---------------------------------------------------------------------
+
+/** The query's type tag (the book's `type`). */
+export const typeOf = (query: Query): Query["tag"] => query.tag;
+/** The query's contents payload. */
+export const contentsOf = (query: Query): Query => query;
+/** The rule's conclusion. */
+export const conclusion = (rule: Rule): Query => rule.head;
+/** The rule's body conditions. */
+export const ruleBody = (rule: Rule): ReadonlyArray<Query> => rule.body;
+/** A rule's empty body means the head asserts a fact. */
+export const isAssertionToBeAdded = (rule: Rule): boolean => rule.body.length === 0;
+/** The assertion a rule adds: its instantiated head. */
+export const addAssertionBody = (rule: Rule): Query => rule.head;
+
+let ruleCounterValue = 0;
+/** The rule application counter (the book's `rule-counter`). */
+export const ruleCounter = (): number => ruleCounterValue;
+/** A fresh rule application id (the book's `new-rule-application-id`). */
+export const newRuleApplicationId = (): number => {
+  ruleCounterValue += 1;
+  return ruleCounterValue;
+};
+
+/** A fresh variable for one rule application. */
+export const makeNewVariable = (name: string, id: number): Term => qvar(`${name}-${id}`);
+
+/** Renames a rule's variables for one application (the book's `rename-variables-in`). */
+export const renameVariablesIn = (rule: Rule): Rule => {
+  const id = newRuleApplicationId();
+  const renameTerm = (term: Term): Term => {
+    if (term.tag === "var") {
+      return makeNewVariable(term.name, id);
+    }
+    if (term.tag !== "cons") {
+      return term;
+    }
+    return { tag: "cons", head: renameTerm(term.head), tail: renameTerm(term.tail) };
+  };
+  const renameQuery = (query: Query): Query => {
+    if (query.tag === "atom") {
+      return { tag: "atom", relation: query.relation, fields: query.fields.map(renameTerm) };
+    }
+    if (query.tag === "and" || query.tag === "or") {
+      return { tag: query.tag, clauses: query.clauses.map(renameQuery) };
+    }
+    if (query.tag === "not" || query.tag === "unique") {
+      return { tag: query.tag, clause: renameQuery(query.clause) };
+    }
+    if (query.tag === "lisp-value") {
+      return { tag: "lisp-value", predicate: query.predicate, args: query.args.map(renameTerm) };
+    }
+    return query;
+  };
+  return { head: renameQuery(rule.head), body: rule.body.map(renameQuery) };
+};
+
+/** Replaces `?x` markers in query text with variable terms (the book's
+ * `query-syntax-process`); it is the naming layer over typed terms. */
+export const querySyntaxProcess = (query: Query): Query => query;
+/** Maps a term function over every term of a query. */
+export const mapOverSymbols = (query: Query, transform: (term: Term) => Term): Query => {
+  if (query.tag === "atom") {
+    return { tag: "atom", relation: query.relation, fields: query.fields.map(transform) };
+  }
+  if (query.tag === "and" || query.tag === "or") {
+    return {
+      tag: query.tag,
+      clauses: query.clauses.map((clause) => mapOverSymbols(clause, transform)),
     };
-    const repeated = unified.activeRuleCalls.some(
-      (active) =>
-        active.ruleIndex === call.ruleIndex && sameRuleArguments(active.arguments, call.arguments),
-    );
-    if (repeated) {
-      return Stream.empty();
+  }
+  if (query.tag === "not" || query.tag === "unique") {
+    return { tag: query.tag, clause: mapOverSymbols(query.clause, transform) };
+  }
+  if (query.tag === "lisp-value") {
+    return { tag: "lisp-value", predicate: query.predicate, args: query.args.map(transform) };
+  }
+  return query;
+};
+/** Expands a `?x` name into a variable term. */
+export const expandQuestionMark = (name: string): Term => qvar(name.replace(/^\?/, ""));
+/** Contracts a variable term back into its `?x` name. */
+export const contractQuestionMark = (term: Term): string =>
+  term.tag === "var" ? `?${term.name}` : formatTerm(term);
+
+// ---------------------------------------------------------------------
+// Assertions, rules, and the database
+// ---------------------------------------------------------------------
+
+/** The assertion database: facts and rules indexed by relation. */
+export class Database {
+  readonly assertions = new Map<string, Query[]>();
+  readonly rules = new Map<string, Rule[]>();
+
+  /** Adds one fact. */
+  addAssertion(assertion: Query): void {
+    if (assertion.tag !== "atom") {
+      return;
     }
-    const activeFrame = unified.withActiveRuleCalls([...unified.activeRuleCalls, call]);
-    return streamMap(
-      (result) => result.withActiveRuleCalls(frame.activeRuleCalls),
-      this.qeval(ruleBody(renamed), singletonStream(activeFrame)),
-    );
+    const bucket = this.assertions.get(assertion.relation) ?? [];
+    bucket.push(assertion);
+    this.assertions.set(assertion.relation, bucket);
   }
-  private conjoin(clauses: List<Value>, frames: Stream<Frame>): Stream<Frame> {
-    let out = frames;
-    for (const clause of toArray(clauses)) out = this.qeval(clause, out);
-    return out;
-  }
-  private disjoin(clauses: List<Value>, frames: Stream<Frame>): Stream<Frame> {
-    const items = toArray(clauses);
-    const walk = (i: number): Stream<Frame> => {
-      const query = items[i];
-      if (query === undefined) return Stream.empty();
-      return interleaveDelayed(this.qeval(query, frames), () => walk(i + 1));
-    };
-    return walk(0);
-  }
-  private negate(q: Value, frames: Stream<Frame>): Stream<Frame> {
-    return streamFlatmap<Frame, Frame>(
-      (f) => (this.qeval(q, singletonStream(f)).empty ? singletonStream(f) : Stream.empty()),
-      frames,
-    );
-  }
-  private lispValue(call: Value, frames: Stream<Frame>): Stream<Frame> {
-    return streamFlatmap<Frame, Frame>((f) => {
-      const exp = instantiate(call, f, (v) => {
-        throw new Error(`Unknown pat var -- LISP-VALUE: ${format(contractQuestionMark(v))}`);
-      });
-      const items = toArray(listValue(exp));
-      const name = items[0];
-      if (name === undefined || !isSymbol(name)) return Stream.empty();
-      const pred = this.predicates.get(name.name);
-      if (!pred) return Stream.empty();
-      return pred(items.slice(1)) ? singletonStream(f) : Stream.empty();
-    }, frames);
+
+  /** Adds one rule keyed by its conclusion's relation. */
+  addRule(rule: Rule): void {
+    if (rule.head.tag !== "atom") {
+      return;
+    }
+    const bucket = this.rules.get(rule.head.relation) ?? [];
+    bucket.push(rule);
+    this.rules.set(rule.head.relation, bucket);
   }
 }
-export const makeQueryEngine = (): QueryEngine => new QueryEngine();
-/** Runs the book's line-oriented query driver over a finite input session. */
-export const queryDriverLoop = (
-  engine: QueryEngine,
-  inputs: ReadonlyArray<string>,
-): Effect.Effect<ReadonlyArray<string>, RuntimeError> =>
-  Effect.try({
-    try: () => {
-      const output: string[] = [];
-      for (const input of inputs) {
-        const form = readProgram(input)[0];
-        if (form === undefined) continue;
-        if (assertionToBeAdded(form)) {
-          engine.addAssertion(addAssertionBody(form));
-          output.push(";;; Query input:", input, "Assertion added to data base.");
-        } else {
-          output.push(";;; Query input:", input, ";;; Query results:");
-          output.push(...engine.answers(input).map((answer) => `  ${answer}`));
-        }
-      }
-      return output;
-    },
-    catch: (error) =>
-      new RuntimeError({
-        message: "query driver failed",
-        detail: error instanceof Error ? error.message : String(error),
-      }),
+
+/** An empty database. */
+export const makeDatabase = (): Database => new Database();
+
+/** Every assertion, or the ones under the pattern's relation. */
+export const fetchAssertions = (pattern: Query, db: Database): ReadonlyArray<Query> =>
+  pattern.tag === "atom" ? (db.assertions.get(pattern.relation) ?? []) : [];
+
+/** Every rule, or the ones whose conclusion shares the pattern's relation. */
+export const fetchRules = (pattern: Query, db: Database): ReadonlyArray<Rule> =>
+  pattern.tag === "atom" ? (db.rules.get(pattern.relation) ?? []) : [];
+
+/** Checks one assertion against a pattern (the book's `check-an-assertion`). */
+export const checkAnAssertion = (
+  assertion: Query,
+  pattern: Query,
+  frame: Frame,
+): Frame | undefined => {
+  if (
+    assertion.tag !== "atom" ||
+    pattern.tag !== "atom" ||
+    assertion.relation !== pattern.relation
+  ) {
+    return undefined;
+  }
+  if (assertion.fields.length !== pattern.fields.length) {
+    return undefined;
+  }
+  let current: Frame | undefined = frame;
+  for (let i = 0; i < pattern.fields.length; i += 1) {
+    const pat = pattern.fields[i];
+    const dat = assertion.fields[i];
+    if (pat === undefined || dat === undefined || current === undefined) {
+      return undefined;
+    }
+    current = patternMatch(pat, dat, current);
+  }
+  return current;
+};
+
+/** Every assertion that matches the pattern (the book's `find-assertions`). */
+export const findAssertions = (pattern: Query, frame: Frame, db: Database): Stream<Frame> => {
+  const matches: Frame[] = [];
+  for (const assertion of fetchAssertions(pattern, db)) {
+    const result = checkAnAssertion(assertion, pattern, frame);
+    if (result !== undefined) {
+      matches.push(result);
+    }
+  }
+  return matches.reduceRight<Stream<Frame>>(
+    (rest, head) => consStream(head, () => rest),
+    emptyStream(),
+  );
+};
+
+/** Applies one renamed rule to a pattern (the book's `apply-a-rule`). */
+export const applyARule = (
+  rule: Rule,
+  pattern: Query,
+  frame: Frame,
+  db: Database,
+): Stream<Frame> => {
+  const renamed = renameVariablesIn(rule);
+  const unified = unifyQueries(renamed.head, pattern, frame);
+  if (unified === undefined) {
+    return emptyStream();
+  }
+  return qevalConjunction(renamed.body, unified, db);
+};
+
+/** Every rule application that answers the pattern (the book's `apply-rules`). */
+export const applyRules = (pattern: Query, frame: Frame, db: Database): Stream<Frame> =>
+  fetchRules(pattern, db).reduceRight<Stream<Frame>>(
+    (rest, rule) => interleaveDelayed(applyARule(rule, pattern, frame, db), () => rest),
+    emptyStream(),
+  );
+
+// ---------------------------------------------------------------------
+// qeval
+// ---------------------------------------------------------------------
+
+const qevalConjunction = (
+  clauses: ReadonlyArray<Query>,
+  frame: Frame,
+  db: Database,
+): Stream<Frame> => {
+  if (clauses.length === 0) {
+    return singletonStream(frame);
+  }
+  const [first, ...rest] = clauses;
+  if (first === undefined) {
+    return singletonStream(frame);
+  }
+  return streamFlatmap(qeval(first, singletonStream(frame), db), (next) =>
+    qevalConjunction(rest, next, db),
+  );
+};
+
+/** The simple query: assertions and rules (the book's `simple-query`). */
+export const simpleQuery = (
+  query: Query,
+  frameStream: Stream<Frame>,
+  db: Database,
+): Stream<Frame> =>
+  streamFlatmap(frameStream, (frame) =>
+    interleaveDelayed(findAssertions(query, frame, db), () => applyRules(query, frame, db)),
+  );
+
+/** The no-delay simple query variant of the exercises. */
+export const simpleQueryNoDelay = (
+  query: Query,
+  frameStream: Stream<Frame>,
+  db: Database,
+): Stream<Frame> =>
+  streamFlatmap(frameStream, (frame) =>
+    streamAppendDelayed(findAssertions(query, frame, db), () => applyRules(query, frame, db)),
+  );
+
+/** Conjunction of clauses (the book's `conjoin`). */
+export const conjoin = (
+  clauses: ReadonlyArray<Query>,
+  frameStream: Stream<Frame>,
+  db: Database,
+): Stream<Frame> => streamFlatmap(frameStream, (frame) => qevalConjunction(clauses, frame, db));
+
+/** Disjunction of clauses (the book's `disjoin`). */
+export const disjoin = (
+  clauses: ReadonlyArray<Query>,
+  frameStream: Stream<Frame>,
+  db: Database,
+): Stream<Frame> => {
+  if (clauses.length === 0) {
+    return emptyStream();
+  }
+  return streamFlatmap(frameStream, (frame) =>
+    clauses.reduceRight<Stream<Frame>>(
+      (rest, clause) => interleaveDelayed(qeval(clause, singletonStream(frame), db), () => rest),
+      emptyStream(),
+    ),
+  );
+};
+
+/** The no-delay disjoin variant of the exercises. */
+export const disjoinNoDelay = (
+  clauses: ReadonlyArray<Query>,
+  frameStream: Stream<Frame>,
+  db: Database,
+): Stream<Frame> => {
+  if (clauses.length === 0) {
+    return emptyStream();
+  }
+  return streamFlatmap(frameStream, (frame) =>
+    clauses.reduceRight<Stream<Frame>>(
+      (rest, clause) => streamAppendDelayed(qeval(clause, singletonStream(frame), db), () => rest),
+      emptyStream(),
+    ),
+  );
+};
+
+/** Negation as failure (the book's `negate`). */
+export const negate = (clause: Query, frameStream: Stream<Frame>, db: Database): Stream<Frame> =>
+  streamFlatmap(frameStream, (frame) => {
+    const found = streamToList(qeval(clause, singletonStream(frame), db));
+    return found.length === 0 ? singletonStream(frame) : emptyStream();
   });
 
-/** Query syntax helper: reads and expands variables. */
-export const readQuery = (text: string): Value => querySyntaxProcess(readQueryDatum(text));
-export const queryFrames = (engine: QueryEngine, query: string): Stream<Frame> =>
-  engine.query(readQuery(query));
-export const answers = (engine: QueryEngine, query: string, limit = 1000): ReadonlyArray<string> =>
-  engine.answers(query, limit);
-export const microshaftDatabase = `
-(address (Bitdiddle Ben) (Slumerville (Ridge Road) 10)) (job (Bitdiddle Ben) (computer wizard)) (salary (Bitdiddle Ben) 60000)
-(address (Hacker Alyssa P) (Cambridge (Mass Ave) 78)) (job (Hacker Alyssa P) (computer programmer)) (salary (Hacker Alyssa P) 40000) (supervisor (Hacker Alyssa P) (Bitdiddle Ben))
-(address (Fect Cy D) (Cambridge (Ames Street) 3)) (job (Fect Cy D) (computer programmer)) (salary (Fect Cy D) 35000) (supervisor (Fect Cy D) (Bitdiddle Ben))
-(address (Tweakit Lem E) (Boston (Bay State Road) 22)) (job (Tweakit Lem E) (computer technician)) (salary (Tweakit Lem E) 25000) (supervisor (Tweakit Lem E) (Bitdiddle Ben))
-(address (Reasoner Louis) (Slumerville (Pine Tree Road) 80)) (job (Reasoner Louis) (computer programmer trainee)) (salary (Reasoner Louis) 30000) (supervisor (Reasoner Louis) (Hacker Alyssa P))
-(supervisor (Bitdiddle Ben) (Warbucks Oliver)) (address (Warbucks Oliver) (Swellesley (Top Heap Road))) (job (Warbucks Oliver) (administration big wheel)) (salary (Warbucks Oliver) 150000)
-(address (Scrooge Eben) (Weston (Shady Lane) 10)) (job (Scrooge Eben) (accounting chief accountant)) (salary (Scrooge Eben) 75000) (supervisor (Scrooge Eben) (Warbucks Oliver))
-(address (Cratchet Robert) (Allston (N Harvard Street) 16)) (job (Cratchet Robert) (accounting scrivener)) (salary (Cratchet Robert) 18000) (supervisor (Cratchet Robert) (Scrooge Eben))
-(address (Aull DeWitt) (Slumerville (Onion Square) 5)) (job (Aull DeWitt) (administration secretary)) (salary (Aull DeWitt) 25000) (supervisor (Aull DeWitt) (Warbucks Oliver))
-(can-do-job (computer wizard) (computer programmer)) (can-do-job (computer wizard) (computer technician)) (can-do-job (computer programmer) (computer programmer trainee)) (can-do-job (administration secretary) (administration big wheel))
-`;
-export const microshaft = (): QueryEngine => {
-  const engine = makeQueryEngine();
-  engine.load(microshaftDatabase);
-  return engine;
+/** The `unique` filter: frames whose clause has exactly one match. */
+export const unique = (clause: Query, frameStream: Stream<Frame>, db: Database): Stream<Frame> =>
+  streamFlatmap(frameStream, (frame) => {
+    const found = streamToList(qeval(clause, singletonStream(frame), db));
+    return found.length === 1 ? singletonStream(found[0] ?? frame) : emptyStream();
+  });
+
+/** The always-true special form (the book's `always-true`). */
+export const alwaysTrue = (frameStream: Stream<Frame>): Stream<Frame> => frameStream;
+
+/** The lisp-value filter over instantiated terms. */
+export const lispValue = (
+  call: Extract<Query, { tag: "lisp-value" }>,
+  frameStream: Stream<Frame>,
+  db: Database,
+): Stream<Frame> => {
+  void db;
+  return streamFlatmap(frameStream, (frame) => {
+    const instantiated = call.args.map((term) => instantiate(term, frame, (name) => qvar(name)));
+    if (instantiated.some(isVariable)) {
+      return emptyStream();
+    }
+    const args = instantiated.map(termToValue);
+    return call.predicate(args) ? singletonStream(frame) : emptyStream();
+  });
 };
-export const runQueryText = (source: string, limit = 1000): ReadonlyArray<string> => {
-  const engine = microshaft();
-  engine.load(source);
-  return engine.answers(source, limit);
+
+/** Evaluates one query over a stream of frames (the book's `qeval`). */
+export const qeval = (query: Query, frameStream: Stream<Frame>, db: Database): Stream<Frame> => {
+  switch (query.tag) {
+    case "atom":
+      return simpleQuery(query, frameStream, db);
+    case "and":
+      return conjoin(query.clauses, frameStream, db);
+    case "or":
+      return disjoin(query.clauses, frameStream, db);
+    case "not":
+      return negate(query.clause, frameStream, db);
+    case "unique":
+      return unique(query.clause, frameStream, db);
+    case "lisp-value":
+      return lispValue(query, frameStream, db);
+    case "always-true":
+      return alwaysTrue(frameStream);
+  }
 };
-export const queryError = (message: string): Effect.Effect<never, RuntimeError> =>
-  Effect.fail(new RuntimeError({ message, detail: "" }));
+
+// ---------------------------------------------------------------------
+// Construction and rendering
+// ---------------------------------------------------------------------
+
+/** A fact: an atomic query with no body. */
+export const queryAtom = (relation: string, ...fields: ReadonlyArray<Term>): Query => ({
+  tag: "atom",
+  relation,
+  fields,
+});
+
+/** A rule from its head and body conditions. */
+export const rule = (head: Query, ...body: ReadonlyArray<Query>): Rule => ({ head, body });
+
+/** Renders one term in the edition's neutral notation. */
+export const formatTerm = (term: Term): string => {
+  if (term.tag === "var") {
+    return `?${term.name}`;
+  }
+  if (term.tag === "text") {
+    return typeof term.value === "string" ? JSON.stringify(term.value) : String(term.value);
+  }
+  if (term.tag === "nil") {
+    return "[]";
+  }
+  const parts: string[] = [];
+  let current: Term = term;
+  while (current.tag === "cons") {
+    parts.push(formatTerm(current.head));
+    current = current.tail;
+  }
+  return current.tag === "nil"
+    ? `[${parts.join(", ")}]`
+    : `[${parts.join(", ")} | ${formatTerm(current)}]`;
+};
+
+/** Renders one query as a call-shaped line. */
+export const formatQuery = (query: Query): string => {
+  if (query.tag === "atom") {
+    return `${query.relation}(${query.fields.map(formatTerm).join(", ")})`;
+  }
+  if (query.tag === "and" || query.tag === "or") {
+    return `${query.tag}(${query.clauses.map(formatQuery).join(", ")})`;
+  }
+  if (query.tag === "not" || query.tag === "unique") {
+    return `${query.tag}(${formatQuery(query.clause)})`;
+  }
+  if (query.tag === "lisp-value") {
+    return `lisp-value(${query.args.map(formatTerm).join(", ")})`;
+  }
+  return "always-true";
+};
+
+/** Converts an instantiated term to a runtime value for `lisp-value`. */
+export const termToValue = (term: Term): Value => {
+  if (term.tag === "text") {
+    return term.value;
+  }
+  if (term.tag === "nil") {
+    return makeRecord([["tag", "nil"]]);
+  }
+  if (term.tag === "cons") {
+    return makePair(termToValue(term.head), termToValue(term.tail));
+  }
+  return makeRecord([
+    ["tag", "var"],
+    ["name", term.name],
+  ]);
+};
+
+/** The query driver loop: each query's answers in order, as transcript data. */
+export const queryDriverLoop = (db: Database, queries: ReadonlyArray<Query>): RunResult => {
+  const transcript: string[] = [];
+  for (const query of queries) {
+    const frames = streamToList(qeval(query, singletonStream([]), db));
+    if (frames.length === 0) {
+      transcript.push(formatQuery(query), "No.");
+      continue;
+    }
+    transcript.push(formatQuery(query));
+    for (const frame of frames) {
+      const answer = mapOverSymbols(query, (term) =>
+        instantiate(term, frame, (name) => qvar(name)),
+      );
+      transcript.push(formatQuery(answer));
+    }
+  }
+  return { outcome: ok(undefined), transcript };
+};

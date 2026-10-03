@@ -8,7 +8,7 @@ import {
   type ArithDatum,
   type GenError,
   makePolynomial,
-  makeSchemeNumber,
+  makeTsNumber,
   mul,
   show,
 } from "../../packages/ch2/src/05-generic-operations.js";
@@ -40,29 +40,29 @@ const unwrapPoly = (r: Result<ArithDatum, GenError>): ArithDatum => {
 };
 
 describe("exercise 2.97: reduce-terms and the generic reduce", () => {
-  it("reduces integers the way the original make-rat did", () => {
+  it("reduces integers the way the original makeRat did", () => {
     expect(reduceIntegers(24n, 36n)).toEqual([2n, 3n]);
   });
 
-  it("reduce dispatches through apply-generic for scheme numbers", () => {
-    expect(show(reduce(makeSchemeNumber(24n), makeSchemeNumber(36n)))).toBe("(rational 2 3)");
+  it("reduce dispatches through applyGeneric for ts-number values", () => {
+    expect(show(reduce(makeTsNumber(24n), makeTsNumber(36n)))).toBe("[rational, 2, 3]");
   });
 
   it("reduce dispatches through apply-generic for polynomials", () => {
     const q1 = unwrapPoly(mul(p1, p2));
     const q2 = unwrapPoly(mul(p1, p3));
     expect(show(reduce(q1, q2))).toBe(
-      "(rational (polynomial x (2 11) (0 7)) (polynomial x (1 13) (0 5)))",
+      "[rational, [polynomial, x, [2, 11], [0, 7]], [polynomial, x, [1, 13], [0, 5]]]",
     );
   });
 
   it("reduce-poly refuses polys in different variables", () => {
     const x = poly97([[1n, 1n]]).contents;
-    const y = makePolynomial("y", [[1n, makeSchemeNumber(1n)]]).contents;
+    const y = makePolynomial("y", [[1n, makeTsNumber(1n)]]).contents;
     const r = reducePoly(x, y);
     expect(r._tag).toBe("Error");
     if (r._tag === "Error" && r.error._tag === "NotSameVar") {
-      expect(r.error.proc).toBe("REDUCE-POLY");
+      expect(r.error.proc).toBe("reducePoly");
     }
   });
 
@@ -92,7 +92,7 @@ describe("exercise 2.97: reduce-terms and the generic reduce", () => {
       ),
     );
     expect(show(addRatFn97(rf, rf2))).toBe(
-      "(rational (polynomial x (3 1) (2 2) (1 3) (0 1)) (polynomial x (4 1) (3 1) (1 -1) (0 -1)))",
+      "[rational, [polynomial, x, [3, 1], [2, 2], [1, 3], [0, 1]], [polynomial, x, [4, 1], [3, 1], [1, -1], [0, -1]]]",
     );
   });
 });

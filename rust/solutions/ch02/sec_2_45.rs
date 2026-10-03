@@ -11,10 +11,9 @@ mod ex_2_45 {
     ///
     /// The two arguments are the painter combinators: how to join the
     /// painter with the smaller pair, and how to join the pair
-    /// internally. Scheme's self-referential `(lambda (painter n) ...)`
-    /// becomes a named private recursive driver that the returned
-    /// closure calls, because a bare closure cannot refer to itself by
-    /// name.
+    /// internally. The self-referential recursive procedure becomes a
+    /// named private recursive driver that the returned closure calls,
+    /// because a bare closure cannot refer to itself by name.
     fn split(
         combine: impl Fn(&Painter, &Painter) -> Painter,
         place_pair: impl Fn(&Painter, &Painter) -> Painter,

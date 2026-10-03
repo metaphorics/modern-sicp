@@ -6,14 +6,14 @@ package sicp.ch4.exercises
 import sicp.runtime.PendingSolution
 
 /**
- * Exercise 4.54: `require` as a special form. The variant evaluator
- * recognizes `require` at the application head and fails outright when
+ * Exercise 4.54: `demand` as a special form. The variant evaluator
+ * recognizes `demand` at the application head and fails outright when
  * the predicate is false, instead of relying on the user-defined
- * procedure that calls `(amb)`.
+ * procedure that calls `choose()`.
  *
  * Expected answers: the evenness-filtered choice delivers 2 then 4 and
  * is then exhausted -- the false predicates prune 1, 3, and 5 -- and a
- * satisfied requirement answers `ok`.
+ * satisfied requirement answers `true`.
  */
 public fun requireFilteredEvens(): List<String> = throw PendingSolution()
 

@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.38: The procedure `accumulateList` is also known as `foldRight`, because
  * it combines the first element with the result of combining all the
@@ -18,4 +16,4 @@ import sicp.runtime.PendingSolution
  * The scaffold returns the two division results: `foldRight` gives 3/2 and `foldLeft` gives
  * 1/6.
  */
-public fun ex_2_38(): List<Double> = throw PendingSolution()
+public fun ex_2_38(): List<Double> = throw PendingExercise()

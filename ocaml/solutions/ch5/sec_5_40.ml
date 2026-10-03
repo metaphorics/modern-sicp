@@ -1,49 +1,111 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 5.5 *)
+   Adapted from SICP section 5.5 *)
 
-(** Exercise 5.40: the compiler maintains the compile-time environment.
-    The edition's [compile] carries it from the start -- an argument of
-    every code generator, extended by [compile-lambda-body] with the
-    frame of the procedure's parameters -- so 5.40's modification is
-    intrinsic.  The dump the exercise asks for is the compiler's
-    [trace]: every variable reference reports the compile-time
-    environment it was compiled against.  (5.41's [find-variable] and
-    5.42's addressing land in the next two exercises; this module only
-    watches the environment threading.) *)
+module Ast = Sicp_common.Ast
+module Check = Sicp_common.Check
 
-module C = Sicp_ch5.Sec_5_5
+let ( let* ) = Result.bind
 
-let ( >>= ) = Result.bind
+module Node = Hashtbl.Make (struct
+    type t = Ast.expr
 
-(** The nested-lambda example at the start of 5.5.6. *)
-let nested_example = "(define (f x y) (lambda (a b c d e) (lambda (y z) (+ x y z))))"
+    let equal = ( == )
+    let hash = Hashtbl.hash
+  end)
 
-(** [render_cenv] is the compile-time environment as the book prints
-    frames: newest first. *)
-let render_cenv (frames : string list list) =
-  String.concat " " (List.map (fun f -> "(" ^ String.concat " " f ^ ")") frames)
+type frames = string list list
+
+type t =
+  { table : frames Node.t
+  ; mutable variables : (string * frames) list
+  }
+
+let rec pattern_variables p =
+  match Ast.view_pattern p with
+  | Ast.PWildcard | Ast.PScalar _ | Ast.PNil -> []
+  | Ast.PVar x -> [ x ]
+  | Ast.PTuple ps | Ast.PConstruct (_, ps) -> List.concat_map pattern_variables ps
+  | Ast.PCons (h, tl) -> pattern_variables h @ pattern_variables tl
 ;;
 
-(** [dump src] compiles [src] with the trace on and answers one line
-    per variable reference: the name and its compile-time environment. *)
-let dump src =
-  let lines = ref [] in
-  let cfg =
-    { C.default_config with
-      trace = Some (fun frames name -> lines := (render_cenv frames, name) :: !lines)
-    }
+let parameter_name (b : Ast.binding) = Option.value b.name ~default:"_"
+let bound_names bindings = List.filter_map (fun (b : Ast.binding) -> b.name) bindings
+
+let rec walk t ctenv e =
+  Node.replace t.table e ctenv;
+  let go = walk t ctenv in
+  match Ast.view e with
+  | Ast.Scalar _ | Ast.Nil -> ()
+  | Ast.Var x -> t.variables <- (x, ctenv) :: t.variables
+  | Ast.Fun (parameters, body) -> walk t (parameters :: ctenv) body
+  | Ast.Let (false, bindings, body) ->
+    List.iter (fun (b : Ast.binding) -> go b.rhs) bindings;
+    walk t (List.map parameter_name bindings :: ctenv) body
+  | Ast.Let (true, bindings, body) ->
+    let inner = bound_names bindings :: ctenv in
+    List.iter (fun (b : Ast.binding) -> walk t inner b.rhs) bindings;
+    walk t inner body
+  | Ast.Match (scrutinee, cases) ->
+    go scrutinee;
+    List.iter (fun (p, body) -> walk t (pattern_variables p :: ctenv) body) cases
+  | Ast.Apply (f, args) ->
+    go f;
+    List.iter go args
+  | Ast.If (a, b, c) ->
+    go a;
+    go b;
+    go c
+  | Ast.Tuple es | Ast.Construct (_, es) -> List.iter go es
+  | Ast.Record fields -> List.iter (fun (_, e) -> go e) fields
+  | Ast.Field (a, _) | Ast.Not a | Ast.Neg a | Ast.Deref a | Ast.Make_ref a -> go a
+  | Ast.Sequence (a, b)
+  | Ast.And (a, b)
+  | Ast.Or (a, b)
+  | Ast.Arith (_, a, b)
+  | Ast.Compare (_, a, b)
+  | Ast.Cons (a, b)
+  | Ast.Concat (a, b)
+  | Ast.Assign (a, b) ->
+    go a;
+    go b
+;;
+
+let environments items =
+  let t = { table = Node.create 64; variables = [] } in
+  let _ : frames =
+    List.fold_left
+      (fun ctenv item ->
+         match item with
+         | Ast.Type_item _ -> ctenv
+         | Ast.Value_item (false, bindings) ->
+           List.iter (fun (b : Ast.binding) -> walk t ctenv b.rhs) bindings;
+           bound_names bindings :: ctenv
+         | Ast.Value_item (true, bindings) ->
+           let inner = bound_names bindings :: ctenv in
+           List.iter (fun (b : Ast.binding) -> walk t inner b.rhs) bindings;
+           inner)
+      []
+      items
   in
-  let state = C.new_state () in
-  match
-    match Sicp_common.Reader.read src with
-    | Error e -> Error (C.Parse (Sicp_common.Reader.to_string e))
-    | Ok exp -> C.compile cfg state [] exp "val" C.Next
-  with
-  | Error e -> Error e
-  | Ok _ -> Ok (List.rev_map (fun (env, name) -> name ^ " in " ^ env) !lines |> List.rev)
+  t.variables <- List.rev t.variables;
+  t
 ;;
 
-(** [ex_5_40 ()] dumps the compile-time environments of the example:
-    [x] compiles in [(x y)], [z] in [(y z)] over [(a b c d e)] over
-    [(x y)] -- the environments the book's text names. *)
-let ex_5_40 () = dump nested_example >>= fun lines -> Ok lines
+let find t e = Node.find_opt t.table e
+let variables t = t.variables
+
+let frames_to_string frames =
+  String.concat " " (List.map (fun f -> "[" ^ String.concat "; " f ^ "]") frames)
+;;
+
+let nested_example =
+  "let result =\n\
+  \  (fun x y -> fun a b c d e -> (fun y z -> x * y * z) (a * b * x) (c + d + x)) 3 4 1 \
+   2 3 4 5\n"
+;;
+
+let ex_5_40 () =
+  let* p = Sec_5_33.program ~filename:"ex_5_40.ml" nested_example in
+  let t = environments (Check.items p) in
+  Ok (List.map (fun (x, frames) -> x ^ " in " ^ frames_to_string frames) (variables t))
+;;

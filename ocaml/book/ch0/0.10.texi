@@ -29,7 +29,9 @@ let add_examples () =
 ;;
 
 let () =
-  Alcotest.run "sicp_ch0" [ "0.10 testing", [ Alcotest.test_case "add" `Quick add_examples ] ]
+  Alcotest.run "sicp_ch0"
+    [ "0.10 testing",
+      [ Alcotest.test_case "add" `Quick add_examples ] ]
 ;;
 @end example
 

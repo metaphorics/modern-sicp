@@ -1,7 +1,7 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(* Exercise 5.52: the compiler emitting C, compiling the metacircular evaluator. This is the pending scaffold of the solution with the same
+(* Exercise 5.52: a C back end for the compiler, and the metacircular evaluator compiled to C. This is the pending scaffold of the solution with the same
    name under solutions/ch5: every entry raises the pending marker
    until the exercise is solved. *)
 

@@ -8,6 +8,7 @@
 let ( >>= ) = Result.bind
 
 module Memory = Sicp_ch5.Sec_5_3
+module M = Sicp_ch5.Sec_5_1
 
 (** [list_word mem ints] plants a proper list of numbers. *)
 let list_word mem ints =
@@ -21,42 +22,42 @@ let list_word mem ints =
 (** The [append] machine: it copies [x], cell by cell, and shares [y];
     the answer lands in [z]. *)
 let append_controller =
-  {|(controller
-   (assign continue (label append-done))
- append-loop
-   (test (op null?) (reg x))
-   (branch (label base))
-   (assign temp (op car) (reg x))
-   (save temp)
-   (save continue)
-   (assign continue (label after-car))
-   (assign x (op cdr) (reg x))
-   (goto (label append-loop))
- base
-   (assign z (reg y))
-   (goto (reg continue))
- after-car
-   (restore continue)
-   (restore temp)
-   (assign z (op cons) (reg temp) (reg z))
-   (goto (reg continue))
- append-done)|}
+  [ M.Assign ("continue", M.Label_ref "append-done")
+  ; M.Label "append-loop"
+  ; M.Test ("null?", [ M.Reg "x" ])
+  ; M.Branch "base"
+  ; M.Assign_op ("temp", "car", [ M.Reg "x" ])
+  ; M.Save "temp"
+  ; M.Save "continue"
+  ; M.Assign ("continue", M.Label_ref "after-car")
+  ; M.Assign_op ("x", "cdr", [ M.Reg "x" ])
+  ; M.Goto "append-loop"
+  ; M.Label "base"
+  ; M.Assign ("z", M.Reg "y")
+  ; M.Goto_reg "continue"
+  ; M.Label "after-car"
+  ; M.Restore "continue"
+  ; M.Restore "temp"
+  ; M.Assign_op ("z", "cons", [ M.Reg "temp"; M.Reg "z" ])
+  ; M.Goto_reg "continue"
+  ; M.Label "append-done"
+  ]
 ;;
 
 (** The [append!] machine: it walks to the last pair of [x] and splices
     [y] in with a [set-cdr!]; no cell is allocated, and there is no
     [z] -- the value of [x] is the answer. *)
 let append_bang_controller =
-  {|(controller
-   (assign temp (reg x))
- last-pair
-   (assign cand (op cdr) (reg temp))
-   (test (op null?) (reg cand))
-   (branch (label splice))
-   (assign temp (op cdr) (reg temp))
-   (goto (label last-pair))
- splice
-   (perform (op set-cdr!) (reg temp) (reg y)))|}
+  [ M.Assign ("temp", M.Reg "x")
+  ; M.Label "last-pair"
+  ; M.Assign_op ("cand", "cdr", [ M.Reg "temp" ])
+  ; M.Test ("null?", [ M.Reg "cand" ])
+  ; M.Branch "splice"
+  ; M.Assign_op ("temp", "cdr", [ M.Reg "temp" ])
+  ; M.Goto "last-pair"
+  ; M.Label "splice"
+  ; M.Perform ("set-cdr!", [ M.Reg "temp"; M.Reg "y" ])
+  ]
 ;;
 
 (** [run controller result mem x y] runs one machine over the planted
@@ -75,10 +76,12 @@ let run controller result mem x y =
 ;;
 
 (** [ex_5_22 ()] plants [x = (1 2 3)] and [y = (4 5)] and runs
-    [append]: three fresh cells, [z = (1 2 3 4 5)], [x] untouched. It
-    then runs [append!] on a fresh copy and dumps the memory before and
-    after: the last pair of [x] changes its cdr from [e0] to [y], [z]
-    is nowhere, and the free pointer did not move. *)
+    [append]: three fresh cells for the copy and six for the saved words,
+    [z = [1; 2; 3; 4; 5]], [x] untouched. It
+    then runs [append!] on a fresh copy, in an eight-cell memory with no
+    collector and so no reserved root strip, and dumps the memory before
+    and after: the last pair of [x] changes its cdr from [e0] to [y],
+    [z] is nowhere, and the free pointer did not move. *)
 let ex_5_22 () =
   let mem = Memory.make_memory ~size:32 ~root_capacity:8 ~free:0 in
   list_word mem [ 1; 2; 3 ]
@@ -90,7 +93,7 @@ let ex_5_22 () =
   let appended = Memory.write mem z1 in
   let free_after_append = Memory.word_to_string (Memory.free_word mem) in
   let x1_written = Memory.write mem x1 in
-  let mem2 = Memory.make_memory ~size:8 ~root_capacity:4 ~free:0 in
+  let mem2 = Memory.make_memory ~size:8 ~root_capacity:0 ~free:0 in
   list_word mem2 [ 1; 2; 3 ]
   >>= fun x2 ->
   list_word mem2 [ 4; 5 ]
@@ -107,7 +110,7 @@ let ex_5_22 () =
       ^ Memory.word_to_string x1
       ^ "), free moved to "
       ^ free_after_append
-      ^ " -- three fresh cells"
+      ^ " -- three fresh cells for the copy, six for the saved words"
     ; "append!: before, the last pair of x points at e0:\n" ^ before
     ; "append!: after, it points at y:\n" ^ after
     ; "append!: the answer is x itself, now "

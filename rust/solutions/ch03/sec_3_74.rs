@@ -28,7 +28,7 @@ fn sense_data() -> Stream<f64> {
 
 /// Alyssa's zero-crossing stream in Eva Lu Ator's form: the detector
 /// mapped over the sense data and the same data delayed by one cell,
-/// the book's `(cons-stream 0 sense-data)`. The book's first-order
+/// prefixed with the initial zero. The book's first-order
 /// `sign-change-detector` is lifted over the map's reference arguments.
 #[must_use]
 fn zero_crossings(sense: &Stream<f64>) -> Stream<f64> {

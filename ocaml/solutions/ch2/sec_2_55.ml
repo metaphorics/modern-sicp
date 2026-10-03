@@ -1,38 +1,31 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 2.3 exercise 2.55 *)
+   Adapted from SICP section 2.3 exercise 2.55 *)
 
-(** Exercise 2.55 (this edition's replacement): Eva Lu Ator's surprise
-    becomes a reading exercise in the shared Scheme subset's own
-    terms. The subset's @code{Reader} turns the abbreviation ['x] into
-    a [Quote] node wrapping the datum [(quote x)]; reading
-    [''abracadabra] therefore quotes the list [(quote abracadabra)].
-    Unwrapping the outer quote and taking the [car] of what is left
-    finds the symbol [quote] itself, which is exactly what the
-    interpreter's REPL prints back. *)
+(** Exercise 2.55 (this edition's replacement): quotation as data.  A
+    quoted expression is a symbolic datum; writing the quotation of a
+    quotation builds a two-element list whose first element is the
+    symbol [quote] itself, which is what Eva Lu Ator saw printed. *)
+
+type datum =
+  | Symbol of string
+  | List of datum list
+
+let quote d = List [ Symbol "quote"; d ]
 
 let car = function
-  | Sicp_common.Ast.DPair (a, _) -> a
-  | _ -> invalid_arg "car: not a pair"
+  | List (first :: _) -> first
+  | _ -> invalid_arg "car: not a nonempty list"
 ;;
 
 let name_of = function
-  | Sicp_common.Ast.DSymbol s -> s
-  | _ -> invalid_arg "name_of: not a symbol"
+  | Symbol s -> s
+  | List _ -> invalid_arg "name_of: not a symbol"
 ;;
 
-(** [quoted_datum text] is the datum a top-level [Quote] node wraps,
-    after reading [text] with the shared subset's reader.
-    [invalid_arg] when [text] fails to read or does not read as a
-    quote. *)
-let quoted_datum text =
-  match Sicp_common.Reader.read text with
-  | Error e -> invalid_arg ("quoted_datum: " ^ Sicp_common.Reader.to_string e)
-  | Ok expr ->
-    (match Sicp_common.Ast.view expr with
-     | Quote datum -> datum
-     | _ -> invalid_arg "quoted_datum: not a quote")
+(** The outer quotation evaluates to the datum it wraps: the quotation
+    of [abracadabra], whose [car] is the symbol [quote]. *)
+let ex_2_55 () =
+  match quote (quote (Symbol "abracadabra")) with
+  | List [ Symbol "quote"; quoted ] -> name_of (car quoted)
+  | _ -> invalid_arg "ex_2_55: a quotation is a two-element list"
 ;;
-
-(** [ex_2_55 ()] is the name of the symbol the interpreter prints back
-    for [''abracadabra]. *)
-let ex_2_55 () = name_of (car (quoted_datum "''abracadabra"))

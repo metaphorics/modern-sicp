@@ -1,104 +1,101 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 5.5 *)
+   Adapted from SICP section 5.5 *)
 
-(** Exercise 5.48: [compile-and-run] as a primitive in the global
-    environment.  The primitive compiles its (quoted) argument and
-    answers [ok]; the compiled block lands in the machine's controller
-    when the next assembly is built -- the edition's controller is
-    parsed text, so the book's live patch of a running machine is
-    reproduced as the next assembled machine with the same compile
-    state and a continued session.  The observable session is the
-    book's: [ok] from the primitive, [ok] from the compiled define,
-    then [120]. *)
-
+module Ast = Sicp_common.Ast
+module Check = Sicp_common.Check
+module Env = Sicp_common.Env
+module Eval_error = Sicp_common.Eval_error
+module Value = Sicp_common.Value
 module C = Sicp_ch5.Sec_5_5
+module W = Sicp_ch5.Sec_5_4
 
-let ( >>= ) = Result.bind
+let ( let* ) = Result.bind
 
-(** [compile_quoted state blocks v] compiles the quoted expression the
-    value [v] carries (the machine's own printed form of it, which the
-    reader parses) into a controller block and records the block for
-    the next assembly. *)
-let compile_quoted state blocks v =
-  match Sicp_common.Reader.read (Sicp_common.Value.display v) with
-  | Error e -> Error (Sicp_common.Eval_error.Type_error (Sicp_common.Reader.to_string e))
-  | Ok exp ->
-    C.compile_program ~linkage:C.Return state [ exp ]
-    |> Result.map_error (fun e -> Sicp_common.Eval_error.Type_error (C.error_to_string e))
-    >>= fun seq ->
-    let entry = "compiled-entry-run-" ^ string_of_int (List.length !blocks) in
-    blocks := !blocks @ [ entry ^ "\n" ^ C.statements_text seq ];
-    Ok (Sicp_common.Value.symbol "ok")
+type command =
+  | Evaluate
+  | Compile_and_run
+
+type session =
+  { state : C.state
+  ; blocks : (string * Sicp_ch5.Sec_5_4.word Sicp_ch5.Sec_5_1.instruction list) list
+  ; evaluator : W.evaluator
+  ; env : Env.t
+  ; transcript : string list
+  }
+
+let bound_names = function
+  | Ast.Type_item _ -> []
+  | Ast.Value_item (_, bindings) ->
+    List.filter_map (fun (b : Ast.binding) -> b.name) bindings
 ;;
 
-(** [compile_and_run_primitive state blocks] is the primitive bound in
-    the machine's global environment. *)
-let compile_and_run_primitive state blocks =
-  ( "compile-and-run"
-  , function
-    | [ v ] -> compile_quoted state blocks v
-    | args ->
-      Error
-        (Sicp_common.Eval_error.Arity_mismatch { expected = 1; given = List.length args })
-  )
+let describe env item value =
+  match bound_names item with
+  | [] -> "- = " ^ Value.to_string value
+  | names ->
+    String.concat
+      "; "
+      (List.map
+         (fun name ->
+            let shown = Option.fold ~none:"?" ~some:Value.to_string (Env.find env name) in
+            name ^ " = " ^ shown)
+         names)
 ;;
 
-(** [arm m entry] points [val] at the compiled entry and arms the
-    external entry, compile-and-go's wiring for an already compiled
-    block. *)
-let arm m entry =
-  C.set_register m "val" (Sicp_ch5.Sec_5_4.Lab entry)
-  >>= fun () ->
-  C.set_flag m true;
-  Ok ()
+let compile_and_run ~emit s item =
+  let label = Printf.sprintf "block-%d" (List.length s.blocks) in
+  let block = label, Sec_5_45.block_statements (C.compile_program s.state [ item ]) in
+  let blocks = s.blocks @ [ block ] in
+  let* evaluator = Sec_5_45.make_evaluator ~emit blocks in
+  let* v, env = Sec_5_45.run_block evaluator s.env label in
+  Ok
+    { s with
+      blocks
+    ; evaluator
+    ; env
+    ; transcript = s.transcript @ [ "compile-and-run: " ^ describe env item v ]
+    }
 ;;
 
-(** [run m] drains the machine, the driver's queue-dry stop being the
-    normal end. *)
-let run m =
-  match C.start m with
-  | Ok () -> Ok ()
-  | Error (C.Op_failed m2) when m2 = Sicp_ch5.Sec_5_4.input_exhausted -> Ok ()
-  | Error e -> Error e
+let evaluate s item =
+  let* v, env = Sec_5_45.eval_item s.evaluator s.env item in
+  Ok { s with env; transcript = s.transcript @ [ "evaluate: " ^ describe env item v ] }
 ;;
 
-(** [ex_5_48 ()] runs the book's session: the compile-and-run define,
-    then the call.  The first machine answers ok through the
-    primitive and hands the block on; the second machine, assembled
-    with the block and armed at its entry, answers 120. *)
-let ex_5_48 () =
-  let state = C.new_state () in
-  let blocks = ref [] in
-  let session_source =
-    {|(compile-and-run
- '(define (factorial n)
-    (if (= n 1)
-        1
-        (* (factorial (- n 1)) n))))|}
+let run_session ~emit commands =
+  let* evaluator = Sec_5_45.make_evaluator ~emit [] in
+  let start =
+    { state = C.new_state ()
+    ; blocks = []
+    ; evaluator
+    ; env = Sec_5_45.global_environment ~emit
+    ; transcript = []
+    }
   in
-  C.make_compiled_evaluator
-    ~globals:[ compile_and_run_primitive state blocks ]
-    ~source:session_source
-    ~state
-    ()
-  >>= fun m1 ->
-  run m1
-  >>= fun () ->
-  let first_transcript = C.transcript m1 in
-  match !blocks with
-  | [ block ] ->
-    let entry =
-      match String.index_opt block '\n' with
-      | Some i -> String.sub block 0 i
-      | None -> block
-    in
-    let controller = C.eceval_controller ^ "\n" ^ block in
-    C.make_compiled_evaluator ~controller ~source:"(factorial 5)" ~state ()
-    >>= fun m2 ->
-    arm m2 entry
-    >>= fun () ->
-    run m2
-    >>= fun () ->
-    Ok [ "session: " ^ String.concat " " (first_transcript @ C.transcript m2) ]
-  | _ -> Error (C.Op_failed "compile-and-run produced no block")
+  let* s =
+    List.fold_left
+      (fun acc (command, item) ->
+         let* s = acc in
+         match command with
+         | Evaluate -> evaluate s item
+         | Compile_and_run -> compile_and_run ~emit s item)
+      (Ok start)
+      commands
+  in
+  Ok s.transcript
+;;
+
+let source =
+  Sec_5_33.factorial
+  ^ "\nlet double x = x + x\nlet result = double (factorial 5) - factorial 5\n"
+;;
+
+let ex_5_48 () =
+  let* p = Sec_5_33.program ~filename:"ex_5_48.ml" source in
+  match Check.items p with
+  | [ factorial; double; result ] ->
+    run_session
+      ~emit:ignore
+      [ Compile_and_run, factorial; Evaluate, double; Evaluate, result ]
+  | _ -> Error (Eval_error.Invalid_form "three items")
 ;;

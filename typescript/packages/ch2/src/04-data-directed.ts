@@ -272,10 +272,13 @@ export type ApplyGenericError = {
   readonly tags: ReadonlyArray<string>;
 };
 
-/** The book's error line, rendered: the message, the operation, and the
- * tag list as the book prints them. */
+/** Formats a missing generic operation with the TS-native call notation. */
+export const formatNoMethodError = (op: string, tags: ReadonlyArray<string>): string =>
+  `No method for these types: applyGeneric("${op}", [${tags.map((tag) => JSON.stringify(tag)).join(", ")}])`;
+
+/** The book's error line, rendered: the message, the operation, and the tag list. */
 export const showApplyGenericError = (e: ApplyGenericError): string =>
-  `No method for these types: APPLY-GENERIC (${e.op} (${e.tags.join(" ")}))`;
+  formatNoMethodError(e.op, e.tags);
 
 /** The selector under `op` and `tags`, or nothing when the keys are
  * absent or name a constructor. */

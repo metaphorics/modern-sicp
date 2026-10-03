@@ -1,13 +1,19 @@
 @node	4.1, 4.2, Chapter 4, Chapter 4
 @section The Metacircular Evaluator
 
-Our evaluator for Lisp will be implemented as a TypeScript program.  The
-language it evaluates is still Lisp: an expression is a cons-list value, in
-just the shape the book's list-structure notation assumes, and the reader of
-@code{read.ts} produces such values in place of the book's @code{read}.  The
-circularity the book worries about, evaluating Lisp programs with an evaluator
-that is itself implemented in Lisp, does not arise here, because the evaluator
-and its language are no longer the same language.  But evaluation is a
+Our evaluator will be implemented as a TypeScript program.  The language it
+evaluates is the edition's own TypeScript guest subset: a program is real,
+checked TypeScript source in the admitted grammar, and the reader of
+@code{read.ts}---@code{read(text)} for exactly one expression, rejecting
+trailing input, and @code{readAll(text)} for a whole program---lowers that
+source to the shared typed expression representation described in
+@ref{4.1.2}.  The circularity the book worries about, evaluating programs with
+an evaluator that is itself implemented in the language it evaluates, is
+present here in the strict sense: the evaluator below is written as ordinary
+guest source of that same subset, and its own source must pass the same
+parser, subset checks, and pinned TypeScript checker before any effect
+occurs; @ref{Exercise 5.50} asks for that very program to be run as a guest
+program.  But evaluation is a
 process, so it is still appropriate to describe the evaluation process with
 our tool for describing processes, which in this edition is TypeScript.@footnote{Even so, there will remain
 important aspects of the evaluation process that are not elucidated by our
@@ -16,10 +22,11 @@ procedures call other procedures and return values to their callers.  We will
 address these issues in @ref{Chapter 5}, where we take a closer look at the
 evaluation process by implementing the evaluator as a simple register machine.}
 An evaluator that is written in the same language that it evaluates is said to
-be @newterm{metacircular}.  The book's evaluator is metacircular in this
-strict sense.  Ours evaluates Lisp but is written in TypeScript, so the name
-here belongs to the design rather than to the host; the design is the
-book's.
+be @newterm{metacircular}.  Ours is metacircular in this strict sense: it
+evaluates the TypeScript guest subset and is itself written in that subset, as
+ordinary checked source with typed recursive syntax data, closures, and shared
+mutable bindings---no host evaluator, reflection, or generated code.  The
+design is the book's; the language is ours.
 
 The metacircular evaluator is essentially a TypeScript formulation of the
 environment model of evaluation described in @ref{3.2}.  Recall that
@@ -59,18 +66,18 @@ primitives to form a language. Specifically:
 @item
 The evaluator enables us to deal with nested expressions.  For example,
 although simply applying primitives would suffice for evaluating the expression
-@code{(+ 1 6)}, it is not adequate for handling @code{(+ 1 (* 2 3))}.  As far
-as the primitive procedure @code{+} is concerned, its arguments must be
-numbers, and it would choke if we passed it the expression @code{(* 2 3)} as an
-argument.  One important role of the evaluator is to choreograph procedure
-composition so that @code{(* 2 3)} is reduced to 6 before being passed as an
-argument to @code{+}.
+@code{1 + 6}, it is not adequate for handling @code{1 + 2 * 3}.  As far
+as the primitive operation @code{+} is concerned, its operands must be
+numbers, and it would choke if we passed it the expression @code{2 * 3} as an
+operand.  One important role of the evaluator is to choreograph expression
+composition so that @code{2 * 3} is reduced to 6 before being combined by
+@code{+}.
 
 @item
-The evaluator allows us to use variables.  For example, the primitive procedure
-for addition has no way to deal with expressions such as @code{(+ x 1)}.  We
+The evaluator allows us to use variables.  For example, the primitive operation
+for addition has no way to deal with expressions such as @code{x + 1}.  We
 need an evaluator to keep track of variables and obtain their values before
-invoking the primitive procedures.
+invoking the primitive operations.
 
 @item
 The evaluator allows us to define compound procedures.  This involves keeping
@@ -119,10 +126,10 @@ Arguments   |  8     Eval          `888888888888888888) | Environment
 @end example
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap4/Fig4.1a,,147mm,Figure 4.1: The eval-apply cycle exposes the essence of a computer language.,.std.svg}
+@image{../../text/original/figures/chap4/Fig4.1a,147mm,,Figure 4.1: The eval-apply cycle exposes the essence of a computer language.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap4/Fig4.1a.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap4/Fig4.1a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 4.1:} The @code{eval}-@code{apply} cycle exposes the essence of a computer language.}
@@ -132,7 +139,7 @@ The implementation of the evaluator will depend upon procedures that define the
 @newterm{syntax} of the expressions to be evaluated.  We will use data
 abstraction to make the evaluator independent of the representation of the
 language.  For example, rather than committing to a choice that an assignment
-is to be represented by a list beginning with the symbol @code{set!} we use an
+is to be represented by a record tagged @code{assignment}, we use an
 abstract predicate @code{isAssignment} to test for an assignment, and we use
 abstract selectors @code{assignmentVariable} and @code{assignmentValue} to
 access the parts of an assignment.  Implementation of expressions will be
@@ -144,16 +151,21 @@ procedures, @code{lookupVariableValue} accesses the values of variables, and
 of arguments.
 
 In this section the evaluator meets the host, and the host enters under
-its own name, with no adapter layer.  An expression is an ordinary
-value: the reader of @code{read.ts} turns input text into cons-list values in
-just the shape the book's list structure assumes, so @code{read.ts} stands in
-for the book's @code{read}.  Every value carries a @code{_tag}, and predicates
-such as @code{isAssignment} and selectors such as @code{assignmentValue} are
-plain functions on that data.  What can fail answers an @code{Effect}:
-@code{evaluate} answers an @code{Effect.Effect<Value, EvaluationError>}, and
-@code{Effect.flatMap} threads the error channel from a failed variable lookup
-out to the driver loop that runs the session, so the type of an evaluation
-says what can go wrong with it.
+its own name, with no adapter layer.  An expression is an ordinary typed
+value: the reader of @code{read.ts} lowers admitted source to the shared
+tagged syntax union, so an assignment is a node with an @code{assignment}
+tag and a procedure call is a node with a @code{call} tag, both carrying
+nested syntax records.  Predicates such as @code{isAssignment} and selectors
+such as @code{assignmentValue} are plain functions over that data, and every
+evaluator dispatch is an exhaustive @code{switch} on the tag.  What can fail
+answers the typed @code{Outcome} of @ref{4.1.3}---@w{@code{@{ tag: "ok",
+value @}}} or @w{@code{@{ tag: "error", error @}}}---whose error variants name
+an unbound variable, a non-callable value, a wrong number of arguments, a bad
+operand, and an unknown syntax node, so the type of an evaluation says what
+can go wrong with it.  Before any of these run, the whole source unit is
+parsed, checked against the admitted subset, and type-checked by the pinned
+TypeScript compiler; a rejected program produces diagnostics and no
+evaluation effect at all.
 
 @menu
 * 4.1.1::            The Core of the Evaluator
@@ -191,11 +203,16 @@ syntax procedures.
 @itemize @bullet
 
 @item
-For self-evaluating expressions, such as numbers, @code{evaluate} returns the
-expression itself.
+For self-evaluating expressions, such as numbers, strings, and booleans,
+@code{evaluate} returns the expression's value.
 
 @item
 @code{Evaluate} must look up variables in the environment to find their values.
+
+@item
+An array or object literal is structured data: @code{evaluate} computes its
+element or field expressions in source order and constructs the corresponding
+guest array or record value.
 
 @end itemize
 
@@ -205,30 +222,35 @@ expression itself.
 @itemize @bullet
 
 @item
-For quoted expressions, @code{evaluate} returns the expression that was quoted.
+A @code{const} or @code{let} declaration recursively calls @code{evaluate} to
+compute the initial value and installs a binding in the current scope.  The
+environment must be modified to create the binding of the variable.
 
 @item
-An assignment to (or a definition of) a variable must recursively call
+An assignment to a variable must recursively call
 @code{evaluate} to compute the new value to be associated with the variable.  The
-environment must be modified to change (or create) the binding of the variable.
+environment must be modified to change the binding of the variable.
 
 @item
-An @code{if} expression requires special processing of its parts, so as to
-evaluate the consequent if the predicate is true, and otherwise to evaluate the
-alternative.
+An @code{if} statement requires special processing of its parts, so as to
+execute the consequent if the test is true, and otherwise to execute the
+alternative.  A conditional expression and a @code{switch} statement likewise
+select exactly one branch rather than evaluating every branch.
 
 @item
-A @code{lambda} expression must be transformed into an applicable procedure by
-packaging together the parameters and body specified by the @code{lambda}
+A function expression must be transformed into an applicable procedure by
+packaging together the parameters and body specified by the function
 expression with the environment of the evaluation.
 
 @item
-A @code{begin} expression requires evaluating its sequence of expressions in
+A block requires evaluating its sequence of statements in
 the order in which they appear.
 
 @item
-A case analysis (@code{cond}) is transformed into a nest of @code{if}
-expressions and then evaluated.
+A @code{while} or @code{for}-@code{of} statement requires special processing
+of its parts: the loop condition is evaluated before each turn, and a
+@code{for}-@code{of} walks the elements of an array in order.  A @code{return}
+completes the enclosing call abruptly with the value of its operand.
 
 @end itemize
 
@@ -249,164 +271,390 @@ procedure application.
 Here is the definition of @code{evaluate}:
 
 @example typescript
-export const evaluate: Evaluate = (exp, env) => @{
-  if (isSelfEvaluating(exp)) @{
-    return Effect.succeed(exp);
+export const evaluate = (expr: Expr, env: Env): Outcome => @{
+  switch (expr.tag) @{
+    case "number":
+    case "string":
+    case "boolean":
+      return ok(expr.value);
+    case "null":
+      return ok(null);
+    case "undefined":
+      return ok(undefined);
+    case "variable": @{
+      const cell = findCell(env, expr.name);
+      if (cell === undefined || !cell.initialized) @{
+        return fail(@{ tag: "unbound-name", name: expr.name @});
+      @}
+      return ok(cell.value);
+    @}
+    case "template":
+      return evalTemplate(expr, env);
+    case "array":
+      return evalArray(expr, env);
+    case "object":
+      return evalObject(expr, env);
+    case "unary": @{
+      const operand = evaluate(expr.operand, env);
+      if (operand.tag !== "ok") @{
+        return operand;
+      @}
+      return applyUnaryOperation(expr.op, operand.value);
+    @}
+    case "binary": @{
+      const left = evaluate(expr.left, env);
+      if (left.tag !== "ok") @{
+        return left;
+      @}
+      const right = evaluate(expr.right, env);
+      if (right.tag !== "ok") @{
+        return right;
+      @}
+      return applyBinaryOperation(expr.op, left.value, right.value);
+    @}
+    case "logical":
+      return evalLogical(expr, env);
+    case "conditional": @{
+      const test = evaluate(expr.test, env);
+      if (test.tag !== "ok") @{
+        return test;
+      @}
+      if (typeof test.value !== "boolean") @{
+        return fail(
+            @{ tag: "bad-operand",
+            operator: "?:",
+            detail: "test is not a boolean" @}
+          );
+      @}
+      return evaluate(
+        test.value ? expr.consequent : expr.alternative,
+        env);
+    @}
+    case "assign":
+      return evalAssignment(expr, env);
+    case "arrow":
+      return ok(makeProcedure(expr.params, expr.body, env));
+    case "call":
+      return evalCall(expr, env);
+    case "member":
+    case "index":
+      return memberGet(expr, env);
+    case "new-error":
+    case "new-map":
+    case "new-set":
+      return evalArray(expr, env);
+    case "delay":
+    case "force":
+    case "choose":
+    case "require":
+    case "ramb":
+      return fail(@{ tag: "unknown-syntax", construct: expr.tag @});
   @}
-  if (isVariable(exp)) @{
-    return lookupVariableValue(exp, env);
-  @}
-  if (isQuoted(exp)) @{
-    return Effect.succeed(textOfQuotation(exp));
-  @}
-  if (isAssignment(exp)) @{
-    return evalAssignment(exp, env);
-  @}
-  if (isDefinition(exp)) @{
-    return evalDefinition(exp, env);
-  @}
-  if (isIf(exp)) @{
-    return evalIf(exp, env);
-  @}
-  if (isLambda(exp)) @{
-    return Effect.succeed(makeProcedure(lambdaParameters(exp), lambdaBody(exp), env));
-  @}
-  if (isBegin(exp)) @{
-    return evalSequence(beginActions(exp), env);
-  @}
-  if (isCond(exp)) @{
-    return evaluate(condToIf(exp), env);
-  @}
-  if (isApplication(exp)) @{
-    return Effect.flatMap(evaluate(operator(exp), env), (procedure) =>
-      Effect.flatMap(listOfValues(operands(exp), env), (args) => applyProcedure(procedure, args)),
-    );
-  @}
-  return Effect.fail(new UnknownSyntax(@{ expr: format(exp) @}));
 @};
 @end example
 
 @noindent
-For clarity, @code{evaluate} has been implemented as a case analysis, a chain
-of guarded branches standing in for the book's @code{cond}.  The disadvantage
-of this is that our procedure handles only a few distinguishable types of
-expressions, and no new ones can be defined without editing the definition of
-@code{evaluate}.  In most Lisp implementations, dispatching on the type of an
+The last cases are deliberate: the nodes @code{delay}, @code{force},
+@code{choose}, @code{require}, and @code{ramb} belong to the named lazy and
+search experiments of @ref{4.2} and @ref{4.3}, are rejected by the core
+checker, and are reported here as @code{unknown-syntax} rather than given a
+hidden lazy or search semantics.  The core
+language has no hidden lazy or nondeterministic behavior.
+
+@noindent
+For clarity, @code{evaluate} has been implemented as a case analysis: an
+exhaustive @code{switch} on the node tag of the shared syntax union, so a
+new kind of node must be added to the union and to this dispatch together.
+The disadvantage
+of this is that our procedure handles only the node kinds we have declared,
+and no new ones can be defined without editing the definition of
+@code{evaluate}.  In most language implementations, dispatching on the type of an
 expression is done in a data-directed style.  This allows a user to add new
 types of expressions that @code{evaluate} can distinguish, without modifying
 the definition of @code{evaluate} itself.  (See @ref{Exercise 4.3}.)
 
+@noindent
+Every branch answers the typed @code{Outcome}: @w{@code{@{ tag: "ok", value
+@}}} carries the computed @code{Value}, and @w{@code{@{ tag: "error", error
+@}}} carries one of the @code{GuestError} variants.  The errors are data, not
+thrown host exceptions; a failed lookup or a bad operand returns immediately,
+and no later effect of that evaluation runs.
+
+@noindent
+The named handlers behind the remaining branches are small and follow the
+same pattern.  @code{evalTemplate} evaluates the embedded expressions in
+order and concatenates the chunks with them.  @code{evalArray} and
+@code{evalObject} evaluate elements and field values in source order (spreads
+contribute items, as in @code{evalArgs}) and construct an
+@code{ArrayValue} or @code{RecordValue}.  @code{applyUnary} and
+@code{applyBinary} check their operands before combining them---numbers for
+arithmetic, same-type operands for @code{+}, booleans for comparisons---and
+answer @code{bad-operand} otherwise.  @code{evalLogical} short-circuits over
+booleans.  @code{evalCall} is the case shown below; @code{memberGet} reads a
+named field or computed index from a record, array, map, or set, answering
+@code{unknown-field} for a missing name; @code{evalArray} builds the
+boundary-only @code{Error}, @code{Map}, and @code{Set} values.  Each of these
+returns at the first failed sub-evaluation, so a rejected operand never
+produces a mutation or a transcript line.
+
 @subsubheading Apply
 
-The procedure @code{applyProcedure} takes two arguments, a procedure and a
-list of arguments to which the procedure should be applied.  It classifies
+The procedure @code{applyProcedure} takes two arguments, a procedure and an
+array of arguments to which the procedure should be applied.  It classifies
 procedures into two kinds: it calls @code{applyPrimitiveProcedure} to apply
-primitives; it applies compound procedures by sequentially evaluating the
-expressions that make up the body of the procedure.  The environment for the evaluation of the
-body of a compound procedure is constructed by extending the base environment
-carried by the procedure to include a frame that binds the parameters of the
-procedure to the arguments to which the procedure is to be applied.  Here is
+primitives; it applies closures by sequentially executing the
+statements that make up the body of the procedure.  The environment for the execution of the
+body of a closure is constructed by extending the base environment
+carried by the closure to include a frame that binds the parameters of the
+closure (and its rest name, if it has one) to the arguments to which the
+closure is to be applied.  Here is
 the definition of @code{applyProcedure}:
 
 @example typescript
 export const applyProcedure = (
   procedure: Value,
-  args: List<Value>,
-): Effect.Effect<Value, EvaluationError> => @{
-  if (procedure._tag === "Primitive") @{
+  args: Value[]
+): Outcome => @{
+  if (isPrimitive(procedure)) @{
     return applyPrimitiveProcedure(procedure, args);
   @}
-  if (procedure._tag === "Compound") @{
-    return Effect.flatMap(extendEnvironment(procedure.params, args, procedure.env), (newEnv) =>
-      evalSequence(procedure.body, newEnv),
-    );
+  if (isClosure(procedure)) @{
+    const frame = extendEnvironment(procedure, args);
+    if (frame.tag !== "ok") @{
+      return frame;
+    @}
+    const completion = evalSequence(procedure.body.body, frame.value);
+    if (completion.tag === "normal" || completion.tag === "return") @{
+      return ok(completion.value);
+    @}
+    if (completion.tag === "throw") @{
+      return fail(@{ tag: "guest-throw", value: completion.value @});
+    @}
+    return fail(
+        @{ tag: "bad-operand",
+        operator: completion.tag,
+        detail: "outside its construct" @}
+      );
   @}
-  return Effect.fail(new NotAProcedure(@{ value: format(procedure) @}));
+  return fail(@{ tag: "not-callable", detail: format(procedure) @});
 @};
 @end example
+
+@noindent
+The @code{completion} value is the statement-level result described under
+@code{evalSequence} below: a body can finish normally, return a value, throw,
+or attempt a @code{break} or @code{return} that leaves its construct.  Only
+the first two become the value of the call; an uncaught guest throw becomes
+the @code{guest-throw} error, and a stray @code{break} or @code{continue} is
+reported rather than smuggled through as a value.
 
 @subsubheading Procedure arguments
 
 When @code{evaluate} processes a procedure application, it uses
-@code{listOfValues} to produce the list of arguments to which the procedure
-is to be applied.  The procedure @code{listOfValues} takes as an argument the
-operands of the combination.  It evaluates each operand and returns a list of
-the corresponding values:@footnote{We could have simplified the @code{isApplication}
-clause in @code{evaluate} by using @code{map} over the operands rather than
-writing an explicit @code{listOfValues} procedure.  We chose not to use
+@code{evalArgs} to produce the array of arguments to which the procedure
+is to be applied.  The procedure @code{evalArgs} takes as an argument the
+argument nodes of the call.  It evaluates each one from left to right---the
+order the guest language fixes---and returns the corresponding values; a
+spread argument contributes the items of its array:@footnote{We could have
+simplified the @code{call}
+case in @code{evaluate} by using @code{map} over the arguments rather than
+writing an explicit @code{evalArgs} procedure.  We chose not to use
 @code{map} here to emphasize the fact that the evaluator's own recursion is
 written out by hand, even though the language that it supports and the
 language that implements it both include higher-order procedures.}
 
 @example typescript
-export const listOfValues = (
-  exps: List<Value>,
+export const evalArgs = (
+  args: ReadonlyArray<Arg>,
   env: Env,
-): Effect.Effect<List<Value>, EvaluationError> => @{
-  if (noOperands(exps)) @{
-    return Effect.succeed(nil);
+): Outcome => @{
+  const values: Value[] = [];
+  for (const arg of args) @{
+    const value = evaluate(arg.expr, env);
+    if (value.tag !== "ok") @{
+      return value;
+    @}
+    if (arg.kind === "item") @{
+      values.push(value.value);
+    @} else if (
+      value.value !== null &&
+      typeof value.value === "object" &&
+      value.value.tag === "array"
+    ) @{
+      for (const item of value.value.items) @{
+        values.push(item);
+      @}
+    @} else @{
+      return fail(
+          @{ tag: "bad-operand",
+          operator: "spread",
+          detail: "spread of a non-array" @}
+        );
+    @}
   @}
-  return Effect.flatMap(evaluate(firstOperand(exps), env), (first) =>
-    Effect.map(listOfValues(restOperands(exps), env), (rest) => cons(first, rest)),
-  );
+  return ok(values);
 @};
 @end example
 
 @subsubheading Conditionals
 
-The procedure @code{evalIf} evaluates the predicate part of an @code{if}
-expression in the given environment.  If the result is true, @code{evalIf}
-evaluates the consequent, otherwise it evaluates the alternative:
+The procedure @code{evalIf} executes the @code{if} statement in the given
+environment.  It evaluates the test part; if the result is true, @code{evalIf}
+executes the consequent, otherwise it executes the alternative.  The
+conditional expression of @code{evaluate} above is the expression-level twin:
+it computes exactly one arm and answers that arm's value.
 
 @example typescript
-export const evalIf = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(evaluate(ifPredicate(exp), env), (predicate) =>
-    isTrue(predicate) ? evaluate(ifConsequent(exp), env) : evaluate(ifAlternative(exp), env),
-  );
+export const evalIf = (stmt: Stmt, env: Env): Completion => @{
+  const predicate = evaluate(stmt.test, env);
+  if (predicate.tag !== "ok") @{
+    return @{ tag: "error", error: predicate.error @};
+  @}
+  if (typeof predicate.value !== "boolean") @{
+    return @{
+      tag: "error",
+      error: @{ tag: "bad-operand",
+        operator: "if",
+        detail: "test is not a boolean" @},
+    @};
+  @}
+  if (predicate.value) @{
+    return execStatement(stmt.consequent, env);
+  @}
+  return stmt.alternative === null
+    ? @{ tag: "normal", value: undefined @}
+    : execStatement(stmt.alternative, env);
+@};
 @end example
 
 @noindent
-The use of @code{isTrue} in @code{evalIf} highlights the issue of the
+The type test in @code{evalIf} highlights the issue of the
 connection between an implemented language and an implementation language.  The
-@code{ifPredicate} is evaluated in the language being implemented and thus
-yields a value in that language.  The interpreter predicate @code{isTrue}
-translates that value into a value that can be tested by the @code{if} in the
-implementation language: The metacircular representation of truth might not be
-the same as that of the implementation language.@footnote{In the book, the
+@code{test} is evaluated in the language being implemented and thus
+yields a value in that language.  The interpreter must translate that value
+into the decision the @code{if} of
+the implementation language needs: The metacircular representation of truth might not be
+the same as that of the implementation language.  Here the guest language
+settles the question statically---a condition must be a @code{boolean}, and
+the subset checker answers @code{ExpectedBoolean} when it can see
+otherwise---but the evaluator still checks, because an externally built
+syntax tree can lie.@footnote{In the book, the
 language being implemented and the implementation language are the same, which
 is what makes the question vertiginous.  Here they are not: the evaluated
-truth values are the Lisp objects @code{true} and @code{false}, and
-@code{isTrue} answers the host boolean that the conditional needs.
-Contemplation of the meaning of @code{isTrue} here yields expansion of
+truth values are the guest booleans @code{true} and @code{false}, and
+the test above answers the host boolean that the conditional needs.
+Contemplation of the meaning of this check here yields expansion of
 consciousness without the abuse of substance.}
 
 @subsubheading Sequences
 
-The procedure @code{evalSequence} is used by @code{applyProcedure} to evaluate
-the sequence of expressions in a procedure body and by @code{evaluate} to
-evaluate the sequence of expressions in a @code{begin} expression.  It takes
-as arguments a sequence of expressions and an environment, and evaluates the
-expressions in the order in which they occur.  The value returned is the value
-of the final expression.@footnote{An empty sequence has no final expression.
-The book's @code{eval-sequence} would chase @code{rest-exps} forever; the
-edition's @code{evalSequence} fails with a @code{RuntimeError} instead.}
+The procedure @code{evalSequence} is used by @code{applyProcedure} to execute
+the statements of a procedure body and by @code{execute} to
+execute the statements of a block.  It takes
+as arguments a sequence of statements and declarations and an environment, and
+executes
+the statements in the order in which they occur.  Statement execution answers
+a @code{Completion}: normal execution carries the value of the last statement,
+and a @code{return}, @code{break}, @code{continue}, or @code{throw} completes
+the enclosing construct abruptly.@footnote{An empty sequence has no final
+statement.
+The book's @code{evalSequence} would chase @code{restExps} forever; the
+edition's @code{evalSequence} answers an empty sequence's normal completion
+with @code{undefined} instead.}
 
 @example typescript
+export type Completion =
+  | @{ tag: "normal"; value: Value @}
+  | @{ tag: "return"; value: Value @}
+  | @{ tag: "break" @}
+  | @{ tag: "continue" @}
+  | @{ tag: "throw"; value: Value @}
+  | @{ tag: "error"; error: GuestError @};
+
 export const evalSequence = (
-  exps: List<Value>,
+  statements: ReadonlyArray<Decl | Stmt>,
   env: Env,
-): Effect.Effect<Value, EvaluationError> => @{
-  if (exps._tag === "Nil") @{
-    return Effect.fail(new RuntimeError(@{ message: "Empty sequence: EVAL", detail: "" @}));
+): Completion => @{
+  let result: Completion = @{
+    tag: "normal",
+    value: undefined,
+  @};
+  for (const statement of statements) @{
+    result = execItem(statement, env);
+    if (result.tag !== "normal") @{
+      return result;
+    @}
   @}
-  if (isLastExp(exps)) @{
-    return evaluate(firstExp(exps), env);
-  @}
-  return Effect.flatMap(evaluate(firstExp(exps), env), () => evalSequence(restExps(exps), env));
+  return result;
 @};
 @end example
 
-@subsubheading Assignments and definitions
+@noindent
+Statement execution is the companion dispatcher, and it is the one place the
+two halves of the shared syntax meet: declarations go to
+@code{evalDeclaration}, the @code{if} statement to @code{evalIf}, a block to
+@code{evalSequence}, and the case analysis is executed by the transformation
+of @ref{4.1.2}, just as the book's @code{cond} is.
+
+@example typescript
+const execItem = (item: Decl | Stmt, env: Env): Completion => @{
+  switch (item.tag) @{
+    case "var-decl":
+    case "function-decl":
+    case "type-decl":
+    case "interface-decl":
+    case "import":
+      return evalDeclaration(item, env);
+    default:
+      return execStatement(item, env);
+  @}
+@};
+
+const execStatement = (statement: Stmt, env: Env): Completion => @{
+  switch (statement.tag) @{
+    case "expr-stmt": @{
+      const value = evaluate(statement.expr, env);
+      return value.tag === "ok"
+        ? @{ tag: "normal", value: value.value @}
+        : @{ tag: "error", error: value.error @};
+    @}
+    case "block":
+      return evalSequence(statement.body, env);
+    case "if":
+      return evalIf(statement, env);
+    case "while":
+      return execWhile(statement, env);
+    case "for-of":
+      return execForOf(statement, env);
+    case "switch":
+      return execStatement(switchToIf(statement), env);
+    case "return":
+      return execReturn(statement, env);
+    case "break":
+      return @{ tag: "break" @};
+    case "continue":
+      return @{ tag: "continue" @};
+    case "throw": @{
+      const thrown = evaluate(statement.argument, env);
+      return thrown.tag === "ok"
+        ? @{ tag: "throw", value: thrown.value @}
+        : @{ tag: "error", error: thrown.error @};
+    @}
+    case "try":
+      return execTry(statement, env);
+  @}
+@};
+@end example
+
+@noindent
+The @code{while} and @code{for}-@code{of} cases repeat their body under the
+loop rule of the grammar: the test before each turn, the array's elements in
+order, and @code{break}/@code{continue} completing the iteration rather than
+the call.  @code{try} and @code{throw} are admitted in guest source only at
+the host I/O and process boundary; the evaluator implements their completion
+semantics, but the teaching kernel itself contains no @code{try}.
+
+@subsubheading Assignments and declarations
 
 The following procedure handles assignments to variables.  It calls
 @code{evaluate} to find the value to be assigned and transmits the variable
@@ -414,44 +662,104 @@ and the resulting value to @code{setVariableValue} to be installed in the
 designated environment.
 
 @example typescript
-export const evalAssignment = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(evaluate(assignmentValue(exp), env), (value) =>
-    Effect.map(setVariableValue(assignmentVariable(exp), value, env), () => ok),
-  );
+export const evalAssignment = (expr: Expr, env: Env): Outcome => @{
+  const value = evaluate(expr.value, env);
+  if (value.tag !== "ok") @{
+    return value;
+  @}
+  const target = expr.target;
+  const installed =
+    target.tag === "variable"
+      ? setVariableValue(target.name, value.value, env)
+      : memberSet(target, value.value, env);
+  if (installed.tag !== "ok") @{
+    return installed;
+  @}
+  return ok(value.value);
+@};
 @end example
 
 @noindent
-Definitions of variables are handled in a similar manner.@footnote{This
-implementation of @code{define} ignores a subtle issue in the handling of
+An assignment to a member or an index is not a name rebinding: the branch
+calls @code{memberSet}, the writing twin of the @code{memberGet} case of
+@ref{4.1.1}, which stores into the guest record, array, map, or set the
+target denotes.
+
+@noindent
+Declarations of variables are handled in a similar manner.@footnote{This
+implementation of declarations ignores a subtle issue in the handling of
 internal definitions, although it works correctly in most cases.  We will see
 what the problem is and how to solve it in @ref{4.1.6}.}
 
 @example typescript
-export const evalDefinition = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(evaluate(definitionValue(exp), env), (value) =>
-    Effect.map(defineVariableValue(definitionVariable(exp), value, env), () => ok),
-  );
+export const evalDeclaration = (decl: Decl, env: Env): Completion => @{
+  if (decl.tag === "var-decl") @{
+    const value = evaluate(decl.init, env);
+    if (value.tag !== "ok") @{
+      return @{ tag: "error", error: value.error @};
+    @}
+    return install(decl.name, value.value, decl.kind === "let", env);
+  @}
+  if (decl.tag === "function-decl") @{
+    return install(
+        decl.name,
+        makeProcedure(decl.params, decl.body, env),
+        true,
+        env
+      );
+  @}
+  if (decl.tag === "import") @{
+    const error = linkImport(decl, env);
+    return error === null
+      ? @{ tag: "normal", value: undefined @}
+      : @{ tag: "error", error: error @};
+  @}
+  return @{ tag: "normal", value: undefined @};
+@};
+
+const install = (
+  name: string,
+  value: Value,
+  mutable: boolean,
+  env: Env
+): Completion => @{
+  const installed = defineVariableValue(name, value, mutable, env);
+  return installed.tag === "ok"
+    ? @{ tag: "normal", value: undefined @}
+    : @{ tag: "error", error: installed.error @};
+@};
 @end example
 
 @noindent
-We have chosen here to return the symbol @code{ok} as the value of an
-assignment or a definition.@footnote{As we said when we introduced
-@code{define} and @code{set!}, these values are implementation-dependent in
-Scheme, that is, the implementor can choose what value to return.}
+Type declarations bind nothing at run time: they are erased by the checker.
+Imports erase their type-only names the same way; each value name is bound
+from the host's linked-module table, so no module is loaded inside the
+evaluator kernel.
+
+@noindent
+An assignment expression answers the value that was assigned, and a
+declaration is a statement whose completion carries
+@code{undefined}.@footnote{As we said when we introduced
+declarations and assignment, the value of a definition is
+implementation-dependent in many languages; this edition follows the guest
+language's own rule, where assignment is an expression and declaration is
+not.}
 
 @quotation
-@strong{@anchor{Exercise 4.1}Exercise 4.1:} Notice that we cannot tell whether
-the metacircular evaluator evaluates operands from left to right or from right
-to left.  Its evaluation order is inherited from the underlying implementation
-language: If the arguments to @code{cons} in @code{listOfValues} are evaluated
-from left to right, then @code{listOfValues} will evaluate operands from left
-to right; and if the arguments to @code{cons} are evaluated from right to
-left, then @code{listOfValues} will evaluate operands from right to left.
+@strong{@anchor{Exercise 4.1}Exercise 4.1:} In this metacircular evaluator we
+can tell how operands are evaluated, because the guest language specifies the
+order and the evaluator writes it out: @code{evalArgs} walks its arguments
+from left to right, and the pinned host runtime evaluates the calls it makes
+in that same specified order.  The book's puzzle was about an order inherited
+without a specification; ours is about making a specified order explicit and
+observable.
 
-Write a version of @code{listOfValues} that evaluates operands from left to
-right regardless of the order of evaluation in the underlying implementation
-language.  Also write a version of @code{listOfValues} that evaluates operands
-from right to left.
+Write a version of @code{evalArgs} that evaluates operands from left to
+right regardless of any surrounding convention.  Also write a version of
+@code{evalArgs} that evaluates operands
+from right to left.  Show the two versions an argument list whose operands
+append distinct labels to a transcript array, and confirm that only the
+left-to-right version agrees with the guest language's evaluation order.
 @end quotation
 @node	4.1.2, 4.1.3, 4.1.1, 4.1
 @subsection Representing Expressions
@@ -474,61 +782,119 @@ Here is the specification of the syntax of our language:
 @itemize
 
 @item
-The only self-evaluating items are numbers, strings, and booleans:
+The shared syntax is one tagged union, used by the reader, both teaching
+evaluators, the explicit-control evaluator, and the compiler.  Every node also
+records its source span (@code{Span@{start, end, line, column@}}), omitted
+here for brevity.  The expression nodes are:
 
 @example typescript
-export const isSelfEvaluating = (exp: Value): boolean =>
-  exp._tag === "Number" || exp._tag === "String" || exp._tag === "Boolean";
+type Expr =
+  | @{ tag: "number"; value: number @}
+  | @{ tag: "string"; value: string @}
+  | @{ tag: "boolean"; value: boolean @}
+  | @{ tag: "null" @}
+  | @{ tag: "undefined" @}
+  | @{ tag: "template";
+    chunks: ReadonlyArray<string>;
+    exprs: ReadonlyArray<Expr> @}
+  | @{ tag: "variable"; name: string @}
+  | @{ tag: "array"; elements: ReadonlyArray<Arg> @}
+  | @{ tag: "object";
+    fields: ReadonlyArray<@{ key: string; value: Expr @}> @}
+  | @{ tag: "unary"; op: "!" | "+" | "-" | "typeof"; operand: Expr @}
+  | @{ tag: "binary";
+      op: "+" | "-" | "*" | "/" | "%" | "<" | "<=" | ">" | ">="
+        | "===" | "!==";
+      left: Expr;
+      right: Expr @}
+  | @{ tag: "logical"; op: "&&" | "||"; left: Expr; right: Expr @}
+  | @{ tag: "conditional";
+    test: Expr;
+    consequent: Expr;
+    alternative: Expr @}
+  | @{ tag: "assign"; target: Expr; value: Expr @}
+  | @{ tag: "arrow"; params: ReadonlyArray<Param>; body: Block @}
+  | @{ tag: "call"; callee: Expr; args: ReadonlyArray<Arg> @}
+  | @{ tag: "member"; object: Expr; name: string @}
+  | @{ tag: "index"; object: Expr; index: Expr @}
+  | @{ tag: "new-error"; args: ReadonlyArray<Expr> @}
+  | @{ tag: "new-map"; args: ReadonlyArray<Expr> @}
+  | @{ tag: "new-set"; args: ReadonlyArray<Expr> @};
+
+type Arg = @{ kind: "item"; expr: Expr @}
+  | @{ kind: "spread"; expr: Expr @};
+@end example
+
+@noindent
+The only self-evaluating items are numbers, strings, booleans, and the two
+empty literals:
+
+@example typescript
+export const isSelfEvaluating = (expr: Expr): boolean =>
+  expr.tag === "number" ||
+  expr.tag === "string" ||
+  expr.tag === "boolean" ||
+  expr.tag === "null" ||
+  expr.tag === "undefined";
 @end example
 
 @item
-Variables are represented by symbols:
+Variables are @code{variable} nodes carrying a name, and nothing else is a
+variable:
 
 @example typescript
-export const isVariable = (exp: Value): exp is SymbolValue => isSymbol(exp);
+export const isVariable = (
+  expr: Expr
+): boolean => expr.tag === "variable";
+
+export const variableName = (expr: Expr): string | undefined =>
+  expr.tag === "variable" ? expr.name : undefined;
 @end example
 
 @item
-Quotations have the form @code{(quote ⟨@var{text-of-quotation}⟩)}:@footnote{As
-mentioned in @ref{2.3.1}, the evaluator sees a quoted expression as a
-list beginning with @code{quote}, even if the expression is typed with the
-quotation mark.  For example, the expression @code{'a} would be seen by the
-evaluator as @code{(quote a)}.  See @ref{Exercise 2.55}.}
+There is no quotation form.  A program that means to use data writes the data
+as an array or object literal, and symbolic data is constructed from typed
+values---strings, records, and the recursive pair constructors of
+@ref{4.1.3}---rather than read as quoted text.  The syntax layer exposes a
+literal's parts:
 
 @example typescript
-export const isQuoted = (exp: Value): exp is Cons<Value> => taggedList("quote", exp);
+export const arrayElements = (
+  expr: Expr
+): ReadonlyArray<Arg> | undefined =>
+  expr.tag === "array" ? expr.elements : undefined;
 
-export const textOfQuotation = (exp: Cons<Value>): Value => cadr(exp);
-@end example
-
-@code{Quoted?} is defined in terms of the procedure @code{tagged-list?}, which
-identifies lists beginning with a designated symbol:
-
-@example typescript
-export const taggedList = (tag: string, exp: Value): exp is Cons<Value> =>
-  isPair(exp) && isSymbol(exp.head) && exp.head.name === tag;
-@end example
-
-@item
-Assignments have the form @code{(set! ⟨@var{var}⟩ ⟨@var{value}⟩)}:
-
-@example typescript
-export const isAssignment = (exp: Value): exp is Cons<Value> => taggedList("set!", exp);
-
-export const assignmentVariable = (exp: Cons<Value>): SymbolValue => @{
-  const target = cadr(exp);
-  return isSymbol(target) ? target : symbol("<malformed>");
-@};
-
-export const assignmentValue = (exp: Cons<Value>): Value => caddr(exp);
+export const objectFields = (
+  expr: Expr,
+): ReadonlyArray<@{ key: string; value: Expr @}> | undefined =>
+  expr.tag === "object" ? expr.fields : undefined;
 @end example
 
 @item
-Definitions have the form
+Assignments have the form @code{@var{target} = @var{value}}, where the target
+is a variable, a member access, or an index access:
 
 @example typescript
-read(`
-  (define ⟨@var{var}⟩ ⟨@var{value}⟩)
+export const isAssignment = (
+  expr: Expr
+): boolean => expr.tag === "assign";
+
+export const assignmentTarget = (expr: Expr): Expr | undefined =>
+  expr.tag === "assign" ? expr.target : undefined;
+
+export const assignmentValue = (expr: Expr): Expr | undefined =>
+  expr.tag === "assign" ? expr.value : undefined;
+@end example
+
+@item
+Declarations introduce bindings.  A variable declaration carries a kind
+(@code{const} or @code{let}), a name, an optional declared type, and an
+initializer; a function declaration is sugar for a @code{const} binding of a
+function expression:
+
+@example typescript
+readAll(`
+  const ⟨@var{var}⟩: ⟨@var{type}⟩ = ⟨@var{init}⟩;
 `)
 @end example
 
@@ -536,245 +902,389 @@ read(`
 or the form
 
 @example typescript
-read(`
-  (define (⟨@var{var}⟩ ⟨@var{param₁}⟩ @r{…} ⟨@var{paramₙ}⟩)
-    ⟨@var{body}⟩)
+readAll(`
+  function ⟨@var{name}⟩(
+    ⟨@var{param₁}⟩: ⟨@var{type₁}⟩,
+    @r{…},
+    ⟨@var{paramₙ}⟩: ⟨@var{typeₙ}⟩): ⟨@var{type}⟩ @{
+    ⟨@var{body}⟩
+  @}
 `)
 @end example
 
-The latter form (standard procedure definition) is syntactic sugar for
+The latter form is syntactic sugar for
 
 @example typescript
-read(`
-  (define ⟨@var{var}⟩
-    (lambda (⟨@var{param₁}⟩ @r{…} ⟨@var{paramₙ}⟩)
-      ⟨@var{body}⟩))
+readAll(`
+  const ⟨@var{name}⟩ = (
+    ⟨@var{param₁}⟩: ⟨@var{type₁}⟩,
+    @r{…},
+    ⟨@var{paramₙ}⟩: ⟨@var{typeₙ}⟩): ⟨@var{type}⟩ => @{
+    ⟨@var{body}⟩
+  @};
 `)
 @end example
 
-The corresponding syntax procedures are the following:
+The corresponding syntax procedures are the following (a function
+declaration's value is the closure its parameter list and body build, so
+@code{declarationValue} answers the initializer of a variable declaration and
+nothing for a function declaration):
 
 @example typescript
-export const isDefinition = (exp: Value): exp is Cons<Value> => taggedList("define", exp);
+export const isDeclaration = (node: Decl | Stmt): boolean =>
+  node.tag === "var-decl" || node.tag === "function-decl";
 
-export const definitionVariable = (exp: Cons<Value>): SymbolValue => @{
-  const target = cadr(exp);
-  return isSymbol(target)
-    ? target
-    : isPair(target) && isSymbol(target.head)
-      ? target.head
-      : symbol("<malformed>");
-@};
+export const declarationName = (
+  node: Decl | Stmt
+): string | undefined =>
+  node.tag === "var-decl" || node.tag === "function-decl"
+    ? node.name
+    : undefined;
 
-export const definitionValue = (exp: Cons<Value>): Value => @{
-  const target = cadr(exp);
-  if (isSymbol(target)) @{
-    return caddr(exp);
+export const declarationValue = (
+  node: Decl | Stmt,
+): Expr | undefined =>
+  node.tag === "var-decl" ? node.init : undefined;
+
+export const isConst = (node: Decl | Stmt): boolean =>
+  node.tag === "var-decl" && node.kind === "const";
+@end example
+
+@item
+A function expression is an @code{arrow} node carrying a parameter list and a
+body block.  A parameter is either an ordinary named parameter with an
+optional type, or a final rest parameter that collects the remaining
+arguments:
+
+@example typescript
+type Param =
+  | @{ kind: "param";
+    name: string;
+    optional: boolean;
+    type: TypeNode | null @}
+  | @{ kind: "rest"; name: string; type: TypeNode @};
+
+export const isArrow = (expr: Expr): boolean =>
+  expr.tag === "arrow";
+
+export const arrowParameters = (
+  expr: Expr
+): ReadonlyArray<Param> | undefined =>
+  expr.tag === "arrow" ? expr.params : undefined;
+
+export const arrowBody = (expr: Expr): Block | undefined =>
+  expr.tag === "arrow" ? expr.body : undefined;
+@end example
+
+We also provide a constructor for the procedure value an arrow or a function
+declaration denotes, which is used by
+@code{evalDeclaration}, above:
+
+@example typescript
+export const makeProcedure = (
+  params: ReadonlyArray<Param>,
+  body: Block,
+  env: Env,
+): Value => @{
+  const names: string[] = [];
+  let rest: string | null = null;
+  for (const param of params) @{
+    if (param.kind === "param") @{
+      names.push(param.name);
+    @} else @{
+      rest = param.name;
+    @}
   @}
-  if (isPair(target)) @{
-    return makeLambda(target.tail, cddr(exp));
-  @}
-  return symbol("<malformed>");
+  return @{ tag: "closure", params: names, rest, body, env @};
 @};
 @end example
 
 @item
-@code{Lambda} expressions are lists that begin with the symbol @code{lambda}:
+Conditionals come in two shapes: the @code{if} statement, whose alternative is
+optional, and the conditional expression, which has a test, a consequent, and
+an alternative.@footnote{An @code{if} statement has no value to be
+unspecified: it executes exactly one of its branches.  A conditional
+expression requires both arms.  In both forms the test must be a
+@code{boolean}; the subset checker answers @code{ExpectedBoolean} when it can
+see otherwise.  The guest language's booleans are the literals @code{true} and
+@code{false}, and the environment of @ref{4.1.4} binds nothing by that name.}
 
 @example typescript
-export const isLambda = (exp: Value): exp is Cons<Value> => taggedList("lambda", exp);
+export const isIf = (node: Stmt): boolean => node.tag === "if";
 
-export const lambdaParameters = (exp: Cons<Value>): List<Value> => cadrOfList(cadr(exp));
+export const ifTest = (node: Stmt): Expr | undefined =>
+  node.tag === "if" ? node.test : undefined;
 
-export const lambdaBody = (exp: Cons<Value>): List<Value> => cddr(exp);
+export const ifConsequent = (node: Stmt): Stmt | undefined =>
+  node.tag === "if" ? node.consequent : undefined;
+
+export const ifAlternative = (node: Stmt): Stmt | undefined =>
+  node.tag === "if" && node.alternative !== null
+    ? node.alternative
+    : undefined;
 @end example
 
-We also provide a constructor for @code{lambda} expressions, which is used by
-@code{definition-value}, above:
+We also provide a constructor for @code{if} statements, to be used by
+@code{switchToIf} to transform a case analysis into a nest of @code{if}
+statements:
 
 @example typescript
-export const makeLambda = (parameters: List<Value>, body: List<Value>): Value =>
-  cons(symbol("lambda"), cons(parameters, body));
-@end example
-
-@item
-Conditionals begin with @code{if} and have a predicate, a consequent, and an
-(optional) alternative.  If the expression has no alternative part, we provide
-@code{false} as the alternative.@footnote{The value of an @code{if} expression
-when the predicate is false and there is no alternative is unspecified in
-Scheme; we have chosen here to make it false.  We will support the use of the
-variables @code{true} and @code{false} in expressions to be evaluated by
-binding them in the global environment.  See @ref{4.1.4}.}
-
-@example typescript
-export const isIf = (exp: Value): exp is Cons<Value> => taggedList("if", exp);
-
-export const ifPredicate = (exp: Cons<Value>): Value => cadr(exp);
-
-export const ifConsequent = (exp: Cons<Value>): Value => caddr(exp);
-
-export const ifAlternative = (exp: Cons<Value>): Value => @{
-  const rest = cddr(exp);
-  const tail = rest._tag === "Cons" ? rest.tail : nil;
-  return tail._tag === "Cons" ? tail.head : falseValue;
-@};
-@end example
-
-We also provide a constructor for @code{if} expressions, to be used by
-@code{cond->if} to transform @code{cond} expressions into @code{if}
-expressions:
-
-@example typescript
-export const makeIf = (predicate: Value, consequent: Value, alternative: Value): Value =>
-  cons(symbol("if"), cons(predicate, cons(consequent, cons(alternative, nil))));
+// Every constructed node carries the Span of the source it derives
+// from.
+export const makeIf = (
+  test: Expr,
+  consequent: Stmt,
+  alternative: Stmt,
+  span: Span
+): Stmt =>
+  (@{ tag: "if", test, consequent, alternative, span @});
 @end example
 
 @item
-@code{Begin} packages a sequence of expressions into a single expression.  We
-include syntax operations on @code{begin} expressions to extract the actual
-sequence from the @code{begin} expression, as well as selectors that return the
-first expression and the rest of the expressions in the
-sequence.@footnote{These selectors for a list of expressions, and the
-corresponding ones for a list of operands, are not intended as a data
-abstraction.  They are introduced as mnemonic names for the basic list
+A block packages a sequence of statements and declarations into a single
+statement.  The statement nodes are the block, the loops, the abrupt
+completions, and the statement wrapper for an expression:
+
+@example typescript
+type Stmt =
+  | @{ tag: "block"; body: ReadonlyArray<Decl | Stmt> @}
+  | @{ tag: "if";
+    test: Expr;
+    consequent: Stmt;
+    alternative: Stmt | null @}
+  | @{ tag: "while"; test: Expr; body: Stmt @}
+  | @{ tag: "for-of"; name: string; iterable: Expr; body: Stmt @}
+  | @{ tag: "switch";
+      discriminant: Expr;
+      cases: ReadonlyArray<
+        @{ test: Expr; body: ReadonlyArray<Decl | Stmt> @}>;
+      defaultBody: ReadonlyArray<Decl | Stmt> | null @}
+  | @{ tag: "return"; argument: Expr | null @}
+  | @{ tag: "break" @}
+  | @{ tag: "continue" @}
+  | @{ tag: "throw"; argument: Expr @}
+  | @{ tag: "expr-stmt"; expr: Expr @};
+@end example
+
+@noindent
+We include selectors that return the
+first statement and the rest of the statements in the
+sequence.@footnote{These selectors for a sequence of statements, and the
+corresponding ones for a list of arguments, are not intended as a data
+abstraction.  They are introduced as mnemonic names for the basic array
 operations in order to make it easier to understand the explicit-control
 evaluator in @ref{5.4}.}
 
 @example typescript
-export const isBegin = (exp: Value): exp is Cons<Value> => taggedList("begin", exp);
+export const isLastExp = (
+  seq: ReadonlyArray<Decl | Stmt>,
+): boolean =>
+  seq.length <= 1;
 
-export const beginActions = (exp: Cons<Value>): List<Value> => cdr(exp);
+export const firstExp = (
+  seq: ReadonlyArray<Decl | Stmt>
+): Decl | Stmt | undefined =>
+  seq.length === 0 ? undefined : seq[0];
 
-export const isLastExp = (seq: List<Value>): boolean => @{
-  const tail = seq._tag === "Cons" ? seq.tail : seq;
-  return tail._tag === "Nil";
-@};
-
-export const firstExp = (seq: List<Value>): Value =>
-  seq._tag === "Cons" ? seq.head : symbol("<malformed>");
-
-export const restExps = (seq: List<Value>): List<Value> => (seq._tag === "Cons" ? seq.tail : nil);
+export const restExps = (
+  seq: ReadonlyArray<Decl | Stmt>
+): ReadonlyArray<Decl | Stmt> =>
+  seq.slice(1);
 @end example
 
-We also include a constructor @code{sequence->exp} (for use by @code{cond->if})
-that transforms a sequence into a single expression, using @code{begin} if
-necessary:
+We also include a constructor @code{sequenceToExp} that transforms a sequence
+of statements into a single statement, using a block if necessary:
 
 @example typescript
-export const sequenceToExp = (seq: List<Value>): Value => @{
-  if (seq._tag === "Nil") @{
-    return seq;
+export const sequenceToExp = (
+  seq: ReadonlyArray<Decl | Stmt>,
+  span: Span
+): Stmt => @{
+  if (seq.length === 1) @{
+    const only = seq[0];
+    if (only !== undefined && only.tag !== "var-decl"
+      && only.tag !== "function-decl") @{
+      return only;
+    @}
   @}
-  return isLastExp(seq) ? firstExp(seq) : makeBegin(seq);
+  return @{ tag: "block", body: seq, span @};
 @};
-
-export const makeBegin = (seq: List<Value>): Value => cons(symbol("begin"), seq);
 @end example
 
 @item
-A procedure application is any compound expression that is not one of the above
-expression types.  The @code{car} of the expression is the operator, and the
-@code{cdr} is the list of operands:
+A procedure application is a @code{call} node.  The callee of the expression
+is the operator part, and the args are the operands:
 
 @example typescript
-export const isApplication = (exp: Value): exp is Cons<Value> => isPair(exp);
+export const isApplication = (
+  expr: Expr
+): boolean => expr.tag === "call";
 
-export const operator = (exp: Cons<Value>): Value => car(exp);
+export const operator = (expr: Expr): Expr | undefined =>
+  expr.tag === "call" ? expr.callee : undefined;
 
-export const operands = (exp: Cons<Value>): List<Value> => cdr(exp);
+export const operands = (
+  expr: Expr,
+): ReadonlyArray<Arg> | undefined =>
+  expr.tag === "call" ? expr.args : undefined;
 
-export const noOperands = (ops: List<Value>): boolean => ops._tag === "Nil";
+export const noOperands = (
+  ops: ReadonlyArray<Arg>
+): boolean => ops.length === 0;
 
-export const firstOperand = (ops: List<Value>): Value => firstExp(ops);
+export const firstOperand = (
+  ops: ReadonlyArray<Arg>
+): Expr | undefined => @{
+  const first = ops[0];
+  return first === undefined ? undefined : first.expr;
+@};
 
-export const restOperands = (ops: List<Value>): List<Value> => restExps(ops);
+export const restOperands = (
+  ops: ReadonlyArray<Arg>
+): ReadonlyArray<Arg> => ops.slice(1);
 @end example
 
 @end itemize
 
 @subsubheading Derived expressions
 
-Some special forms in our language can be defined in terms of expressions
+Some special forms in our language can be defined in terms of statements
 involving other special forms, rather than being implemented directly.  One
-example is @code{cond}, which can be implemented as a nest of @code{if}
-expressions.  For example, we can reduce the problem of evaluating the
-expression
+example is the case analysis @code{switch}, which can be implemented as a nest
+of @code{if}
+statements.  For example, we can reduce the problem of executing the
+statement
 
 @example typescript
-read(`
-  (cond ((> x 0) x)
-        ((= x 0) (display 'zero) 0)
-        (else (- x))))
+readAll(`
+  switch (x) @{
+    case 0:
+      return "zero";
+    case 1:
+    case 2:
+      return "small";
+    default:
+      return "large";
+  @}
 `)
 @end example
 
 @noindent
-to the problem of evaluating the following expression involving @code{if} and
-@code{begin} expressions:
+to the problem of executing the following statement involving only @code{if}
+statements and returns:
 
 @example typescript
-condToIf(read(`
-  (cond ((> x 0) x)
-        ((= x 0) (display 'zero) 0)
-        (else (- x))))
-`))
-// => (if (> x 0) x (if (= x 0) (begin (display (quote zero)) 0) (- x)))
+switchToIf(sequenceToExp(readAll(`
+  switch (x) @{
+    case 0:
+      return "zero";
+    case 1:
+    case 2:
+      return "small";
+    default:
+      return "large";
+  @}
+`)))
+// => one block statement that binds the discriminant once, then nests
+// ifs:
+//   const @@switch-value = x;
+//   if (@@switch-value === 0) @{ return "zero"; @}
+//   else if (@@switch-value === 1 ||
+//            @@switch-value === 2) @{ return "small"; @}
+//   else @{ return "large"; @}
 @end example
 
 @noindent
-Implementing the evaluation of @code{cond} in this way simplifies the evaluator
+Implementing the evaluation of a case analysis in this way simplifies the
+evaluator
 because it reduces the number of special forms for which the evaluation process
-must be explicitly specified.
+must be explicitly specified.  The guest language pins the details the
+transformation must respect: the discriminant is computed once (so the
+transformation binds it first), consecutive empty case labels fall through to
+one shared body, and every non-empty case body completes abruptly with
+@code{return}, @code{throw}, or @code{break}, so a trailing @code{break} is
+the end of the branch and nothing more.
 
-We include syntax procedures that extract the parts of a @code{cond}
-expression, and a procedure @code{cond->if} that transforms @code{cond}
-expressions into @code{if} expressions.  A case analysis begins with
-@code{cond} and has a list of predicate-action clauses.  A clause is an
-@code{else} clause if its predicate is the symbol @code{else}.@footnote{The
-value of a @code{cond} expression when all the predicates are false and there
-is no @code{else} clause is unspecified in Scheme; we have chosen here to make
-it false.}  The book's @code{expand-clauses} signals an error when an
-@code{else} clause is not last; this edition's fold treats an @code{else}
-clause as the final alternative.
+We include syntax procedures that extract the parts of a @code{switch}
+statement, and a procedure @code{switchToIf} that transforms a case analysis
+into @code{if}
+statements.  A case analysis has a discriminant, a list of test-body cases,
+and an optional default body.@footnote{When no case matches and there is no
+default body, the statement simply completes normally with no value; there is
+no unspecified result, because a statement has no result value.}  The
+transformation below shows the one-label-per-case shape; the engine's version
+also groups consecutive empty labels and strips a trailing @code{break}.
 
 @example typescript
-export const isCond = (exp: Value): exp is Cons<Value> => taggedList("cond", exp);
+export const isSwitch = (node: Stmt): boolean => node.tag === "switch";
 
-export const condClauses = (exp: Cons<Value>): List<Value> => cdr(exp);
+export const switchDiscriminant = (node: Stmt): Expr | undefined =>
+  node.tag === "switch" ? node.discriminant : undefined;
 
-export const isCondElseClause = (clause: Value): boolean =>
-  isPair(clause) && isSymbol(clause.head) && clause.head.name === "else";
+const withoutBreak = (
+  body: ReadonlyArray<Decl | Stmt>
+): ReadonlyArray<Decl | Stmt> => @{
+  const last = body[body.length - 1];
+  return last !== undefined && last.tag === "break"
+    ? body.slice(0, -1)
+    : body;
+@};
 
-export const condPredicate = (clause: Cons<Value>): Value => car(clause);
-
-export const condActions = (clause: Cons<Value>): List<Value> => cdr(clause);
-
-export const condToIf = (exp: Cons<Value>): Value => expandClauses(condClauses(exp));
-
-const expandClauses = (clauses: List<Value>): Value => @{
-  if (clauses._tag === "Nil") @{
-    return falseValue; // no else clause
-  @}
-  const first = clauses.head;
-  if (!isPair(first)) @{
-    return falseValue;
-  @}
-  if (isCondElseClause(first)) @{
-    return sequenceToExp(condActions(first));
-  @}
-  return makeIf(
-    condPredicate(first),
-    sequenceToExp(condActions(first)),
-    expandClauses(clauses.tail),
-  );
+export const switchToIf = (node: Stmt): Stmt => @{
+  const span = node.span;
+  const scrutinee = "@@switch-value";
+  const target: Expr = @{ tag: "variable", name: scrutinee, span @};
+  const otherwise: Stmt =
+    node.tag !== "switch"
+      ? @{ tag: "block", body: [], span @}
+      : node.defaultBody === null
+        ? @{ tag: "block", body: [], span @}
+        : @{ tag: "block",
+          body: withoutBreak(node.defaultBody),
+          span @};
+  const nest =
+    node.tag !== "switch"
+      ? otherwise
+      : node.cases.reduceRight(
+          (rest: Stmt, clause) =>
+            makeIf(
+              @{ tag: "binary",
+                op: "===",
+                left: target,
+                right: clause.test,
+                span @},
+              @{ tag: "block", body: withoutBreak(clause.body), span @},
+              rest,
+              span,
+            ),
+          otherwise,
+        );
+  return @{
+    tag: "block",
+    body: [
+      @{
+        tag: "var-decl",
+        kind: "const",
+        name: scrutinee,
+        declaredType: null,
+        init: node.tag === "switch"
+          ? node.discriminant
+          : @{ tag: "undefined", span @},
+        exported: false,
+        span,
+      @},
+      nest,
+    ],
+    span,
+  @};
 @};
 @end example
 
 @noindent
-Expressions (such as @code{cond}) that we choose to implement as syntactic
-transformations are called @newterm{derived expressions}.  @code{Let}
-expressions are also derived expressions (see @ref{Exercise 4.6}).@footnote{Practical
-Lisp systems provide a mechanism that allows a user
+Statements (such as the case analysis) that we choose to implement as syntactic
+transformations are called @newterm{derived expressions}.  A binding form such
+as @code{let} is also a derived expression (see @ref{Exercise 4.6}).@footnote{Practical
+language systems provide a mechanism that allows a user
 to add new derived expressions and specify their implementation as syntactic
 transformations without modifying the evaluator.  Such a user-defined
 transformation is called a @newterm{macro}.  Although it is easy to add an
@@ -785,195 +1295,185 @@ definition that do not cause these difficulties.  See, for example, @ref{Kohlbec
 
 @quotation
 @strong{@anchor{Exercise 4.2}Exercise 4.2:} Louis Reasoner plans to reorder the
-@code{cond} clauses in @code{eval} so that the clause for procedure
-applications appears before the clause for assignments.  He argues that this
+cases in @code{evaluate} so that the case for procedure
+applications appears before the case for assignments.  He argues that this
 will make the interpreter more efficient: Since programs usually contain more
-applications than assignments, definitions, and so on, his modified @code{eval}
-will usually check fewer clauses than the original @code{eval} before
+applications than assignments, declarations, and so on, his modified
+@code{evaluate}
+will usually check fewer cases than the original @code{evaluate} before
 identifying the type of an expression.
 
 @enumerate a
 
 @item
 What is wrong with Louis's plan?  (Hint: What will Louis's evaluator do with
-the expression @code{(define x 3)}?)
+the declaration @code{const x = 3;}?)
 
 @item
 Louis is upset that his plan didn't work.  He is willing to go to any lengths
 to make his evaluator recognize procedure applications before it checks for
 most other kinds of expressions.  Help him by changing the syntax of the
 evaluated language so that procedure applications start with @code{call}.  For
-example, instead of @code{(factorial 3)} we will now have to write @code{(call
-factorial 3)} and instead of @code{(+ 1 2)} we will have to write @code{(call +
-1 2)}.
+example, instead of @code{factorial(3)} we will now have to write @code{call(factorial, 3)}
+and instead of @code{square(x) + 1} we will now have to write
+@code{call(square, x) + 1}.
 
 @end enumerate
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.3}Exercise 4.3:} Rewrite @code{eval} so that the
+@strong{@anchor{Exercise 4.3}Exercise 4.3:} Rewrite @code{evaluate} so that the
 dispatch is done in data-directed style.  Compare this with the data-directed
-differentiation procedure of @ref{Exercise 2.73}.  (You may use the @code{car}
-of a compound expression as the type of the expression, as is appropriate for
+differentiation procedure of @ref{Exercise 2.73}.  (You may use the node's
+@code{tag}
+as the type of the expression, as is appropriate for
 the syntax implemented in this section.)
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.4}Exercise 4.4:} Recall the definitions of the
-special forms @code{and} and @code{or} from @ref{Chapter 1}:
+@strong{@anchor{Exercise 4.4}Exercise 4.4:} Extend the evaluator with
+strict-boolean, short-circuiting special forms @code{all} and @code{any}.
+They evaluate operands from left to right, once each.  @code{all} returns
+@code{false} at the first false operand and @code{true} if every operand is
+true; @code{any} returns @code{true} at the first true operand and @code{false}
+if every operand is false.  With no operands, @code{all} returns @code{true}
+and @code{any} returns @code{false}.  A non-boolean operand produces a typed
+@code{bad-operand} error.  No later operand is evaluated after a decisive
+boolean.  Implement them as special forms beside the binary strict-boolean
+@code{logical} node, then compare with a derived version over the conditional
+expression by counting how many operand tests run.
 
-@itemize @bullet
-
-@item
-@code{and}: The expressions are evaluated from left to right.  If any
-expression evaluates to false, false is returned; any remaining expressions are
-not evaluated.  If all the expressions evaluate to true values, the value of
-the last expression is returned.  If there are no expressions then true is
-returned.
-
-@item
-@code{or}: The expressions are evaluated from left to right.  If any expression
-evaluates to a true value, that value is returned; any remaining expressions
-are not evaluated.  If all expressions evaluate to false, or if there are no
-expressions, then false is returned.
-
-@end itemize
-
-Install @code{and} and @code{or} as new special forms for the evaluator by
-defining appropriate syntax procedures and evaluation procedures
-@code{eval-and} and @code{eval-or}.  Alternatively, show how to implement
-@code{and} and @code{or} as derived expressions.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.5}Exercise 4.5:} Scheme allows an additional syntax
-for @code{cond} clauses, @code{(⟨@var{test}⟩ => ⟨@var{recipient}⟩)}.  If
-@code{⟨}@var{test}@code{⟩} evaluates to a true value, then @code{⟨}@var{recipient}@code{⟩} is evaluated.
-Its value must be a procedure of one argument; this procedure is then invoked
-on the value of the @code{⟨}@var{test}@code{⟩}, and the result is returned as the value of
-the @code{cond} expression.  For example
+@emph{This edition replaces SICP exercise 4.5 with a host-language exercise
+that keeps its number and teaching objective.}
+@strong{@anchor{Exercise 4.5}Exercise 4.5:} The case analysis of @ref{4.1.2}
+matches its discriminant against literal tests and then executes a body.  Add
+an additional clause form in which, when the test matches, a
+@newterm{recipient} is evaluated and then called with the matched value.  The
+recipient must be a procedure of one argument, and the call's result becomes
+the value of the case analysis.  For example, over the entries
 
 @example typescript
-read(`
-  (cond ((assoc 'b '((a 1) (b 2))) => cadr)
-        (else false))
-`)
+const entries = [
+  @{ key: "a", value: 1 @},
+  @{ key: "b", value: 2 @},
+];
 @end example
 
 @noindent
-returns 2.  Modify the handling of @code{cond} so that it supports this
-extended syntax.
+a case analysis of @code{lookup("b", entries)} with the recipient
+@code{entryValue} returns 2.  Modify the handling of the case analysis
+(@code{switchToIf} and the syntax procedures of @ref{4.1.2}) so that it
+supports this extended clause.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.6}Exercise 4.6:} @code{Let} expressions are derived
-expressions, because
+@strong{@anchor{Exercise 4.6}Exercise 4.6:} A grouped binding form is a
+derived expression, because the binding node
 
 @example typescript
-read(`
-  (let ((⟨@var{var₁}⟩ ⟨@var{exp₁}⟩) @r{…} (⟨@var{varₙ}⟩ ⟨@var{expₙ}⟩))
-    ⟨@var{body}⟩)
-`)
+type LetNode = @{
+  tag: "let";
+  bindings: ReadonlyArray<@{ name: string; init: Expr @}>;
+  body: Block;
+  span: Span;
+@};
 @end example
 
 @noindent
-is equivalent to
+is equivalent to a call of a function expression whose parameters are the
+bound names and whose body is the group's body, applied to the initializers:
 
 @example typescript
-read(`
-  ((lambda (⟨@var{var₁}⟩ @r{…} ⟨@var{varₙ}⟩)
-     ⟨@var{body}⟩)
-   ⟨@var{exp₁}⟩
-   @r{…}
-   ⟨@var{expₙ}⟩)
+readAll(`
+  ((⟨@var{var₁}⟩: ⟨@var{type₁}⟩,
+    @r{…},
+    ⟨@var{varₙ}⟩: ⟨@var{typeₙ}⟩) => @{
+    ⟨@var{body}⟩
+  @})(⟨@var{exp₁}⟩, @r{…}, ⟨@var{expₙ}⟩);
 `)
 @end example
 
-Implement a syntactic transformation @code{let->combination} that reduces
-evaluating @code{let} expressions to evaluating combinations of the type shown
-above, and add the appropriate clause to @code{eval} to handle @code{let}
-expressions.
+Implement a syntactic transformation @code{letToCall} that reduces
+evaluating a @code{LetNode} to evaluating a call of the type shown
+above, and add the appropriate case to @code{evaluate} to handle the
+binding form.  (The extension's node is rejected by the core checker until
+you admit it in your own experiment, exactly as the lazy and search nodes of
+@ref{4.2} and @ref{4.3} are.)
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.7}Exercise 4.7:} @code{Let*} is similar to
-@code{let}, except that the bindings of the @code{let*} variables are performed
+@strong{@anchor{Exercise 4.7}Exercise 4.7:} Sequential binding is similar to
+grouped binding, except that the bindings are performed
 sequentially from left to right, and each binding is made in an environment in
-which all of the preceding bindings are visible.  For example
+which all of the preceding bindings are visible.  For example, the group
+binding @code{x} to 3, @code{y} to @code{x + 2}, and @code{z} to
+@code{x + y + 5}, whose body is @code{x * z},
+returns 39.  Explain how a sequential binding can be rewritten as a set of
+nested grouped bindings, and write a procedure @code{sequentialToNested}
+that performs this transformation.  If we have already implemented grouped
+binding (@ref{Exercise 4.6}) and we want to extend the evaluator to handle
+sequential binding,
+is it sufficient to add a case to @code{evaluate} whose action is
 
 @example typescript
-read(`
-  (let* ((x 3)
-         (y (+ x 2))
-         (z (+ x y 5)))
-    (* x z))
-`)
+evaluate(sequentialToNested(exp), env)
 @end example
 
 @noindent
-returns 39.  Explain how a @code{let*} expression can be rewritten as a set of
-nested @code{let} expressions, and write a procedure @code{let*->nested-lets}
-that performs this transformation.  If we have already implemented @code{let}
-(@ref{Exercise 4.6}) and we want to extend the evaluator to handle @code{let*},
-is it sufficient to add a clause to @code{eval} whose action is
-
-@example typescript
-evaluate(letStarToNestedLets(exp), env)
-@end example
-
-@noindent
-or must we explicitly expand @code{let*} in terms of non-derived expressions?
+or must we explicitly expand sequential binding in terms of non-derived
+expressions?
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.8}Exercise 4.8:} ``Named @code{let}'' is a variant
-of @code{let} that has the form
+@strong{@anchor{Exercise 4.8}Exercise 4.8:} ``Named binding'' is a variant of
+the grouped binding form in which the bound names are the parameters of a
+local function whose body is the group's body, the function is named within
+its own body, and it is called immediately on the initializers.  Thus, one can
+repeatedly execute the
+body by invoking the local function.  For example, the iterative Fibonacci
+procedure
+(@ref{1.2.2}) can be written in the guest language as follows:
 
 @example typescript
-read(`
-  (let ⟨@var{var}⟩ ⟨@var{bindings}⟩ ⟨@var{body}⟩)
+readAll(`
+  function fib(n: number): number @{
+    const iter = (
+      a: number,
+      b: number,
+      count: number,
+    ): number =>
+      count === 0 ? b : iter(a + b, a, count - 1);
+    return iter(1, 0, n);
+  @}
 `)
 @end example
 
-The @code{⟨}@var{bindings}@code{⟩} and @code{⟨}@var{body}@code{⟩} are just as in ordinary @code{let},
-except that @code{⟨}@var{var}@code{⟩} is bound within @code{⟨}@var{body}@code{⟩} to a procedure whose body
-is @code{⟨}@var{body}@code{⟩} and whose parameters are the variables in the @code{⟨}@var{bindings}@code{⟩}.
-Thus, one can repeatedly execute the @code{⟨}@var{body}@code{⟩} by invoking the procedure
-named @code{⟨}@var{var}@code{⟩}.  For example, the iterative Fibonacci procedure
-(@ref{1.2.2}) can be rewritten using named @code{let} as follows:
-
-@example typescript
-read(`
-  (define (fib n)
-    (let fib-iter ((a 1) (b 0) (count n))
-      (if (= count 0)
-          b
-          (fib-iter (+ a b)
-                    a
-                    (- count 1)))))
-`)
-@end example
-
-Modify @code{let->combination} of @ref{Exercise 4.6} to also support named
-@code{let}.
+Modify @code{letToCall} of @ref{Exercise 4.6} to also support this named
+form.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.9}Exercise 4.9:} Many languages support a variety of
 iteration constructs, such as @code{do}, @code{for}, @code{while}, and
-@code{until}.  In Scheme, iterative processes can be expressed in terms of
+@code{until}.  The guest language has @code{while} and @code{for}-@code{of},
+and iterative processes can also be expressed in terms of
 ordinary procedure calls, so special iteration constructs provide no essential
 gain in computational power.  On the other hand, such constructs are often
 convenient.  Design some iteration constructs, give examples of their use, and
-show how to implement them as derived expressions.
+show how to implement them as derived expressions over @code{while} and
+@code{for}-@code{of}.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.10}Exercise 4.10:} By using data abstraction, we
-were able to write an @code{eval} procedure that is independent of the
+were able to write an @code{evaluate} procedure that is independent of the
 particular syntax of the language to be evaluated.  To illustrate this, design
-and implement a new syntax for Scheme by modifying the procedures in this
-section, without changing @code{eval} or @code{apply}.
+and implement a new surface syntax for the guest language by modifying the
+procedures in this
+section, without changing @code{evaluate} or @code{applyProcedure}.
 @end quotation
 @node	4.1.3, 4.1.4, 4.1.2, 4.1
 @subsection Evaluator Data Structures
@@ -984,19 +1484,72 @@ manipulates internally, as part of the execution of a program, such as the
 representation of procedures and environments and the representation of true
 and false.
 
-@subsubheading Testing of predicates
+@subsubheading The runtime values
 
-For conditionals, we accept anything to be true that is not the explicit
-@code{false} object.
+Everything the evaluator reads or produces is one of the guest language's
+runtime values: the JavaScript primitives, plus closures, primitive
+procedures, arrays, records, maps, sets, the recursive pair and empty-list
+values used for list structure, and (in the lazy experiments) thunks and
+error values.
 
 @example typescript
-// The book's true?: only the explicit false object counts as false.
-export const isTrue = (x: Value): boolean => !(x._tag === "Boolean" && !x.b);
+type Value =
+  | number
+  | string
+  | boolean
+  | null
+  | undefined
+  | Closure
+  | Primitive
+  | ArrayValue
+  | RecordValue
+  | MapValue
+  | SetValue
+  | Pair
+  | Nil
+  | ThunkValue
+  | ErrorValue;
+
+type Closure = @{ tag: "closure";
+  params: ReadonlyArray<string>;
+  rest: string | null;
+  body: Block;
+  env: Env @};
+type Primitive = @{ tag: "primitive";
+  name: string;
+  fn: (args: ReadonlyArray<Value>) => Outcome @};
+type ArrayValue = @{ tag: "array"; items: Value[] @};
+type RecordValue = @{ tag: "record";
+  fields: Map<string, Value>;
+  readonlyFields: ReadonlySet<string> @};
+type MapValue = @{ tag: "map"; entries: Map<Value, Value> @};
+type SetValue = @{ tag: "set"; items: Set<Value> @};
+type Pair = @{ tag: "cons"; head: Value; tail: Value @};
+type Nil = @{ tag: "nil" @};
+type ErrorValue = @{ tag: "error-value"; message: string @};
 @end example
 
 @noindent
-The book's @code{false?} is the same test negated; the edition writes
-@code{!isTrue(x)} inline wherever the book writes @code{(false? x)}.
+The book's list structure is the recursive pair value: a pair is one object
+with a head and a tail, the empty list is the single @code{nil} value, and a
+list is finite because its tail chain must end at @code{nil}.  Thunk values
+belong to the lazy experiments of @ref{4.2} and never appear in core
+evaluation.
+
+@subsubheading Testing of predicates
+
+For conditionals, only the explicit boolean @code{true} counts as true.
+
+@example typescript
+export const isTrue = (x: Value): boolean => x === true;
+@end example
+
+@noindent
+The book's @code{isFalse} is the same test negated; the edition writes
+@code{!isTrue(x)} inline wherever the book writes a false test.  The guest
+language requires conditions to be booleans, so the deeper question of what
+counts as truth does not arise at run time; @code{evalIf} still checks,
+because an externally built syntax tree can lie.
 
 @subsubheading Representing procedures
 
@@ -1009,16 +1562,16 @@ procedures:
 @code{applyPrimitiveProcedure(⟨@var{proc}⟩, ⟨@var{args}⟩)}
 
 @noindent
-applies the given primitive procedure to the argument values in the list
-@code{⟨}@var{args}@code{⟩} and returns the result of the application.
+applies the given primitive procedure to the argument values in the array
+@code{⟨}@var{args}@code{⟩} and answers the resulting @code{Outcome}.
 
 @item
-@code{⟨@var{proc}⟩._tag === "Primitive"}
+@code{isPrimitive(⟨@var{proc}⟩)}
 
 @noindent
 tests whether @code{⟨}@var{proc}@code{⟩} is a primitive procedure: in this
-edition the predicate is the tag test itself, since a primitive is the
-@code{Primitive} member of the value union.
+edition the predicate is the tag test @code{proc.tag === "primitive"}, since a
+primitive is the @code{Primitive} member of the value union.
 
 @end itemize
 
@@ -1026,27 +1579,15 @@ edition the predicate is the tag test itself, since a primitive is the
 These mechanisms for handling primitives are further described in
 @ref{4.1.4}.
 
-Compound procedures are constructed from parameters, procedure bodies, and
-environments using the constructor @code{makeProcedure}:
-
-@example typescript
-export const makeProcedure = (
-  parameters: List<Value>,
-  body: List<Value>,
-  env: Env,
-): CompoundProc => (@{
-  _tag: "Compound",
-  params: parameters,
-  body,
-  env,
-@});
-@end example
+Closures are constructed from parameter lists, bodies, and
+environments using the constructor @code{makeProcedure} of @ref{4.1.2}.
 
 @noindent
 The book's remaining accessors are the record itself: the book's
-@code{compound-procedure?} is the tag test @code{p._tag === "Compound"}, and
-@code{procedure-parameters}, @code{procedure-body}, and
-@code{procedure-environment} are the fields @code{params}, @code{body}, and
+@code{isClosure} is the tag test @code{p.tag === "closure"}, and
+@code{arrowParameters}, @code{arrowBody}, and
+@code{closureEnvironment} are the fields @code{params} (with the @code{rest}
+name beside it), @code{body}, and
 @code{env}.
 
 @subsubheading Operations on Environments
@@ -1054,197 +1595,233 @@ The book's remaining accessors are the record itself: the book's
 The evaluator needs operations for manipulating environments.  As explained in
 @ref{3.2}, an environment is a sequence of frames, where each frame is
 a table of bindings that associate variables with their corresponding values.
-In this edition each frame is a @code{Ref} holding a persistent
-@code{HashMap} from names to values, so where the book scans an
-association-list frame, the listings below render the equivalent
-@code{HashMap} operations.  We use the following operations for manipulating
+In this edition a binding pairs a name with a mutable cell, so a captured
+binding is shared: a closure created before an assignment observes the new
+value afterward, exactly as the environment model requires.  The cell also
+records whether its name has been initialized, which is how the evaluator
+implements the temporal dead zone of @code{const} and @code{let}: a read
+before initialization answers a @code{tdz-access} error rather than a silent
+@code{undefined}.  The cell also records whether the name may be rebound: a
+@code{const} binding carries a cell with @code{mutable} false, so the
+evaluator refuses the rebinding at run time just as the subset checker refuses
+it statically.  We use the following operations for manipulating
 environments:
 
 @itemize @bullet
 
 @item
-@code{lookupVariableValue(⟨@var{var}⟩, ⟨@var{env}⟩)}
+@code{lookupVariableValue(⟨@var{name}⟩, ⟨@var{env}⟩)}
 
-returns the value that is bound to the symbol @code{⟨}@var{var}@code{⟩} in the environment
-@code{⟨}@var{env}@code{⟩}, or signals an error if the variable is unbound.
-
-@item
-@code{extendEnvironment(⟨@var{variables}⟩, ⟨@var{values}⟩, ⟨@var{base-env}⟩)}
-
-returns a new environment, consisting of a new frame in which the symbols in
-the list @code{⟨}@var{variables}@code{⟩} are bound to the corresponding elements in the list
-@code{⟨}@var{values}@code{⟩}, where the enclosing environment is the environment
-@code{⟨}@var{base-env}@code{⟩}.
+returns the value that is bound to the name @code{⟨}@var{name}@code{⟩} in the environment
+@code{⟨}@var{env}@code{⟩}, or answers an error if the variable is unbound or
+uninitialized.
 
 @item
-@code{defineVariableValue(⟨@var{var}⟩, ⟨@var{value}⟩, ⟨@var{env}⟩)}
+@code{extendEnvironment(⟨@var{procedure}⟩, ⟨@var{args}⟩)}
+
+returns a new environment, consisting of a new frame in which the parameter
+names of the closure @code{⟨}@var{procedure}@code{⟩} are bound to the corresponding
+elements of the array @code{⟨}@var{args}@code{⟩}, where the enclosing environment is the
+environment the closure carries.  A wrong number of arguments answers a
+@code{wrong-arity} error.
+
+@item
+@code{defineVariableValue(⟨@var{name}⟩, ⟨@var{value}⟩, ⟨@var{env}⟩)}
 
 adds to the first frame in the environment @code{⟨}@var{env}@code{⟩} a new binding that
-associates the variable @code{⟨}@var{var}@code{⟩} with the value @code{⟨}@var{value}@code{⟩}.
+associates the name @code{⟨}@var{name}@code{⟩} with the value @code{⟨}@var{value}@code{⟩}, or updates
+the binding if the first frame already has one.
 
 @item
-@code{setVariableValue(⟨@var{var}⟩, ⟨@var{value}⟩, ⟨@var{env}⟩)}
+@code{setVariableValue(⟨@var{name}⟩, ⟨@var{value}⟩, ⟨@var{env}⟩)}
 
-changes the binding of the variable @code{⟨}@var{var}@code{⟩} in the environment @code{⟨}@var{env}@code{⟩}
-so that the variable is now bound to the value @code{⟨}@var{value}@code{⟩}, or signals an
-error if the variable is unbound.
+changes the binding of the variable @code{⟨}@var{name}@code{⟩} in the environment @code{⟨}@var{env}@code{⟩}
+so that the variable is now bound to the value @code{⟨}@var{value}@code{⟩}, or answers an
+error if the variable is unbound or bound by a @code{const} declaration.
 
 @end itemize
 
 @noindent
 To implement these operations we represent an environment as a chain of
-frames: the @code{Env} record pairs one frame with the environment that
+frames: each environment pairs one frame of bindings with the environment that
 encloses it.  The enclosing environment of an environment is its
-@code{parent} field.  The empty environment is the @code{Option.none()}
+@code{parent} field.  The empty environment is the @code{null}
 parent at the end of the chain.
 
 @example typescript
-// The book's enclosing-environment is env.parent, an Option.
-// The book's first-frame is the frame record itself: env.vars.
-// The book's the-empty-environment is Option.none(): the chain ends.
+type Cell = @{ value: Value | undefined;
+  initialized: boolean;
+  mutable: boolean @};
+type Binding = @{ name: string; cell: Cell @};
+type Env = @{ bindings: Map<string, Cell>; parent: Env | null @};
+
+// The book's enclosing-environment is env.parent.
+// The book's first-frame is the frame map itself: env.bindings.
+// The book's the-empty-environment is null: the chain ends.
 @end example
 
 @noindent
-Each frame of an environment is the @code{Ref}-held @code{HashMap} described
+Each frame of an environment is the map described
 above, and the frame procedures that shape the book's listings reduce to
 writing that map.@footnote{Frames are not really a data abstraction in the
 following code: @code{setVariableValue} and @code{defineVariableValue} write
-through the frame's @code{Ref}, directly modifying the frame just as the
-book's @code{set-car!} does.  The purpose of the frame procedures is to make
+through the cell, directly modifying the frame just as the
+book's @code{setCar} does.  The purpose of the frame procedures is to make
 the environment-manipulation procedures easy to read.}
 
 @example typescript
-// The book's make-frame is the empty map a fresh frame starts with,
-// Ref.make(HashMap.empty<string, Value>()) in makeGlobalEnv and in
-// extendEnv. The book's frame-variables and frame-values are the two
-// halves of its pair of lists; the HashMap holds both at once, keyed
-// by name.
+// The book's make-frame is the empty map a fresh frame starts with.
+export const child = (
+  parent: Env | null
+): Env => (@{ bindings: new Map(), parent @});
 
 // The book's add-binding-to-frame!: one more binding in this frame.
 export const addBindingToFrame = (
-  variable: SymbolValue,
+  name: string,
   value: Value,
-  env: Env,
-): Effect.Effect<void> => defineInFrame(env, variable.name, value);
+  env: Env
+): void => @{
+  env.bindings.set(name, @{ value, initialized: true, mutable: true @});
+@};
 @end example
 
 @noindent
-To extend an environment by a new frame that associates variables with values,
-we make a frame consisting of the list of variables and the list of values, and
-we adjoin this to the environment.  We signal an error if the number of
-variables does not match the number of values; the edition fails with a single
-typed @code{ArityMismatch} error where the book signals two distinct messages.
+To extend an environment by a new frame that associates parameters with
+arguments, we make a frame from the closure's parameter names and the argument
+array, and we
+adjoin this to the environment.  We signal an error if the number of
+parameters does not match the number of arguments; the edition answers a single
+typed @code{wrong-arity} error where the book signals two distinct messages.  A
+rest parameter collects whatever arguments remain into one array value.
 
 @example typescript
-const fillFrame = (
-  env: Env,
-  vars: List<Value>,
-  vals: List<Value>,
-): Effect.Effect<Env, EvaluationError> => @{
-  if (vars._tag === "Cons" && vals._tag === "Cons") @{
-    return Effect.flatMap(defineInFrame(env, nameOf(vars.head), vals.head), () =>
-      fillFrame(env, vars.tail, vals.tail),
-    );
-  @}
-  if (vars._tag === "Nil" && vals._tag === "Nil") @{
-    return Effect.succeed(env);
-  @}
-  return Effect.fail(new ArityMismatch(@{ expected: countList(vars), given: countList(vals) @}));
-@};
-
-// The book's extend-environment: a fresh frame binding vars to vals.
 export const extendEnvironment = (
-  vars: List<Value>,
-  vals: List<Value>,
-  baseEnv: Env,
-): Effect.Effect<Env, EvaluationError> =>
-  Effect.flatMap(extendEnv(baseEnv), (env) => fillFrame(env, vars, vals));
+  procedure: Closure,
+  args: Value[]
+): Outcome => @{
+  const required = procedure.params.length;
+  const hasRest = procedure.rest !== null;
+  if (args.length < required || (!hasRest && args.length > required)) @{
+    return fail(
+        @{ tag: "wrong-arity",
+        expected: required,
+        given: args.length @}
+      );
+  @}
+  const frame = child(procedure.env);
+  procedure.params.forEach((name, index) => @{
+    frame.bindings.set(
+      name,
+      @{ value: args[index],
+      initialized: true,
+      mutable: true @}
+    );
+  @});
+  if (hasRest && procedure.rest !== null) @{
+    frame.bindings.set(procedure.rest, @{
+      value: @{ tag: "array", items: args.slice(required) @},
+      initialized: true,
+      mutable: true,
+    @});
+  @}
+  return ok(frame);
+@};
 @end example
 
 @noindent
 To look up a variable in an environment, we look the name up in the first
-frame's map.  If we find the desired variable, we return its value.  If we do
+frame's map.  If we find the desired variable, we return its cell.  If we do
 not find the variable in the current frame, we search the enclosing
-environment, and so on.  If we reach the empty environment, we signal an
-``unbound variable'' error.
+environment, and so on.  If we reach the empty environment, we answer an
+``unbound name'' error.
 
 @example typescript
-// The book's scan over a frame's parallel lists becomes one HashMap
+// The book's scan over a frame's parallel lists becomes one map
 // lookup, then a step to the parent frame on a miss.
-const findBinding = (env: Env, name: string): Effect.Effect<Option.Option<Value>> =>
-  Effect.gen(function* () @{
-    const vars = yield* Ref.get(env.vars);
-    const own = HashMap.get(vars, name);
-    if (Option.isSome(own)) @{
-      return own;
+export const findCell = (env: Env, name: string): Cell | undefined => @{
+  let current: Env | null = env;
+  while (current !== null) @{
+    const cell = current.bindings.get(name);
+    if (cell !== undefined) @{
+      return cell;
     @}
-    if (Option.isNone(env.parent)) @{
-      return Option.none();
-    @}
-    return yield* findBinding(env.parent.value, name);
-  @});
+    current = current.parent;
+  @}
+  return undefined;
+@};
 
-// env.ts's lookupVariable wraps findBinding and fails with
-// UnboundVariable when the whole chain misses.
-
-// The book's lookup-variable-value.
+// The book's lookupVariableValue.
 export const lookupVariableValue = (
-  variable: SymbolValue,
-  env: Env,
-): Effect.Effect<Value, EvaluationError> => lookupVariable(env, variable.name);
+  name: string,
+  env: Env
+): Outcome => @{
+  const cell = findCell(env, name);
+  if (cell === undefined) @{
+    return fail(@{ tag: "unbound-name", name @});
+  @}
+  if (!cell.initialized) @{
+    return fail(@{ tag: "tdz-access", name @});
+  @}
+  return ok(cell.value);
+@};
 @end example
 
 @noindent
 To set a variable to a new value in a specified environment, we look for the
-variable just as in @code{lookup-variable-value}, and change the corresponding
-value when we find it, writing through the frame that defines it.
+variable just as in @code{lookupVariableValue}, and change the corresponding
+cell when we find it, writing through the frame that defines it.
 
 @example typescript
-// The scan for set-variable-value!: descend until a frame binds the
-// name, then write through that frame's Ref. A miss on the whole chain
-// fails with UnboundVariable instead of defining the name.
-export const setVariable = (
-  env: Env,
+// The scan for setVariableValue: descend until a frame binds the
+// name, then write through that binding's cell. A miss on the
+// whole chain
+// answers unbound-name instead of defining the name.
+export const setVariableValue = (
   name: string,
   value: Value,
-): Effect.Effect<void, EvaluationError> =>
-  Effect.gen(function* () @{
-    const vars = yield* Ref.get(env.vars);
-    if (Option.isSome(HashMap.get(vars, name))) @{
-      yield* Ref.update(env.vars, (v) => HashMap.set(v, name, value));
-      return;
-    @}
-    if (Option.isNone(env.parent)) @{
-      return yield* Effect.fail(new UnboundVariable(@{ name @}));
-    @}
-    yield* setVariable(env.parent.value, name, value);
-  @});
-
-// The book's set-variable-value!.
-export const setVariableValue = (
-  variable: SymbolValue,
-  value: Value,
-  env: Env,
-): Effect.Effect<void, EvaluationError> => setVariable(env, variable.name, value);
+  env: Env
+): Outcome => @{
+  const cell = findCell(env, name);
+  if (cell === undefined) @{
+    return fail(@{ tag: "unbound-name", name @});
+  @}
+  if (!cell.mutable && cell.initialized) @{
+    return fail(
+        @{ tag: "bad-operand",
+        operator: "=",
+        detail: "assignment to a const binding" @}
+      );
+  @}
+  cell.value = value;
+  cell.initialized = true;
+  return ok(undefined);
+@};
 @end example
 
 @noindent
 To define a variable, we search the first frame for a binding for the variable,
-and change the binding if it exists (just as in @code{set-variable-value!}).
-If no such binding exists, we adjoin one to the first frame.  In this edition
-both cases are one @code{HashMap.set} into the frame's map, since a map write
-updates the entry when the key is present and inserts one when it is not.
+and change the binding if it exists (just as in @code{setVariableValue}).
+If no such binding exists, we adjoin one to the first frame.
 
 @example typescript
-// The book's define-variable!: bind in this frame, shadowing outer ones.
-export const defineVariable = (env: Env, name: string, value: Value): Effect.Effect<void> =>
-  Ref.update(env.vars, (vars) => HashMap.set(vars, name, value));
-
+// The book's defineVariableValue: bind in this frame, shadowing
+// outer ones.
 export const defineVariableValue = (
-  variable: SymbolValue,
+  name: string,
   value: Value,
+  mutable: boolean,
   env: Env,
-): Effect.Effect<void> => defineInFrame(env, variable.name, value);
+): Outcome => @{
+  const cell = env.bindings.get(name);
+  if (cell === undefined) @{
+    env.bindings.set(name, @{ value, initialized: true, mutable @});
+  @} else @{
+    cell.value = value;
+    cell.initialized = true;
+    cell.mutable = mutable;
+  @}
+  return ok(undefined);
+@};
 @end example
 
 @noindent
@@ -1252,7 +1829,7 @@ The method described here is only one of many plausible ways to represent
 environments.  Since we used data abstraction to isolate the rest of the
 evaluator from the detailed choice of representation, we could change the
 environment representation if we wanted to.  (See @ref{Exercise 4.11}.)  In a
-production-quality Lisp system, the speed of the evaluator's environment
+production-quality language system, the speed of the evaluator's environment
 operations, especially that of variable lookup, has a major impact on the
 performance of the system.  The representation described here, although
 conceptually simple, is not efficient and would not ordinarily be used in a
@@ -1265,28 +1842,34 @@ which will be discussed in @ref{5.5.6}.}
 
 @quotation
 @strong{@anchor{Exercise 4.11}Exercise 4.11:} Instead of representing a frame
-as a pair of lists, we can represent a frame as a list of bindings, where each
+as a map, we can represent a frame as an array of name-cell bindings, searched
+in order, where each
 binding is a name-value pair.  Rewrite the environment operations to use this
 alternative representation.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.12}Exercise 4.12:} The procedures
-@code{define-variable!}, @code{set-variable-value!} and
-@code{lookup-variable-value} can be expressed in terms of more abstract
+@code{defineVariableValue}, @code{setVariableValue} and
+@code{lookupVariableValue} can be expressed in terms of more abstract
 procedures for traversing the environment structure.  Define abstractions that
 capture the common patterns and redefine the three procedures in terms of these
 abstractions.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.13}Exercise 4.13:} Scheme allows us to create new
-bindings for variables by means of @code{define}, but provides no way to get
-rid of bindings.  Implement for the evaluator a special form
-@code{make-unbound!} that removes the binding of a given symbol from the
-environment in which the @code{make-unbound!} expression is evaluated.  This
+@emph{This edition replaces SICP exercise 4.13 with a host-language exercise
+that keeps its number and teaching objective.}
+@strong{@anchor{Exercise 4.13}Exercise 4.13:} The guest language creates new
+bindings for names by means of @code{const} and @code{let} declarations, but
+provides no way to get
+rid of bindings.  Implement for the evaluator a guest extension
+@code{unbind} that removes the binding of a given name from the
+environment in which the @code{unbind} call is evaluated.  This
 problem is not completely specified.  For example, should we remove only the
-binding in the first frame of the environment?  Complete the specification and
+binding in the first frame of the environment?  What should a later read of an
+unbound name answer, and how does the choice interact with the temporal dead
+zone of @ref{4.1.3}?  Complete the specification and
 justify any choices you make.
 @end quotation
 
@@ -1307,27 +1890,29 @@ create a mechanism that calls on the underlying TypeScript host to model the
 application of primitive procedures.
 
 There must be a binding for each primitive procedure name, so that when
-@code{evaluate} evaluates the operator of an application of a primitive, it
+@code{evaluate} evaluates the callee of an application of a primitive, it
 will find an object to pass to @code{applyProcedure}.  We thus set up a global
 environment that associates unique objects with the names of the primitive
-procedures that can appear in the expressions we will be evaluating.  The
-global environment also includes bindings for the symbols @code{true} and
-@code{false}, so that they can be used as variables in expressions to be
-evaluated.
+procedures that can appear in the expressions we will be evaluating.  Nothing
+is bound for the booleans: @code{true} and @code{false} are literals of the
+guest language, not variables, and the environment of @ref{4.1.3} binds
+nothing by that name.
 
 @example typescript
-export const setupEnvironment = (sink: Sink = () => @{@}): Effect.Effect<Env, never> =>
-  Effect.gen(function* () @{
-    const env = yield* makeGlobalEnv();
-    for (const [name, fn] of makePrimitiveProcedures(sink)) @{
-      yield* defineInFrame(env, name, @{ _tag: "Primitive", name, fn @});
-    @}
-    yield* defineInFrame(env, "true", trueValue);
-    yield* defineInFrame(env, "false", falseValue);
-    return env;
-  @});
+export const setupEnvironment = (): Env => @{
+  const env = child(null);
+  for (const procedure of makePrimitiveProcedures()) @{
+    env.bindings.set(
+      procedure.name,
+      @{ value: procedure,
+      initialized: true,
+      mutable: true @}
+    );
+  @}
+  return env;
+@};
 
-const theGlobalEnvironment = Effect.runSync(setupEnvironment());
+const theGlobalEnvironment = setupEnvironment();
 @end example
 
 @noindent
@@ -1335,113 +1920,175 @@ It does not matter how we represent the primitive procedure objects, so long
 as @code{applyProcedure} can identify and apply them by reading the value's
 tag and by using @code{applyPrimitiveProcedure}.  We have chosen to represent
 a primitive procedure as the @code{Primitive} member of the value union: a
-record carrying the primitive's name and a function from the underlying
-TypeScript host that implements that primitive.
+record carrying the primitive's name and a pure function over evaluated
+arguments that answers an @code{Outcome}.
 
 @example typescript
-// The book's primitive-procedure? is the union tag test:
-// proc._tag === "Primitive"
-// The book's primitive-implementation is that record's fn field: the
-// host function behind the primitive.
+// The book's isPrimitiveProcedure is the union tag test:
+// proc.tag === "primitive"
+// The book's primitiveImplementation is that record's fn field: the
+// pure function behind the primitive.
 @end example
 
 @noindent
 @code{setupEnvironment} gets the primitive names and implementation functions
-from a table:@footnote{Any function defined in the underlying TypeScript can
+from the guest builtin table:@footnote{Any pure function in the admitted
+subset can
 be used as a primitive for the metacircular evaluator.  The name of a
 primitive installed in the evaluator need not be the same as the name of the
-host function behind it; the names are the same here because the
-metacircular evaluator implements Scheme itself.  Thus, for example, we could
-put the pair @code{["first", car]} in the table, or bind the name
+function behind it; the names are the same here because the evaluator
+implements the guest language itself.  Thus, for example, we could
+install a primitive named @code{"first"} whose function is
+@code{arrayFirst}, or bind the name
 @code{"square"} to a host function @code{(x) => x * x}.}  The book's
 @code{primitive-procedure-names} and @code{primitive-procedure-objects} are
-the two halves of each pair; this edition never builds the two lists
+the name and the record of each entry; this edition never builds the two
+lists
 separately, but binds each name to a @code{Primitive} record in the single
 pass shown above.
 
 @example typescript
-const primitive = (name: string, fn: Primitive): [string, Primitive] => [name, fn];
+const primitive = (name: string, fn: Primitive["fn"]): Primitive =>
+  (@{ tag: "primitive", name, fn @});
 
-export const makePrimitiveProcedures = (
-  sink: Sink,
-): ReadonlyArray<readonly [string, Primitive]> => [
-  primitive("car", (args) => @{
-    const first = toArray(args)[0];
-    return first !== undefined && isPair(first)
-      ? Effect.succeed(car(first))
-      : Effect.fail(new RuntimeError(@{ message: "car: expected a pair", detail: argsText(args) @}));
+export const makePrimitiveProcedures = (): ReadonlyArray<Primitive> => [
+  primitive("arrayAt", (args) => @{
+    const items = args[0];
+    const index = args[1];
+    if (
+      items === undefined ||
+      index === undefined ||
+      items === null ||
+      typeof items !== "object" ||
+      items.tag !== "array" ||
+      typeof index !== "number"
+    ) @{
+      return fail(
+          @{ tag: "bad-operand",
+          operator: "arrayAt",
+          detail: "expected an array and an index" @}
+        );
+    @}
+    const found = items.items.at(index);
+    return found === undefined
+      ? fail(@{ tag: "bad-operand",
+        operator: "arrayAt",
+        detail: "index out of range" @})
+      : ok(found);
   @}),
-  // ... cdr, cons, null?, and the rest of the table follow the same
-  // shape: a name plus a host function over the evaluated arguments.
-  // display and newline write to the given sink.
+  // ... arrayLength, sqrt, and the rest of the table follow the same
+  // shape: a name plus a pure function over the evaluated arguments.
+  // The driver's output operation is not a primitive: the kernel
+  // returns transcript data and the boundary writes it.
 ];
 @end example
 
 @noindent
-To apply a primitive procedure, we simply call the host function stored in
+To apply a primitive procedure, we simply call the function stored in
 the record, handing it the evaluated argument
-list:@footnote{@code{Apply-in-underlying-scheme} is the @code{apply} procedure
-we have used in earlier chapters: the Lisp original saves the underlying
+array:@footnote{@code{applyProcedure} is the @code{apply} procedure
+we have used in earlier chapters: the book's original saves the underlying
 @code{apply} under that name before the metacircular evaluator defines its
 own @code{apply}, which would otherwise mask it.  This edition has no such
 renaming to manage: the evaluator's apply is @code{applyProcedure}, and each
-primitive record already carries the host function behind it, so the problem
+primitive record already carries the function behind it, so the problem
 dissolves.}
 
 @example typescript
 export const applyPrimitiveProcedure = (
-  procedure: Extract<Value, @{ _tag: "Primitive" @}>,
-  args: List<Value>,
-): Effect.Effect<Value, EvaluationError> => procedure.fn(args);
+  procedure: Primitive,
+  args: ReadonlyArray<Value>,
+): Outcome => procedure.fn(args);
 @end example
 
 @noindent
 For convenience in running the metacircular evaluator, we provide a
 @newterm{driver loop} that models the read-eval-print loop of the underlying
-Lisp system.  This edition runs the loop over a finite session: it takes the
+language system.  This edition runs the loop over a finite session: it takes the
 global environment and the session's inputs as strings, and for each input it
-reports the @newterm{prompt} line, the input expression, the @newterm{output
+reports the @newterm{prompt} line, the input source, the @newterm{output
 prompt}, and the printed result, so as to distinguish the value of the
-expression from other output that may be printed.@footnote{The host parser
+expression from other output that may be printed.@footnote{The reader
 @code{read(text)} from @code{read.ts} stands in for the book's primitive
-@code{read}: it parses the next complete expression out of the string it is
-given.  For example, @code{read("(+ 23 x)")} returns a three-element list
-containing the symbol @code{+}, the number 23, and the symbol @code{x}.
-@code{read("'x")} returns a two-element list containing the symbol
-@code{quote} and the symbol @code{x}.}
+@code{read}: it parses exactly one expression out of the string it is
+given and rejects trailing input; @code{readAll(text)} parses a whole
+program.  For example, @code{read("x + 23")} answers a @code{binary} node
+whose operator is @code{+}, with the variable node @code{x} on the left and
+the number node 23 on the right.
+@code{readAll("const x = 3;")} answers a one-element program whose statement
+is the @code{var-decl} node for @code{x}.}
 
 @example typescript
-// The book's input-prompt and output-prompt are the literal lines the
+// The book's inputPrompt and outputPrompt are the literal lines the
 // transcript reports for every input.
 
 export const driverLoop = (
   env: Env,
   inputs: ReadonlyArray<string>,
-): Effect.Effect<ReadonlyArray<string>, EvaluationError> =>
-  Effect.forEach(inputs, (input) =>
-    Effect.flatMap(evalString(input, env), (value) =>
-      Effect.succeed([";;; M-Eval input:", input, ";;; M-Eval value:", format(value)]),
-    ),
-  ).pipe(Effect.map((lines) => lines.flat()));
+): ReadonlyArray<string> => @{
+  const transcript: string[] = [];
+  for (const input of inputs) @{
+    transcript.push(";;; M-Eval input:", input);
+    const admitted = admitSource(input);
+    if (!admitted.ok) @{
+      transcript.push(
+        ";;; M-Eval value:",
+        formatDiagnostic(admitted.diagnostics)
+      );
+      continue;
+    @}
+    let last: Completion = @{ tag: "normal", value: undefined @};
+    for (const statement of admitted.program) @{
+      last = execItem(statement, env);
+      if (last.tag !== "normal") @{
+        break;
+      @}
+    @}
+    const outcome: Outcome =
+      last.tag === "normal" || last.tag === "return"
+        ? ok(last.value)
+        : last.tag === "throw"
+          ? fail(
+              @{ tag: "guest-throw",
+              value: last.value @})
+          : last.tag === "error"
+            ? fail(last.error)
+            : fail(
+                @{ tag: "unknown-syntax",
+                construct: "unexpected-break" @});
+    if (outcome.tag === "error") @{
+      transcript.push(
+        ";;; M-Eval error:", JSON.stringify(outcome.error));
+      continue;
+    @}
+    transcript.push(
+      ";;; M-Eval value:", format(outcome.value));
+  @}
+  return transcript;
+@};
 @end example
 
 @noindent
-The book's @code{prompt-for-input} and @code{announce-output} are the two
+The book's @code{promptForInput} and @code{announceOutput} are the two
 prompt lines in each transcript block, and the book's pair of @code{read} and
-@code{eval} is @code{evalString(text, env)}, which parses one form with
-@code{read} and evaluates it in the given environment; a text that does not
-parse lands on the error channel as a @code{RuntimeError}.
+@code{eval} is the @code{admitSource} and @code{execute} pair above.  Each
+input is admitted as a whole---parsed, checked against the subset, and
+type-checked by the pinned TypeScript compiler---before any of its statements
+executes.  A rejected input reports its diagnostics and produces no effect at
+all, so a later invalid statement can never run after an earlier one has
+already mutated the environment; a runtime failure reaches the transcript as
+@code{Error:} followed by the @code{GuestError} the completion carries.
 
 @noindent
 We use a special printing procedure to avoid printing the environment part of
-a compound procedure, which may be a very long list (or may even contain
-cycles).  This edition's printer is @code{format} from @code{read.ts}, and it
-renders any compound procedure as @code{#[compound-procedure]}, so no part of
+a closure, which may be a very long structure (or may even contain
+cycles).  This edition's printer is @code{format} from @code{read.ts}, which
+renders a closure without its environment, so no part of
 the closure, environment included, ever reaches the transcript.
 
 @example typescript
-// The book's user-print: format(value) answers "#[compound-procedure]"
-// for a Compound value, so the environment is never printed.
+// The book's userPrint: format(value) renders a closure without the
+// environment it carries, so the environment is never printed.
 @end example
 
 @noindent
@@ -1449,29 +2096,39 @@ Now all we need to do to run the evaluator is to initialize the global
 environment and start the driver loop.  Here is a sample interaction:
 
 @example typescript
-const theGlobalEnvironment = Effect.runSync(setupEnvironment());
+const theGlobalEnvironment = setupEnvironment();
 
-const transcript = Effect.runSync(
-  driverLoop(theGlobalEnvironment, [
-    "(define (append x y) (if (null? x) y (cons (car x) (append (cdr x) y))))",
-    "(append '(a b c) '(d e f))",
-  ]),
-);
+const transcript = driverLoop(theGlobalEnvironment, [
+  `
+  function append(items: number[], more: number[]): number[] @{
+    const out: number[] = [];
+    for (const item of items) @{
+      out.push(item);
+    @}
+    for (const item of more) @{
+      out.push(item);
+    @}
+    return out;
+  @}
+  `,
+  "append([1, 2, 3], [4, 5, 6]);",
+]);
 // ;;; M-Eval input:
-// (define (append x y) (if (null? x) y (cons (car x) (append (cdr x) y))))
+// function append(items: number[], more: number[]): number[] @{ @dots{}
+// @}
 // ;;; M-Eval value:
-// ok
+// undefined
 // ;;; M-Eval input:
-// (append '(a b c) '(d e f))
+// append([1, 2, 3], [4, 5, 6]);
 // ;;; M-Eval value:
-// (a b c d e f)
+// [1, 2, 3, 4, 5, 6]
 @end example
 
 @quotation
 @strong{@anchor{Exercise 4.14}Exercise 4.14:} Eva Lu Ator and Louis Reasoner
 are each experimenting with the metacircular evaluator.  Eva types in the
-definition of @code{map}, and runs some test programs that use it.  They work
-fine.  Louis, in contrast, has installed the system version of @code{map} as a
+guest definition of @code{map}, and runs some test programs that use it.  They work
+fine.  Louis, in contrast, has installed the host's own version of @code{map} as a
 primitive for the metacircular evaluator.  When he tries it, things go terribly
 wrong.  Explain why Louis's @code{map} fails even though Eva's works.
 @end quotation
@@ -1484,11 +2141,10 @@ program is a description of an abstract (perhaps infinitely large) machine.
 For example, consider the familiar program to compute factorials:
 
 @example typescript
-const factorialProgram = read(`
-(define (factorial n)
-  (if (= n 1)
-      1
-      (* (factorial (- n 1)) n)))
+const factorialProgram = readAll(`
+function factorial(n: number): number @{
+  return n <= 1 ? 1 : factorial(n - 1) * n;
+@}
 `);
 @end example
 
@@ -1534,7 +2190,7 @@ together.
 @image{../../text/original/figures/chap4/Fig4.2a,,143mm,Figure 4.2: The factorial program@comma{} viewed as an abstract machine.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap4/Fig4.2a.std,,143mm,,.pdf}
+@image{../../text/original/figures/pdf/chap4/Fig4.2a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 4.2:} The factorial program, viewed as an abstract machine.}
@@ -1559,10 +2215,9 @@ the evaluator will be able to compute factorials.
              . . .    /  . . .
        . . .       ../. .      .
      .                           ..
-    .   (define (factorial n)      . . .
-   .      (if (= n 1)                   . .
-    .         1                            .
-    .         (* (factorial (- n 1)) n)))   .
+    .   function factorial(n)       . . .
+   .      @{ return n <= 1 ? 1 :          . .
+    .         factorial(n - 1) * n; @}       .
       . .                       . .        .
           . .  . .      . . . .     . . . .
                    . ..
@@ -1572,7 +2227,7 @@ the evaluator will be able to compute factorials.
 @image{../../text/original/figures/chap4/Fig4.3,,117mm,Figure 4.3: The evaluator emulating a factorial machine.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap4/Fig4.3.std,,117mm,,.pdf}
+@image{../../text/original/figures/pdf/chap4/Fig4.3.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 4.3:} The evaluator emulating a factorial machine.}
@@ -1623,81 +2278,90 @@ the data objects that are manipulated by our programming language and the
 programming language itself.  Imagine that the evaluator program (implemented
 in TypeScript) is running, and that a user is typing expressions to the
 evaluator and observing the results.  From the perspective of the user, an input
-expression such as @code{(* x x)} is an expression in the programming language,
+expression such as @code{x * x} is an expression in the programming language,
 which the evaluator should execute.  From the perspective of the evaluator,
-however, the expression is simply a list (in this case, a list of three
-symbols: @code{*}, @code{x}, and @code{x}) that is to be manipulated according
+however, the expression is simply a syntax record (in this case, a
+@code{binary} node whose two operands are @code{variable}
+nodes) that is to be manipulated according
 to a well-defined set of rules.
 
 That the user's programs are the evaluator's data need not be a source of
 confusion.  In fact, it is sometimes convenient to ignore this distinction, and
 to give the user the ability to explicitly evaluate a data object as an
-expression of the object language, by making @code{evalString} available for
-use in programs.  This edition's @code{evalString} takes as arguments a string
-of source text and an environment, reads the expression with @code{read}, and
-evaluates it relative to the environment.@footnote{This @code{evalString}
-primitive is not JavaScript's own @code{eval}: it evaluates expressions of the
-object language, not JavaScript source.  It is exactly the @code{evaluate}
-procedure we implemented in @ref{4.1.1}, prefixed by a call to @code{read}, and
-it runs over the sample environment structures we built in @ref{4.1.3}, which
-the user's programs can manipulate as ordinary lists.  Similarly,
-@code{applyProcedure} is the metacircular @code{apply}, operating on the
-procedure objects we constructed in @ref{4.1.3} and @ref{4.1.4}.} Thus,
+expression of the object language, by making source evaluation available for
+use in programs.  This edition exposes that ability through the driver's
+@code{runSource}, which takes as arguments a string
+of source text, admits it as a whole, reads the program, and
+evaluates it relative to the global environment.@footnote{This source evaluation
+is not JavaScript's own @code{eval}: it evaluates expressions of the
+object language, not host source.  Admission runs first---parser, subset
+checks, then the pinned TypeScript compiler---and only the admitted program is
+handed to the @code{evaluate}
+procedure we implemented in @ref{4.1.1}, over
+the environment structures we built in @ref{4.1.3}, which
+the user's programs can manipulate as ordinary values.  Similarly,
+@code{applyProcedure} is the evaluator's own @code{apply}, operating on the
+procedure values we constructed in @ref{4.1.3} and @ref{4.1.4}.} Thus,
 
 @example typescript
-const userInitialEnvironment = Effect.runSync(setupEnvironment());
-
-Effect.runSync(evalString("(* 5 5)", userInitialEnvironment))
-// => 25
+runSource("5 * 5;")
+// => RunResult whose outcome is ok with the value 25
 @end example
 
 @noindent
-and
+and, building the same syntax record by hand,
 
 @example typescript
-const expression = cons(
-  symbol("*"),
-  list(@{ _tag: "Number", n: 5 @}, @{ _tag: "Number", n: 5 @}),
-);
+const template = read("5 * 5");
 
-Effect.runSync(evaluate(expression, userInitialEnvironment))
-// => 25
+const expression: Expr = @{
+  tag: "binary",
+  op: "*",
+  left: @{ tag: "number", value: 5, span: template.span @},
+  right: @{ tag: "number", value: 5, span: template.span @},
+  span: template.span,
+@};
+
+evaluate(expression, setupEnvironment())
+// => ok with the value 25
 @end example
 
 @noindent
-will both return 25.@footnote{The @abbr{MIT} implementation of Scheme
-includes @code{eval}, as well as a symbol @code{user-initial-environment} that
-is bound to the initial environment in which the user's input expressions are
-evaluated.  This edition's counterpart is @code{setupEnvironment}, which builds
-the global environment that @code{evalString} evaluates in.}
+will both answer 25.@footnote{A language implementation that binds a name
+for the initial environment gives its users the same bridge between data and
+program.  This edition's counterpart is @code{setupEnvironment}, which builds
+the global environment that @code{evaluate} reads and writes.}
 
 @quotation
 @strong{@anchor{Exercise 4.15}Exercise 4.15:} Given a one-argument procedure
 @code{p} and an object @code{a}, @code{p} is said to ``halt'' on @code{a} if
-evaluating the expression @code{(p a)} returns a value (as opposed to
+calling @code{p} on @code{a} returns a value (as opposed to
 terminating with an error message or running forever).  Show that it is
-impossible to write a procedure @code{halts?} that correctly determines whether
+impossible to write a procedure @code{halts} that correctly determines whether
 @code{p} halts on @code{a} for any procedure @code{p} and object @code{a}.  Use
-the following reasoning: If you had such a procedure @code{halts?}, you could
+the following reasoning: If you had such a procedure @code{halts}, you could
 implement the following program:
 
 @example typescript
-const [runForever, tryProgram] = readAll(`
-(define (run-forever)
-  (run-forever))
+readAll(`
+function runForever(): void @{
+  runForever();
+@}
 
-(define (try p)
-  (if (halts? p p)
-      (run-forever)
-      'halted))
+function tryProgram<T>(p: (value: T) => T): string @{
+  if (halts(p, p)) @{
+    runForever();
+  @}
+  return "halted";
+@}
 `);
 @end example
 
-Now consider evaluating the expression @code{(try try)} and show that any
+Now consider calling @code{tryProgram(tryProgram)} and show that any
 possible outcome (either halting or running forever) violates the intended
-behavior of @code{halts?}.@footnote{Although we stipulated that @code{halts?}
+behavior of @code{halts}.@footnote{Although we stipulated that @code{halts}
 is given a procedure object, notice that this reasoning still applies even if
-@code{halts?} can gain access to the procedure's text and its environment.
+@code{halts} can gain access to the procedure's text and its environment.
 This is Turing's celebrated @newterm{Halting Theorem}, which gave the first
 clear example of a @newterm{non-computable} problem, i.e., a well-posed task
 that cannot be carried out as a computational procedure.}
@@ -1714,53 +2378,53 @@ internal definitions used to implement block structure (introduced in
 @ref{1.1.8}), we will find that name-by-name extension of the environment may
 not be the best way to define local variables.
 
-Consider a procedure with internal definitions, such as
+Consider a procedure with internal declarations, such as
 
 @example typescript
-read(`
-  (define (f x)
-    (define (even? n)
-      (if (= n 0)
-          true
-          (odd? (- n 1))))
-    (define (odd? n)
-      (if (= n 0)
-          false
-          (even? (- n 1))))
-    ⟨@var{rest of body of @code{f}}⟩)
+readAll(`
+  function f(x: number): number @{
+    function even(n: number): boolean @{
+      return n === 0 ? true : odd(n - 1);
+    @}
+    function odd(n: number): boolean @{
+      return n === 0 ? false : even(n - 1);
+    @}
+    ⟨@var{rest of body of @code{f}}⟩
+  @}
 `)
 @end example
 
 @noindent
-Our intention here is that the name @code{odd?} in the body of the procedure
-@code{even?} should refer to the procedure @code{odd?} that is defined after
-@code{even?}.  The scope of the name @code{odd?} is the entire body of
+Our intention here is that the name @code{odd} in the body of the procedure
+@code{even} should refer to the procedure @code{odd} that is declared after
+@code{even}.  The scope of the name @code{odd} is the entire body of
 @code{f}, not just the portion of the body of @code{f} starting at the point
-where the @code{define} for @code{odd?} occurs.  Indeed, when we consider that
-@code{odd?} is itself defined in terms of @code{even?}, so that @code{even?}
-and @code{odd?} are mutually recursive procedures, we see that the only
-satisfactory interpretation of the two @code{define}s is to regard them as if
-the names @code{even?} and @code{odd?} were being added to the environment
+where the declaration of @code{odd} occurs.  Indeed, when we consider that
+@code{odd} is itself defined in terms of @code{even}, so that @code{even}
+and @code{odd} are mutually recursive procedures, we see that the only
+satisfactory interpretation of the two declarations is to regard them as if
+the names @code{even} and @code{odd} were being added to the environment
 simultaneously.  More generally, in block structure, the scope of a local name
-is the entire procedure body in which the @code{define} is evaluated.
+is the entire procedure body in which the declaration is evaluated.
 
 As it happens, our interpreter will evaluate calls to @code{f} correctly, but
-for an ``accidental'' reason: Since the definitions of the internal procedures
+for an ``accidental'' reason: Since the declarations of the internal procedures
 come first, no calls to these procedures will be evaluated until all of them
-have been defined.  Hence, @code{odd?}  will have been defined by the time
-@code{even?} is executed.  In fact, our sequential evaluation mechanism will
+have been defined.  Hence, @code{odd}  will have been defined by the time
+@code{even} is executed.  In fact, our sequential evaluation mechanism will
 give the same result as a mechanism that directly implements simultaneous
-definition for any procedure in which the internal definitions come first in a
+definition for any procedure in which the internal declarations come first in a
 body and evaluation of the value expressions for the defined variables doesn't
 actually use any of the defined variables.  (For an example of a procedure that
 doesn't obey these restrictions, so that sequential definition isn't equivalent
 to simultaneous definition, see @ref{Exercise 4.19}.)@footnote{Wanting programs
 to not depend on this evaluation mechanism is the reason for the ``management
-is not responsible'' remark in @ref{Footnote 28} of @ref{Chapter 1}.  By
-insisting that internal definitions come first and do not use each other while
-the definitions are being evaluated, the @abbr{IEEE} standard for Scheme
-leaves implementors some choice in the mechanism used to evaluate these
-definitions.  The choice of one evaluation rule rather than another here may
+is not responsible'' remark in @ref{Footnote 28} of @ref{Chapter 1}.  The
+guest language settles the difficult cases with its own rule: a
+@code{const} or @code{let} binding is in its temporal dead zone until its
+initializer has run, so a read of a not-yet-assigned name is an error rather
+than a wrong answer.  The choice of one evaluation rule rather than another
+here may
 seem like a small issue, affecting only the interpretation of ``badly formed''
 programs.  However, we will see in @ref{5.5.6} that moving to a model
 of simultaneous scoping for internal definitions avoids some nasty difficulties
@@ -1769,69 +2433,82 @@ that would otherwise arise in implementing a compiler.}
 There is, however, a simple way to treat definitions so that internally defined
 names have truly simultaneous scope: just create all local variables that will
 be in the current environment before evaluating any of the value expressions.
-One way to do this is by a syntax transformation on @code{lambda} expressions.
-Before evaluating the body of a @code{lambda} expression, we ``scan out'' and
-eliminate all the internal definitions in the body.  The internally defined
-variables will be created with a @code{let} and then set to their values by
+One way to do this is by a syntax transformation on function expressions.
+Before evaluating the body of a function expression, we ``scan out'' and
+eliminate all the internal declarations in the body.  The internally defined
+variables will be created as uninitialized cells and then set to their values by
 assignment.  For example, the procedure
 
 @example typescript
-read(`
-  (lambda ⟨@var{vars}⟩
-    (define u ⟨@var{e1}⟩)
-    (define v ⟨@var{e2}⟩)
-    ⟨@var{e3}⟩)
+readAll(`
+  (⟨@var{params}⟩) => @{
+    const u = ⟨@var{e1}⟩;
+    const v = ⟨@var{e2}⟩;
+    ⟨@var{e3}⟩;
+  @}
 `)
 @end example
 
 @noindent
-would be transformed into
+would be transformed into the derived form
 
 @example typescript
-read(`
-  (lambda ⟨@var{vars}⟩
-    (let ((u '*unassigned*)
-          (v '*unassigned*))
-      (set! u ⟨@var{e1}⟩)
-      (set! v ⟨@var{e2}⟩)
-      ⟨@var{e3}⟩))
-`)
+// (⟨@var{params}⟩) => @{
+//   addUninitialized("u", env);
+//   addUninitialized("v", env);
+//   u = ⟨@var{e1}⟩;
+//   v = ⟨@var{e2}⟩;
+//   ⟨@var{e3}⟩;
+// @}
+
+export const addUninitialized = (name: string, env: Env): void => @{
+  env.bindings.set(
+    name,
+    @{ value: undefined,
+    initialized: false,
+    mutable: true @}
+  );
+@};
 @end example
 
 @noindent
-where @code{*unassigned*} is a special symbol that causes looking up a variable
-to signal an error if an attempt is made to use the value of the
+where an uninitialized cell is exactly the temporal dead zone of
+@ref{4.1.3}: looking up a not-yet-assigned variable answers the
+@code{tdz-access} error if an attempt is made to use the value of the
 not-yet-assigned variable.
 
-An alternative strategy for scanning out internal definitions is shown in
+An alternative strategy for scanning out internal declarations is shown in
 @ref{Exercise 4.18}.  Unlike the transformation shown above, this enforces the
 restriction that the defined variables' values can be evaluated without using
-any of the variables' values.@footnote{The @abbr{IEEE} standard for Scheme
-allows for different implementation strategies by specifying that it is up to
-the programmer to obey this restriction, not up to the implementation to
-enforce it.  Some Scheme implementations, including @abbr{MIT} Scheme, use
-the transformation shown above.  Thus, some programs that don't obey this
-restriction will in fact run in such implementations.}
+any of the variables' values.@footnote{The guest language's checker
+allows for different implementation strategies by reporting the use of a
+binding before its initialization whenever it can see one statically, while
+the evaluator enforces the same rule dynamically with the uninitialized cells
+above.  Programs that reach a hidden read-before-initialization at run time
+produce the @code{tdz-access} error rather than an incorrect answer.}
 
 @quotation
 @strong{@anchor{Exercise 4.16}Exercise 4.16:} In this exercise we implement the
-method just described for interpreting internal definitions.  We assume that
-the evaluator supports @code{let} (see @ref{Exercise 4.6}).
+method just described for interpreting internal declarations.  We assume that
+the evaluator supports the grouped binding form of @ref{Exercise 4.6}.
 
 @enumerate a
 
 @item
-Change @code{lookup-variable-value} (@ref{4.1.3}) to signal an error if
-the value it finds is the symbol @code{*unassigned*}.
+Change @code{lookupVariableValue} (@ref{4.1.3}) to answer an error when
+the cell it finds is uninitialized---the temporal dead zone---rather than
+returning @code{undefined}.  Explain why the plain @code{undefined} answer
+would lose the distinction between a name that has not been assigned and a
+name that has been assigned @code{undefined}.
 
 @item
-Write a procedure @code{scan-out-defines} that takes a procedure body and
-returns an equivalent one that has no internal definitions, by making the
+Write a procedure @code{scanOutDefinitions} that takes a procedure body and
+returns an equivalent one that has no internal declarations, by making the
 transformation described above.
 
 @item
-Install @code{scan-out-defines} in the interpreter, either in
-@code{make-procedure} or in @code{procedure-body} (see @ref{4.1.3}).
+Install @code{scanOutDefinitions} in the interpreter, either in
+@code{makeProcedure} or where a closure's body is read (see @ref{4.1.3}).
 Which place is better?  Why?
 
 @end enumerate
@@ -1840,162 +2517,170 @@ Which place is better?  Why?
 @quotation
 @strong{@anchor{Exercise 4.17}Exercise 4.17:} Draw diagrams of the environment
 in effect when evaluating the expression @code{⟨}@var{e3}@code{⟩} in the procedure in the
-text, comparing how this will be structured when definitions are interpreted
-sequentially with how it will be structured if definitions are scanned out as
+text, comparing how this will be structured when declarations are interpreted
+sequentially with how it will be structured if declarations are scanned out as
 described.  Why is there an extra frame in the transformed program?  Explain
 why this difference in environment structure can never make a difference in the
 behavior of a correct program.  Design a way to make the interpreter implement
-the ``simultaneous'' scope rule for internal definitions without constructing
+the ``simultaneous'' scope rule for internal declarations without constructing
 the extra frame.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.18}Exercise 4.18:} Consider an alternative strategy
-for scanning out definitions that translates the example in the text to
+for scanning out declarations that translates the example in the text to the
+derived form
 
 @example typescript
-read(`
-  (lambda ⟨@var{vars}⟩
-    (let ((u '*unassigned*)
-          (v '*unassigned*))
-      (let ((a ⟨@var{e1}⟩)
-            (b ⟨@var{e2}⟩))
-        (set! u a)
-        (set! v b))
-      ⟨@var{e3}⟩))
-`)
+// (⟨@var{params}⟩) => @{
+//   addUninitialized("u", env);
+//   addUninitialized("v", env);
+//   @{
+//     const a = ⟨@var{e1}⟩;
+//     const b = ⟨@var{e2}⟩;
+//     u = a;
+//     v = b;
+//   @}
+//   ⟨@var{e3}⟩;
+// @}
 @end example
 
 Here @code{a} and @code{b} are meant to represent new variable names, created
 by the interpreter, that do not appear in the user's program.  Consider the
-@code{solve} procedure from @ref{3.5.4}:
+@code{solve} procedure from @ref{3.5.4}, written over the delayed-list
+procedures of that section:
 
 @example typescript
-read(`
-  (define (solve f y0 dt)
-    (define y (integral (delay dy) y0 dt))
-    (define dy (stream-map f y))
-    y)
+readAll(`
+  function solve(
+    f: (y: number) => number,
+    y0: number,
+    dt: number): LazyList @{
+    const y = integral(delay(() => dy), y0, dt);
+    const dy = streamMap(f, y);
+    return y;
+  @}
 `)
 @end example
 
-Will this procedure work if internal definitions are scanned out as shown in
+Will this procedure work if internal declarations are scanned out as shown in
 this exercise?  What if they are scanned out as shown in the text?  Explain.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.19}Exercise 4.19:} Ben Bitdiddle, Alyssa P. Hacker,
 and Eva Lu Ator are arguing about the desired result of evaluating the
-expression
+program
 
 @example typescript
-read(`
-  (let ((a 1))
-    (define (f x)
-      (define b (+ a x))
-      (define a 5)
-      (+ a b))
-    (f 10))
+readAll(`
+  @{
+    const a = 1;
+    const f = (x: number): number => @{
+      const b = a + x;
+      const a = 5;
+      return a + b;
+    @};
+    f(10);
+  @}
 `)
 @end example
 
 Ben asserts that the result should be obtained using the sequential rule for
-@code{define}: @code{b} is defined to be 11, then @code{a} is defined to be 5,
+declarations: @code{b} is defined to be 11, then @code{a} is defined to be 5,
 so the result is 16.  Alyssa objects that mutual recursion requires the
-simultaneous scope rule for internal procedure definitions, and that it is
+simultaneous scope rule for internal procedure declarations, and that it is
 unreasonable to treat procedure names differently from other names.  Thus, she
 argues for the mechanism implemented in @ref{Exercise 4.16}.  This would lead
 to @code{a} being unassigned at the time that the value for @code{b} is to be
 computed.  Hence, in Alyssa's view the procedure should produce an error.  Eva
-has a third opinion.  She says that if the definitions of @code{a} and @code{b}
+has a third opinion.  She says that if the declarations of @code{a} and @code{b}
 are truly meant to be simultaneous, then the value 5 for @code{a} should be
 used in evaluating @code{b}.  Hence, in Eva's view @code{a} should be 5,
 @code{b} should be 15, and the result should be 20.  Which (if any) of these
 viewpoints do you support?  Can you devise a way to implement internal
-definitions so that they behave as Eva prefers?@footnote{The @abbr{MIT}
-implementors of Scheme support Alyssa on the following grounds: Eva is in
-principle correct: the definitions should be regarded as simultaneous.  But
+declarations so that they behave as Eva prefers?@footnote{The guest
+language's own implementors settle this in Alyssa's favor: a binding is in its
+temporal dead zone until its initializer completes.  Eva is in
+principle correct: the declarations should be regarded as simultaneous.  But
 it seems difficult to implement a general, efficient mechanism that does what
 Eva requires.  In the absence of such a mechanism, it is better to generate an
-error in the difficult cases of simultaneous definitions (Alyssa's notion) than
+error in the difficult cases of simultaneous declarations (Alyssa's notion) than
 to produce an incorrect answer (as Ben would have it).}
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.20}Exercise 4.20:} Because internal definitions look
+@strong{@anchor{Exercise 4.20}Exercise 4.20:} Because internal declarations look
 sequential but are actually simultaneous, some people prefer to avoid them
-entirely, and use the special form @code{letrec} instead.  @code{Letrec} looks
-like @code{let}, so it is not surprising that the variables it binds are bound
+entirely, and use a @newterm{recursive binding} form instead.  A recursive
+binding looks
+like the grouped binding of @ref{Exercise 4.6}, so it is not surprising that
+the variables it binds are bound
 simultaneously and have the same scope as each other.  The sample procedure
-@code{f} above can be written without internal definitions, but with exactly
+@code{f} above can be written without internal declarations, but with exactly
 the same meaning, as
 
 @example typescript
-read(`
-  (define (f x)
-    (letrec
-        ((even?
-          (lambda (n)
-            (if (= n 0)
-                true
-                (odd? (- n 1)))))
-         (odd?
-          (lambda (n)
-            (if (= n 0)
-                false
-                (even? (- n 1))))))
-      ⟨@var{rest of body of @code{f}}⟩))
+readAll(`
+  function f(x: number): number @{
+    const even = (n: number): boolean =>
+      n === 0 ? true : odd(n - 1);
+    const odd = (n: number): boolean =>
+      n === 0 ? false : even(n - 1);
+    ⟨@var{rest of body of @code{f}}⟩
+  @}
 `)
 @end example
 
-@code{Letrec} expressions, which have the form
+@noindent
+The recursive binding form has the shape
 
 @example typescript
-list(symbol("letrec"),
-     list(list(⟨@var{var₁}⟩, ⟨@var{exp₁}⟩),
-          @dots{},
-          list(⟨@var{varₙ}⟩, ⟨@var{expₙ}⟩)),
-     ⟨@var{body}⟩)
+type RecursiveBindings = @{
+  tag: "recursive-bindings";
+  bindings: ReadonlyArray<@{ name: string; init: Expr @}>;
+  body: Block;
+  span: Span;
+@};
 @end example
 
 @noindent
-are a variation on @code{let} in which the expressions
+It is a variation on grouped binding in which the expressions
 @math{{⟨\kern0.1em exp_k⟩}} that provide the initial values for the
 variables @math{{⟨\kern0.06em var_k⟩}} are evaluated in an environment
-that includes all the @code{letrec} bindings.  This permits recursion in the
-bindings, such as the mutual recursion of @code{even?} and @code{odd?} in the
+that includes all the recursive bindings.  This permits recursion in the
+bindings, such as the mutual recursion of @code{even} and @code{odd} in the
 example above, or the evaluation of 10 factorial with
 
 @example typescript
-read(`
-  (letrec
-      ((fact
-        (lambda (n)
-          (if (= n 1)
-              1
-              (* n (fact (- n 1)))))))
-    (fact 10))
+readAll(`
+  @{
+    const fact = (n: number): number =>
+      n <= 1 ? 1 : n * fact(n - 1);
+    fact(10);
+  @}
 `)
 @end example
 
 @enumerate a
 
 @item
-Implement @code{letrec} as a derived expression, by transforming a
-@code{letrec} expression into a @code{let} expression as shown in the text
-above or in @ref{Exercise 4.18}.  That is, the @code{letrec} variables should
-be created with a @code{let} and then be assigned their values with
-@code{set!}.
+Implement the recursive binding form as a derived expression, by transforming
+it into the grouped binding of @ref{Exercise 4.6} as shown in the text
+above or in @ref{Exercise 4.18}.  That is, the bound names should
+be created as uninitialized cells and then be assigned their values.
 
 @item
-Louis Reasoner is confused by all this fuss about internal definitions.  The
-way he sees it, if you don't like to use @code{define} inside a procedure, you
-can just use @code{let}.  Illustrate what is loose about his reasoning by
+Louis Reasoner is confused by all this fuss about internal declarations.  The
+way he sees it, if you don't like to use an internal declaration inside a
+procedure, you
+can just use a grouped binding.  Illustrate what is loose about his reasoning by
 drawing an environment diagram that shows the environment in which the
 @code{⟨}@var{rest of body of @code{f}}@code{⟩} is evaluated during evaluation of the
-expression @code{(f 5)}, with @code{f} defined as in this exercise.  Draw an
-environment diagram for the same evaluation, but with @code{let} in place of
-@code{letrec} in the definition of @code{f}.
+call @code{f(5)}, with @code{f} defined as in this exercise.  Draw an
+environment diagram for the same evaluation, but with the ordinary grouped
+binding in place of
+the recursive binding in the definition of @code{f}.
 
 @end enumerate
 @end quotation
@@ -2003,71 +2688,81 @@ environment diagram for the same evaluation, but with @code{let} in place of
 @quotation
 @strong{@anchor{Exercise 4.21}Exercise 4.21:} Amazingly, Louis's intuition in
 @ref{Exercise 4.20} is correct.  It is indeed possible to specify recursive
-procedures without using @code{letrec} (or even @code{define}), although the
+procedures without using a recursive binding (or even an internal declaration), although the
 method for accomplishing this is much more subtle than Louis imagined.  The
-following expression computes 10 factorial by applying a recursive factorial
-procedure:@footnote{This example illustrates a programming trick for
-formulating recursive procedures without using @code{define}.  The most general
+following program computes 10 factorial by applying a recursive factorial
+procedure that receives itself as an argument:@footnote{This example illustrates
+a programming trick for
+formulating recursive procedures without using declarations.  The most general
 trick of this sort is the @math{Y} @newterm{operator}, which can be used to give a
 ``pure λ-calculus'' implementation of recursion.  (See @ref{Stoy 1977} for
 details on the λ-calculus, and @ref{Gabriel 1988} for an exposition of the
-@math{Y} operator in Scheme.)}
+@math{Y} operator.)}
 
 @example typescript
-read(`
-  ((lambda (n)
-     ((lambda (fact) (fact fact n))
-      (lambda (ft k)
-        (if (= k 1)
-            1
-            (* k (ft ft (- k 1)))))))
-   10)
+readAll(`
+  interface Step @{
+    run: (self: Step, k: number) => number;
+  @}
+
+  const factorialStep: Step = @{
+    run: (self, k) =>
+      k <= 1 ? 1 : k * self.run(self, k - 1),
+  @};
+
+  const applyStep = (
+    step: Step,
+    n: number
+  ): number => step.run(step, n);
+
+  applyStep(factorialStep, 10);
 `)
 @end example
 
 @enumerate a
 
 @item
-Check (by evaluating the expression) that this really does compute factorials.
-Devise an analogous expression for computing Fibonacci numbers.
+Check (by evaluating the program) that this really does compute factorials.
+Devise an analogous program for computing Fibonacci numbers.
 
 @item
 Consider the following procedure, which includes mutually recursive internal
-definitions:
+declarations:
 
 @example typescript
-read(`
-  (define (f x)
-    (define (even? n)
-      (if (= n 0)
-          true
-          (odd? (- n 1))))
-    (define (odd? n)
-      (if (= n 0)
-          false
-          (even? (- n 1))))
-    (even? x))
+readAll(`
+  function f(x: number): boolean @{
+    function even(n: number): boolean @{
+      return n === 0 ? true : odd(n - 1);
+    @}
+    function odd(n: number): boolean @{
+      return n === 0 ? false : even(n - 1);
+    @}
+    return even(x);
+  @}
 `)
 @end example
 
 Fill in the missing expressions to complete an alternative definition of
-@code{f}, which uses neither internal definitions nor @code{letrec}:
+@code{f}, which uses neither internal declarations nor recursive bindings:
 
-@example typescript
-read(`
-  (define (f x)
-    ((lambda (even? odd?)
-       (even? even? odd? x))
-     (lambda (ev? od? n)
-       (if (= n 0)
-           true
-           (od? ⟨??⟩ ⟨??⟩ ⟨??⟩)))
-     (lambda (ev? od? n)
-       (if (= n 0)
-           false
-           (ev? ⟨??⟩ ⟨??⟩ ⟨??⟩)))))
-`)
-@end example
+@smallexample
+// Fill in the missing expressions so that @code{f} computes mutual
+// even/odd:
+interface OddEven @{
+  run: (self: OddEven, other: OddEven, n: number) => boolean;
+@}
+
+const f = (x: number): boolean =>
+  ((even: OddEven, odd: OddEven): boolean => even.run(even, odd, x))(
+    @{ run: (self, other, n) => (n === 0
+      ? true
+      : other.run(⟨??⟩, ⟨??⟩, ⟨??⟩)) @},
+    @{ run: (self, other, n) => (n === 0
+      ? false
+      : self.run(⟨??⟩, ⟨??⟩, ⟨??⟩)) @},
+  );
+@end smallexample
 @end enumerate
 @end quotation
 @node	4.1.7, 4.2, Chapter 4, 4.1
@@ -2076,30 +2771,32 @@ read(`
 The evaluator implemented above is simple, but it is very inefficient, because
 the syntactic analysis of expressions is interleaved with their execution.
 Thus if a program is executed many times, its syntax is analyzed many times.
-Consider, for example, evaluating @code{(factorial 4)} using the following
-definition of @code{factorial}:
+Consider, for example, evaluating @code{factorial(4)} using the following
+declaration of @code{factorial}:
 
 @example typescript
-const defineFactorial = read(`(define (factorial n)
-  (if (= n 1)
-      1
-      (* (factorial (- n 1)) n)))`);
+const factorialProgram = readAll(`
+function factorial(n: number): number @{
+  return n <= 1 ? 1 : factorial(n - 1) * n;
+@}
+`);
 @end example
 
 @noindent
 Each time @code{factorial} is called, the evaluator must determine that the
-body is an @code{if} expression and extract the predicate.  Only then can it
-evaluate the predicate and dispatch on its value.  Each time it evaluates the
-expression @code{(* (factorial (- n 1)) n)}, or the subexpressions
-@code{(factorial (- n 1))} and @code{(- n 1)}, the evaluator must perform the
-case analysis in @code{evaluate} to determine that the expression is an
-application, and must extract its operator and operands.  This analysis is
+body is a @code{return} statement and extract its operand.  Only then can it
+evaluate the operand and dispatch on its value.  Each time it evaluates the
+expression @code{factorial(n - 1) * n}, or the subexpressions
+@code{factorial(n - 1)} and @code{n - 1}, the evaluator must perform the
+case analysis in @code{evaluate} to determine that the expression is a
+call or a binary operation, and must extract its callee and arguments.  This
+analysis is
 expensive.  Performing it repeatedly is wasteful.
 
 We can transform the evaluator to be significantly more efficient by arranging
 things so that syntactic analysis is performed only once.@footnote{This
 technique is an integral part of the compilation process, which we shall
-discuss in @ref{Chapter 5}.  Jonathan Rees wrote a Scheme interpreter like this
+discuss in @ref{Chapter 5}.  Jonathan Rees wrote an interpreter like this
 in about 1982 for the T project (@ref{Rees and Adams 1982}).  Marc @ref{Feeley (1986)} (see
 also @ref{Feeley and Lapalme 1987}) independently invented this technique in his
 master's thesis.} We split @code{evaluate}, which takes an expression and an
@@ -2113,16 +2810,19 @@ execution procedure may be called many times.
 
 In this edition an execution procedure is a function of type
 @code{ExecutionProcedure}: it takes the environment and answers the
-@code{Effect} that carries out the analyzed expression's remaining work:
+@code{Outcome} that carries out the analyzed expression's remaining work:
 
 @example typescript
-export type ExecutionProcedure = (env: Env) => Effect.Effect<Value, EvaluationError>;
+export type ExecutionProcedure = (env: Env) => Outcome;
 @end example
 
 With the separation into analysis and execution, @code{evalAnalyzed} now becomes
 
 @example typescript
-export const evalAnalyzed: Evaluate = (exp, env) => analyze(exp)(env);
+export const evalAnalyzed = (
+  expr: Expr,
+  env: Env
+): Outcome => analyze(expr)(env);
 @end example
 
 @noindent
@@ -2132,62 +2832,106 @@ performed by the original @code{evaluate} of @ref{4.1.1}, except that the
 procedures to which we dispatch perform only analysis, not full evaluation:
 
 @example typescript
-export const analyze = (exp: Value): ExecutionProcedure => @{
-  if (isSelfEvaluating(exp)) @{
-    return analyzeSelfEvaluating(exp);
+export const analyze = (expr: Expr): ExecutionProcedure => @{
+  switch (expr.tag) @{
+    case "number":
+    case "string":
+    case "boolean":
+    case "null":
+    case "undefined":
+      return analyzeSelfEvaluating(expr);
+    case "variable":
+      return analyzeVariable(expr.name);
+    case "template":
+      return analyzeTemplate(expr);
+    case "array":
+      return analyzeArray(expr);
+    case "object":
+      return analyzeObject(expr);
+    case "unary":
+      return analyzeUnary(expr);
+    case "binary":
+      return analyzeBinary(expr);
+    case "logical":
+      return analyzeLogical(expr);
+    case "conditional":
+      return analyzeConditional(expr);
+    case "assign":
+      return analyzeAssignment(expr.target, expr.value);
+    case "arrow":
+      return analyzeLambda(expr);
+    case "call":
+      return analyzeApplication(expr.callee, expr.args);
+    case "member":
+    case "index":
+      return analyzeAccess(expr);
+    case "new-error":
+    case "new-map":
+    case "new-set":
+      return analyzeConstruction(expr);
+    case "delay":
+    case "force":
+    case "choose":
+    case "require":
+    case "ramb":
+      return () => fail(@{ tag: "unknown-syntax",
+        construct: expr.tag @});
   @}
-  if (isQuoted(exp)) @{
-    return analyzeQuoted(exp);
-  @}
-  if (isVariable(exp)) @{
-    return analyzeVariable(exp);
-  @}
-  if (isAssignment(exp)) @{
-    return analyzeAssignment(exp);
-  @}
-  if (isDefinition(exp)) @{
-    return analyzeDefinition(exp);
-  @}
-  if (isIf(exp)) @{
-    return analyzeIf(exp);
-  @}
-  if (isLambda(exp)) @{
-    return analyzeLambda(exp);
-  @}
-  if (isBegin(exp)) @{
-    return analyzeSequence(beginActions(exp));
-  @}
-  if (isCond(exp)) @{
-    return analyze(condToIf(exp));
-  @}
-  if (isApplication(exp)) @{
-    return analyzeApplication(exp);
-  @}
-  return () => Effect.fail(new UnknownSyntax(@{ expr: format(exp) @}));
 @};
 @end example
 
 @noindent
 Here is the simplest syntactic analysis procedure, which handles
 self-evaluating expressions.  It returns an execution procedure that ignores
-its environment argument and just returns the expression:
+its environment argument and just returns the expression's value:
 
 @example typescript
 export const analyzeSelfEvaluating =
-  (exp: Value): ExecutionProcedure =>
+  (expr: Expr): ExecutionProcedure =>
   () =>
-    Effect.succeed(exp);
+    ok(literalValue(expr));
 @end example
 
 @noindent
-For a quoted expression, we can gain a little efficiency by extracting the text
-of the quotation only once, in the analysis phase, rather than in the execution
-phase.
+For a data literal, we can gain a little efficiency by analyzing the element
+expressions only once, in the analysis phase, rather than in the execution
+phase:
 
 @example typescript
-export const analyzeQuoted = (exp: Cons<Value>): ExecutionProcedure => @{
-  const qval = textOfQuotation(exp);
-  return () => Effect.succeed(qval);
+export const analyzeArray = (expr: Expr): ExecutionProcedure => @{
+  const elements = expr.tag === "array"
+    ? expr.elements.map((arg) => (@{
+        proc: analyze(arg.expr),
+        spread: arg.kind === "spread",
+      @}))
+    : [];
+  return (env) => @{
+    const items: Value[] = [];
+    for (const element of elements) @{
+      const value = element.proc(env);
+      if (value.tag !== "ok") @{
+        return value;
+      @}
+      if (!element.spread) @{
+        items.push(value.value);
+      @} else if (
+        value.value !== null &&
+        typeof value.value === "object" &&
+        value.value.tag === "array"
+      ) @{
+        for (const item of value.value.items) @{
+          items.push(item);
+        @}
+      @} else @{
+        return fail(
+            @{ tag: "bad-operand",
+            operator: "spread",
+            detail: "spread of a non-array" @}
+          );
+      @}
+    @}
+    return ok(@{ tag: "array", items @});
+  @};
 @};
 @end example
 
@@ -2202,150 +2946,260 @@ matches the variable.}
 
 @example typescript
 export const analyzeVariable =
-  (exp: SymbolValue): ExecutionProcedure =>
+  (name: string): ExecutionProcedure =>
   (env) =>
-    lookupVariableValue(exp, env);
+    lookupVariableValue(name, env);
 @end example
 
 @noindent
 @code{analyzeAssignment} also must defer actually setting the variable until
 the execution, when the environment has been supplied.  However, the fact that
-the @code{assignmentValue} expression can be analyzed (recursively) during
-analysis is a major gain in efficiency, because the @code{assignmentValue}
+the assigned expression can be analyzed (recursively) during
+analysis is a major gain in efficiency, because that
 expression will now be analyzed only once.  The same holds true for
-definitions.
+declarations.
 
 @example typescript
-export const analyzeAssignment = (exp: Cons<Value>): ExecutionProcedure => @{
-  const variable = assignmentVariable(exp);
-  const vproc = analyze(assignmentValue(exp));
-  return (env) =>
-    Effect.flatMap(vproc(env), (value) =>
-      Effect.map(setVariableValue(variable, value, env), () => ok),
-    );
+export const analyzeAssignment = (
+  target: Expr,
+  valueExpr: Expr
+): ExecutionProcedure => @{
+  const vproc = analyze(valueExpr);
+  return (env) => @{
+    const value = vproc(env);
+    if (value.tag !== "ok") @{
+      return value;
+    @}
+    return target.tag === "variable"
+      ? setVariableValue(target.name, value.value, env)
+      : memberSet(target, value.value, env);
+  @};
 @};
 
-export const analyzeDefinition = (exp: Cons<Value>): ExecutionProcedure => @{
-  const variable = definitionVariable(exp);
-  const vproc = analyze(definitionValue(exp));
-  return (env) =>
-    Effect.flatMap(vproc(env), (value) =>
-      Effect.map(defineVariableValue(variable, value, env), () => ok),
-    );
-@};
+// The statement-side twin, answering a Completion like evalDeclaration:
+type StatementProcedure = (env: Env) => Completion;
+
+export const analyzeDeclaration = (
+  name: string,
+  initializer: ExecutionProcedure,
+): StatementProcedure =>
+  (env) => @{
+    const value = initializer(env);
+    if (value.tag !== "ok") @{
+      return @{ tag: "error", error: value.error @};
+    @}
+    const installed = defineVariableValue(name, value.value, env);
+    return installed.tag === "ok"
+      ? @{ tag: "normal", value: undefined @}
+      : @{ tag: "error", error: installed.error @};
+  @};
 @end example
 
 @noindent
-For @code{if} expressions, we extract and analyze the predicate, consequent,
+For @code{if} statements, we extract and analyze the test, consequent,
 and alternative at analysis time.
 
 @example typescript
-export const analyzeIf = (exp: Cons<Value>): ExecutionProcedure => @{
-  const pproc = analyze(ifPredicate(exp));
-  const cproc = analyze(ifConsequent(exp));
-  const aproc = analyze(ifAlternative(exp));
-  return (env) =>
-    Effect.flatMap(pproc(env), (predicate) => (isTrue(predicate) ? cproc(env) : aproc(env)));
+export const analyzeIf = (
+  test: Expr,
+  consequent: Stmt,
+  alternative: Stmt | null,
+): StatementProcedure => @{
+  const pproc = analyze(test);
+  const cproc = analyzeStatement(consequent);
+  const aproc = alternative === null
+    ? undefined
+    : analyzeStatement(alternative);
+  return (env) => @{
+    const predicate = pproc(env);
+    if (predicate.tag !== "ok") @{
+      return @{ tag: "error", error: predicate.error @};
+    @}
+    if (typeof predicate.value !== "boolean") @{
+      return @{
+        tag: "error",
+        error: @{ tag: "bad-operand",
+        operator: "if",
+        detail: "test is not a boolean" @},
+      @};
+    @}
+    if (predicate.value) @{
+      return cproc(env);
+    @}
+    return aproc === undefined
+      ? @{ tag: "normal", value: undefined @}
+      : aproc(env);
+  @};
 @};
 @end example
 
 @noindent
-Analyzing a @code{lambda} expression also achieves a major gain in efficiency:
-We analyze the @code{lambda} body only once, even though procedures resulting
-from evaluation of the @code{lambda} may be applied many times.
+Analyzing a function expression also achieves a major gain in efficiency:
+We analyze the body only once, even though procedures resulting
+from evaluation of the function may be applied many times.  The analyzed
+evaluator therefore prepares the statement procedure of the body in a
+module-local analysis cache keyed by the body block, and procedure creation
+answers the ordinary landed @code{Closure} of @ref{4.1.3}---parameter names,
+the body block, and the environment.  (The cache and the prepared-body
+application below are presentation helpers of this section, not engine
+exports; the landed engine dispatches statements through @code{execStatement}
+and applications through @code{callClosure}.)
 
 @example typescript
-export const analyzeLambda = (exp: Cons<Value>): ExecutionProcedure => @{
-  const vars = lambdaParameters(exp);
-  const bproc = analyzeSequence(lambdaBody(exp));
-  return (env) =>
-    Effect.succeed(makeProcedure(vars, fromValues([@{ _tag: "Execution", run: bproc @}]), env));
+const analyzedBodies = new Map<Stmt, StatementProcedure>();
+
+const bodyProcedure = (body: Stmt): StatementProcedure => @{
+  const cached = analyzedBodies.get(body);
+  if (cached !== undefined) return cached;
+  const prepared = analyzeStatement(body);
+  analyzedBodies.set(body, prepared);
+  return prepared;
+@};
+
+const analyzeLambda = (
+  params: ReadonlyArray<Param>,
+  body: Block,
+): ExecutionProcedure => @{
+  const names: string[] = [];
+  let rest: string | null = null;
+  for (const param of params) @{
+    if (param.kind === "param") @{
+      names.push(param.name);
+    @} else @{
+      rest = param.name;
+    @}
+  @}
+  return (env) => ok(makeClosure(names, rest, body, env));
 @};
 @end example
 
 @noindent
-Analysis of a sequence of expressions (as in a @code{begin} or the body of a
-@code{lambda} expression) is more involved.@footnote{See @ref{Exercise 4.23}
-for some insight into the processing of sequences.} Each expression in the
-sequence is analyzed, yielding an execution procedure.  These execution
-procedures are combined to produce an execution procedure that takes an
-environment as argument and sequentially calls each individual execution
+Analysis of a sequence of statements (a block or the body of a
+function expression) is more involved.@footnote{See @ref{Exercise 4.23}
+for some insight into the processing of sequences.} Each statement in the
+sequence is analyzed, yielding a statement procedure.  These statement
+procedures are combined to produce a statement procedure that takes
+an environment as argument and sequentially calls each individual
 procedure with the environment as argument.
 
 @example typescript
 const sequentially =
-  (proc1: ExecutionProcedure, proc2: ExecutionProcedure): ExecutionProcedure =>
-  (env) =>
-    Effect.flatMap(proc1(env), () => proc2(env));
+  (proc1: StatementProcedure,
+    proc2: StatementProcedure): StatementProcedure =>
+  (env) => @{
+    const first = proc1(env);
+    return first.tag === "normal" ? proc2(env) : first;
+  @};
 
-export const analyzeSequence = (exps: List<Value>): ExecutionProcedure => @{
-  if (exps._tag === "Nil") @{
-    return () => Effect.fail(new RuntimeError(@{ message: "Empty sequence: ANALYZE", detail: "" @}));
+const analyzeSequence = (
+  statements: ReadonlyArray<Decl | Stmt>,
+): StatementProcedure => @{
+  let combined: StatementProcedure = () => @{ tag: "normal",
+    value: undefined @};
+  for (let index = statements.length - 1;
+    index >= 0;
+    index = index - 1) @{
+    const statement = statements[index];
+    if (statement !== undefined) @{
+      combined = sequentially(analyzeStatement(statement), combined);
+    @}
   @}
-  const loop = (first: ExecutionProcedure, rest: List<Value>): ExecutionProcedure =>
-    rest._tag === "Nil" ? first : loop(sequentially(first, analyze(rest.head)), rest.tail);
-  return loop(analyze(exps.head), exps.tail);
+  return combined;
 @};
 @end example
 
 @noindent
-To analyze an application, we analyze the operator and operands and construct
-an execution procedure that calls the operator execution procedure (to obtain
-the actual procedure to be applied) and the operand execution procedures (to
+To analyze an application, we analyze the callee and arguments and construct
+an execution procedure that calls the callee execution procedure (to obtain
+the actual procedure to be applied) and the argument execution procedures (to
 obtain the actual arguments).  We then pass these to
 @code{executeApplication}, which is the analog of @code{applyProcedure} in
 @ref{4.1.1}.  @code{executeApplication} differs from @code{applyProcedure} in that the
-procedure body for a compound procedure has already been analyzed, so there is
-no need to do further analysis.  Instead, we just call the execution procedure
+procedure body for a closure has already been analyzed, so there is
+no need to do further analysis.  Instead, we just call the prepared
+procedure
 for the body on the extended environment.
 
 @example typescript
-export const analyzeApplication = (exp: Cons<Value>): ExecutionProcedure => @{
-  const fproc = analyze(operator(exp));
-  const aprocs = toArray(operands(exp)).map(analyze);
-  return (env) =>
-    Effect.flatMap(fproc(env), (procedure) =>
-      Effect.flatMap(runOperands(aprocs, env), (args) => executeApplication(procedure, args)),
-    );
+export const analyzeApplication = (
+  callee: Expr,
+  args: ReadonlyArray<Arg>,
+): ExecutionProcedure => @{
+  const fproc = analyze(callee);
+  const aprocs = args.map((arg) => (@{
+    proc: analyze(arg.expr),
+    spread: arg.kind === "spread",
+  @}));
+  return (env) => @{
+    const procedure = fproc(env);
+    if (procedure.tag !== "ok") @{
+      return procedure;
+    @}
+    const values = runOperands(aprocs, env);
+    if (values.tag !== "ok") @{
+      return values;
+    @}
+    return executeApplication(procedure.value, values.value);
+  @};
 @};
 
 const runOperands = (
-  aprocs: ReadonlyArray<ExecutionProcedure>,
-  env: Env,
-): Effect.Effect<List<Value>, EvaluationError> => @{
+  aprocs: ReadonlyArray<
+    @{ proc: ExecutionProcedure; spread: boolean @}
+  >,
+  env: Env
+): Outcome => @{
   const args: Value[] = [];
-  const runFrom = (i: number): Effect.Effect<List<Value>, EvaluationError> => @{
-    const aproc = aprocs[i];
-    if (aproc === undefined) @{
-      return Effect.succeed(nil);
+  for (const aproc of aprocs) @{
+    const value = aproc.proc(env);
+    if (value.tag !== "ok") @{
+      return value;
     @}
-    return Effect.flatMap(aproc(env), (value) => @{
-      args.push(value);
-      return runFrom(i + 1);
-    @});
-  @};
-  return Effect.map(runFrom(0), () => fromValues(args));
+    if (!aproc.spread) @{
+      args.push(value.value);
+    @} else if (
+      value.value !== null &&
+      typeof value.value === "object" &&
+      value.value.tag === "array"
+    ) @{
+      for (const item of value.value.items) @{
+        args.push(item);
+      @}
+    @} else @{
+      return fail(
+          @{ tag: "bad-operand",
+          operator: "spread",
+          detail: "spread of a non-array" @}
+        );
+    @}
+  @}
+  return ok(args);
 @};
 
-export const executeApplication = (
+const executeApplication = (
   procedure: Value,
-  args: List<Value>,
-): Effect.Effect<Value, EvaluationError> => @{
-  if (procedure._tag === "Primitive") @{
+  args: Value[]
+): Outcome => @{
+  if (isPrimitive(procedure)) @{
     return applyPrimitiveProcedure(procedure, args);
   @}
-  if (procedure._tag === "Compound") @{
-    const head = procedure.body._tag === "Cons" ? procedure.body.head : undefined;
-    if (head !== undefined && head._tag === "Execution") @{
-      return Effect.flatMap(extendEnvironment(procedure.params, args, procedure.env), head.run);
+  if (isClosure(procedure)) @{
+    const frame = extendEnvironment(procedure, args);
+    if (frame.tag !== "ok") @{
+      return frame;
     @}
-    return Effect.flatMap(extendEnvironment(procedure.params, args, procedure.env), (newEnv) =>
-      evalSequence(procedure.body, newEnv),
-    );
+    const completion = bodyProcedure(procedure.body)(frame.value);
+    return executeProgram(completion);
   @}
-  return Effect.fail(new NotAProcedure(@{ value: format(procedure) @}));
+  return fail(@{ tag: "not-callable", detail: format(procedure) @});
 @};
 @end example
+
+@noindent
+The @code{executeProgram} helper is the same fold @code{applyProcedure}
+of @ref{4.1.1} performs: a normal or returned completion becomes the call's
+value, an uncaught guest throw becomes @code{guest-throw}, and a stray
+@code{break} or @code{continue} is reported.
 
 @noindent
 Our new evaluator uses the same data structures, syntax procedures, and
@@ -2354,30 +3208,36 @@ run-time support procedures as in @ref{4.1.2}, @ref{4.1.3}, and
 
 @quotation
 @strong{@anchor{Exercise 4.22}Exercise 4.22:} Extend the evaluator in this
-section to support the special form @code{let}.  (See @ref{Exercise 4.6}.)
+section to support the grouped binding form of @ref{Exercise 4.6}.  (See
+@ref{Exercise 4.6}.)
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.23}Exercise 4.23:} Alyssa P. Hacker doesn't
 understand why @code{analyzeSequence} needs to be so complicated.  All the
 other analysis procedures are straightforward transformations of the
-corresponding evaluation procedures (or @code{evaluate} clauses) in
+corresponding evaluation procedures (or @code{evaluate} cases) in
 @ref{4.1.1}.  She expected @code{analyzeSequence} to look like this:
 
 @example typescript
-const analyzeSequenceAlyssa = (exps: List<Value>): ExecutionProcedure => @{
+const analyzeSequenceAlyssa = (
+  statements: ReadonlyArray<Decl | Stmt>,
+): StatementProcedure => @{
+  const procs = statements.map(analyzeStatement);
   const executeSequence = (
-    procs: ReadonlyArray<ExecutionProcedure>,
+    inner: ReadonlyArray<StatementProcedure>,
     env: Env,
-  ): Effect.Effect<Value, EvaluationError> =>
-    procs.length === 1
-      ? procs[0](env)
-      : Effect.flatMap(procs[0](env), () => executeSequence(procs.slice(1), env));
-  const procs = toArray(exps).map(analyze);
-  if (procs.length === 0) @{
-    return () =>
-      Effect.fail(new RuntimeError(@{ message: "Empty sequence: ANALYZE", detail: "" @}));
-  @}
+  ): Completion => @{
+    const first = inner[0];
+    if (first === undefined) @{
+      return @{ tag: "normal", value: undefined @};
+    @}
+    const firstCompletion = first(env);
+    return firstCompletion.tag === "normal" &&
+      inner.length > 1
+      ? executeSequence(inner.slice(1), env)
+      : firstCompletion;
+  @};
   return (env) => executeSequence(procs, env);
 @};
 @end example
@@ -2386,15 +3246,15 @@ Eva Lu Ator explains to Alyssa that the version in the text does more of the
 work of evaluating a sequence at analysis time.  Alyssa's sequence-execution
 procedure, rather than having the calls to the individual execution procedures
 built in, loops through the procedures in order to call them: In effect,
-although the individual expressions in the sequence have been analyzed, the
+although the individual statements in the sequence have been analyzed, the
 sequence itself has not been.
 
 Compare the two versions of @code{analyzeSequence}.  For example, consider the
 common case (typical of procedure bodies) where the sequence has just one
-expression.  What work will the execution procedure produced by Alyssa's
+statement.  What work will the execution procedure produced by Alyssa's
 program do?  What about the execution procedure produced by the program in the
 text above?  How do the two versions compare for a sequence with two
-expressions?
+statements?
 @end quotation
 
 @quotation
@@ -2407,9 +3267,9 @@ that is spent in analysis versus execution for various procedures.
 @quotation
 @strong{In this language: the metacircular evaluator.}
 
-The evaluator reads Lisp text into the edition's cons-list values, classifies
-forms through syntax procedures, and evaluates them in environments that hold
-bindings.  The later analysis pass turns each expression into an execution
-procedure, while typed Effect failures carry evaluation errors back to the
-driver.
+The evaluator reads checked TypeScript source through the shared reader,
+classifies nodes through syntax procedures, and evaluates them in environments
+that hold shared cells.  The later analysis pass turns each expression into an
+execution procedure, while the typed @code{Outcome} carries evaluation errors
+back to the driver.
 @end quotation

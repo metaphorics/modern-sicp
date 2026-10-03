@@ -2,226 +2,180 @@
 // Original exercise
 
 /**
- * Exercise 4.5: cond's additional clause syntax (test => recipient). If
- * test evaluates to something other than false, recipient is evaluated;
- * its value must be a procedure of one argument, and that procedure is
- * then invoked on the value of test. The expansion below follows the
- * module's expand-clauses shape, and an arrow clause becomes a lambda
- * application that binds the test value once, so the test is never
- * evaluated twice.
+ * Exercise 4.5 (host-language replacement keeping the number and the
+ * case-analysis objective): add a recipient clause to the switch case
+ * analysis, the typed analog of the book's `(test => recipient)` clause.
+ * A recipient is a one-argument procedure called with the matched value.
+ * `switchToIf` is the 4.1.6-style transformation the book prescribes:
+ * the discriminant is evaluated exactly once and bound as
+ * `@@switch-value`, then the clauses become a nest of ifs comparing
+ * `@@switch-value` with each case test. A recipient clause's consequent
+ * is the recipient applied to `@@switch-value`; a body clause runs its
+ * body. The single binding is what makes the test run once and its value
+ * reach the recipient, the same shape the book recommends for the arrow
+ * clause.
  */
-import { Effect } from "effect";
-
+import { Session } from "../../packages/ch4/src/01-metacircular.js";
+import type { Env } from "../../packages/ch4/src/runtime/env.js";
+import type { Outcome } from "../../packages/ch4/src/runtime/errors.js";
+import { outcomeOf } from "../../packages/ch4/src/runtime/errors.js";
 import {
-  applyPrimitiveProcedure,
-  assignmentValue,
-  assignmentVariable,
-  beginActions,
-  condActions,
-  condClauses,
-  condPredicate,
-  defineVariableValue,
-  definitionValue,
-  definitionVariable,
-  extendEnvironment,
-  falseValue,
-  firstExp,
-  firstOperand,
-  ifAlternative,
-  ifConsequent,
-  ifPredicate,
-  isAssignment,
-  isBegin,
-  isCond,
-  isCondElseClause,
-  isDefinition,
-  isIf,
-  isLambda,
-  isLastExp,
-  isPair,
-  isQuoted,
-  isSelfEvaluating,
-  isTrue,
-  isVariable,
-  lambdaBody,
-  lambdaParameters,
-  lookupVariableValue,
-  makeIf,
-  makeLambda,
-  makeProcedure,
-  noOperands,
-  ok,
-  operands,
-  operator,
-  restExps,
-  restOperands,
-  sequenceToExp,
-  setVariableValue,
-  symbol,
-  textOfQuotation,
-} from "../../packages/ch4/src/01-metacircular.js";
-import type { Env, Evaluate, Value } from "../../packages/ch4/src/core.js";
-import {
-  type EvaluationError,
-  NotAProcedure,
-  RuntimeError,
-  UnknownSyntax,
-} from "../../packages/ch4/src/errors.js";
-import type { Cons, List } from "../../packages/ch4/src/list.js";
-import { cons, list, nil } from "../../packages/ch4/src/list.js";
-import { format } from "../../packages/ch4/src/read.js";
+  bin,
+  block,
+  call,
+  type Decl,
+  type Expr,
+  exprStmt,
+  ident,
+  ifStmt,
+  type Stmt,
+  varDecl,
+} from "../../packages/ch4/src/syntax/ast.js";
+import type { Span } from "../../packages/ch4/src/syntax/diagnostics.js";
 
-const isArrowClause = (clause: Value): boolean => {
-  if (!isPair(clause)) {
-    return false;
+/** The generated name the discriminant is bound to exactly once. */
+export const switchValueName = "@@switch-value";
+
+/** A case clause whose match runs a recipient on the matched value. */
+export interface RecipientClause {
+  readonly kind: "recipient";
+  readonly test: Expr;
+  readonly recipient: Expr;
+  readonly span: Span;
+}
+
+/** A case clause whose match runs its body. */
+export interface BodyClause {
+  readonly kind: "body";
+  readonly test: Expr;
+  readonly body: ReadonlyArray<Decl | Stmt>;
+  readonly span: Span;
+}
+
+/** One clause of the extended case analysis. */
+export type SwitchClause = BodyClause | RecipientClause;
+
+/** The switch case analysis with recipient clauses. */
+export interface RecipientSwitch {
+  readonly tag: "switch-recipient";
+  readonly discriminant: Expr;
+  readonly clauses: ReadonlyArray<SwitchClause>;
+  readonly defaultBody: ReadonlyArray<Decl | Stmt> | null;
+  readonly span: Span;
+}
+
+/** A recipient clause: `case test => recipient`. */
+export const recipientClause = (
+  test: Expr,
+  recipient: Expr,
+  span: Span = test.span,
+): RecipientClause => ({
+  kind: "recipient",
+  test,
+  recipient,
+  span,
+});
+
+/** A body clause: `case test: body`. */
+export const bodyClause = (
+  test: Expr,
+  body: ReadonlyArray<Decl | Stmt>,
+  span: Span = test.span,
+): BodyClause => ({ kind: "body", test, body, span });
+
+/** The extended case analysis over one discriminant. */
+export const recipientSwitch = (
+  discriminant: Expr,
+  clauses: ReadonlyArray<SwitchClause>,
+  defaultBody: ReadonlyArray<Decl | Stmt> | null = null,
+): RecipientSwitch => ({
+  tag: "switch-recipient",
+  discriminant,
+  clauses,
+  defaultBody,
+  span: discriminant.span,
+});
+
+// ---------------------------------------------------------------------
+// 4.1.2 syntax procedures
+// ---------------------------------------------------------------------
+
+/** The discriminant expression of the analysis. */
+export const switchDiscriminant = (node: RecipientSwitch): Expr => node.discriminant;
+
+/** The clauses of the analysis, in source order. */
+export const switchClauses = (node: RecipientSwitch): ReadonlyArray<SwitchClause> => node.clauses;
+
+/** The test of one clause. */
+export const clauseTest = (clause: SwitchClause): Expr => clause.test;
+
+/** Whether this clause carries a recipient instead of a body. */
+export const isRecipientClause = (clause: SwitchClause): clause is RecipientClause =>
+  clause.kind === "recipient";
+
+/** The recipient of a recipient clause. */
+export const clauseRecipient = (clause: RecipientClause): Expr => clause.recipient;
+
+// ---------------------------------------------------------------------
+// switchToIf and evaluation
+// ---------------------------------------------------------------------
+
+const chainToIf = (
+  clauses: ReadonlyArray<SwitchClause>,
+  index: number,
+  fallback: Stmt | null,
+): Stmt | null => {
+  const clause = clauses[index];
+  if (clause === undefined) {
+    return fallback;
   }
-  const marker = clause.tail;
-  return marker._tag === "Cons" && isSymbolName(marker.head, "=>") && marker.tail._tag === "Cons";
+  const test = bin("===", ident(switchValueName, clause.span), clause.test, clause.span);
+  const consequent = isRecipientClause(clause)
+    ? exprStmt(
+        call(clause.recipient, [ident(switchValueName, clause.span)], clause.span),
+        clause.span,
+      )
+    : { tag: "block" as const, body: clause.body, span: clause.span };
+  return ifStmt(test, consequent, chainToIf(clauses, index + 1, fallback), clause.span);
 };
 
-const isSymbolName = (value: Value, name: string): boolean =>
-  value._tag === "Symbol" && value.name === name;
-
-const clauseRecipient = (clause: Cons<Value>): Value => {
-  const afterMarker = clause.tail;
-  return afterMarker._tag === "Cons" && afterMarker.tail._tag === "Cons"
-    ? afterMarker.tail.head
-    : nil;
+/**
+ * The transformation the book prescribes: bind the discriminant once as
+ * `@@switch-value`, then nest one `if` per clause, comparing the bound
+ * value with each case test. A recipient clause applies its recipient to
+ * the bound value; a body clause runs its body; the default body is the
+ * final `else`.
+ */
+export const switchToIf = (node: RecipientSwitch): Stmt => {
+  const fallback: Stmt | null =
+    node.defaultBody === null
+      ? exprStmt({ tag: "undefined", span: node.span }, node.span)
+      : { tag: "block", body: node.defaultBody, span: node.span };
+  const chain = chainToIf(node.clauses, 0, fallback);
+  const items: Array<Decl | Stmt> = [
+    varDecl("const", switchValueName, node.discriminant, null, node.span),
+  ];
+  if (chain !== null) {
+    items.push(chain);
+  }
+  return { tag: "block", body: items, span: node.span };
 };
 
-const expandClausesWithArrow = (clauses: List<Value>): Value => {
-  if (clauses._tag === "Nil") {
-    return falseValue;
-  }
-  const first = clauses.head;
-  if (!isPair(first)) {
-    return falseValue;
-  }
-  if (isCondElseClause(first)) {
-    return sequenceToExp(condActions(first));
-  }
-  if (isArrowClause(first)) {
-    const bound = symbol("t");
-    return cons(
-      makeLambda(
-        list(bound),
-        cons(
-          makeIf(
-            bound,
-            cons(clauseRecipient(first), cons(bound, nil)),
-            expandClausesWithArrow(clauses.tail),
-          ),
-          nil,
-        ),
-      ),
-      cons(condPredicate(first), nil),
-    );
-  }
-  return makeIf(
-    condPredicate(first),
-    sequenceToExp(condActions(first)),
-    expandClausesWithArrow(clauses.tail),
-  );
-};
-
-/** The book's cond->if, extended with arrow clauses. */
-export const condToIfWithArrow = (exp: Cons<Value>): Value =>
-  expandClausesWithArrow(condClauses(exp));
-
-export const evalWithArrowCond: Evaluate = (exp, env) => {
-  if (isSelfEvaluating(exp)) {
-    return Effect.succeed(exp);
-  }
-  if (isVariable(exp)) {
-    return lookupVariableValue(exp, env);
-  }
-  if (isQuoted(exp)) {
-    return Effect.succeed(textOfQuotation(exp));
-  }
-  if (isAssignment(exp)) {
-    return evalAssignmentLocal(exp, env);
-  }
-  if (isDefinition(exp)) {
-    return evalDefinitionLocal(exp, env);
-  }
-  if (isIf(exp)) {
-    return evalIfLocal(exp, env);
-  }
-  if (isLambda(exp)) {
-    return Effect.succeed(makeProcedure(lambdaParameters(exp), lambdaBody(exp), env));
-  }
-  if (isBegin(exp)) {
-    return evalSequenceLocal(beginActions(exp), env);
-  }
-  if (isCond(exp)) {
-    return evalWithArrowCond(condToIfWithArrow(exp), env);
-  }
-  if (isPair(exp)) {
-    return Effect.flatMap(evalWithArrowCond(operator(exp), env), (procedure) =>
-      Effect.flatMap(listOfValuesLocal(operands(exp), env), (args) => applyLocal(procedure, args)),
-    );
-  }
-  return Effect.fail(new UnknownSyntax({ expr: format(exp) }));
-};
-
-const evalSequenceLocal = (seq: List<Value>, env: Env): Effect.Effect<Value, EvaluationError> => {
-  if (seq._tag === "Nil") {
-    return Effect.fail(new RuntimeError({ message: "Empty sequence: EVAL", detail: "" }));
-  }
-  if (isLastExp(seq)) {
-    return evalWithArrowCond(firstExp(seq), env);
-  }
-  return Effect.flatMap(evalWithArrowCond(firstExp(seq), env), () =>
-    evalSequenceLocal(restExps(seq), env),
-  );
-};
-
-const applyLocal = (procedure: Value, args: List<Value>): Effect.Effect<Value, EvaluationError> => {
-  if (procedure._tag === "Primitive") {
-    return applyPrimitiveProcedure(procedure, args);
-  }
-  if (procedure._tag === "Compound") {
-    return Effect.flatMap(extendEnvironment(procedure.params, args, procedure.env), (newEnv) =>
-      evalSequenceLocal(procedure.body, newEnv),
-    );
-  }
-  return Effect.fail(new NotAProcedure({ value: format(procedure) }));
-};
-
-const listOfValuesLocal = (
-  exps: List<Value>,
+/** Evaluates the extended analysis through its `switchToIf` lowering. */
+export const evalWithRecipientSwitch = (
+  node: RecipientSwitch,
   env: Env,
-): Effect.Effect<List<Value>, EvaluationError> =>
-  noOperands(exps)
-    ? Effect.succeed(nil)
-    : Effect.flatMap(evalWithArrowCond(firstOperand(exps), env), (first) =>
-        Effect.map(listOfValuesLocal(restOperands(exps), env), (rest) => cons(first, rest)),
-      );
-
-const evalIfLocal = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(evalWithArrowCond(ifPredicate(exp), env), (predicate) =>
-    isTrue(predicate)
-      ? evalWithArrowCond(ifConsequent(exp), env)
-      : evalWithArrowCond(ifAlternative(exp), env),
-  );
-
-const evalAssignmentLocal = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(evalWithArrowCond(assignmentValue(exp), env), (value) =>
-    Effect.map(setVariableValue(assignmentVariable(exp), value, env), () => ok),
-  );
-
-const evalDefinitionLocal = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(evalWithArrowCond(definitionValue(exp), env), (value) =>
-    Effect.map(defineVariableValue(definitionVariable(exp), value, env), () => ok),
-  );
+  session: Session = new Session("core"),
+): Outcome => outcomeOf(session.execStatement(switchToIf(node), env));
 
 export function ex_4_05(): string {
   return (
-    "An arrow clause (test => recipient) expands like an ordinary clause except that the " +
-    "consequent is a lambda application: the test value is bound to a parameter and the " +
-    "recipient is called on it, so a true test is evaluated once and handed to the " +
-    "recipient, and a false test moves on to the remaining clauses. With this expansion an " +
-    "assoc-driven lookup defined in the evaluated language returns the matched record's " +
-    "value, and missing keys still fall through to the else clause."
+    "The recipient clause is added to the switch case analysis: when a case test matches, " +
+    "a one-argument recipient procedure is called with the matched value. `switchToIf` " +
+    "binds the discriminant exactly once as `@@switch-value` and nests the clause tests " +
+    "as ifs, so the discriminant expression runs once and its value reaches the " +
+    'recipient — over `entries = [{key:"a",value:1},{key:"b",value:2}]`, the analysis ' +
+    'of `lookup("b", entries)` with recipient `entryValue` answers 2, `lookup("a", ...)` ' +
+    "answers 1, and an unmatched discriminant falls to the default body."
   );
 }

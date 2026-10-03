@@ -7,30 +7,17 @@ import arrow.core.raise.Raise
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
 
-/**
- * One frame plus the frame it extends. Names bind [Value]s; the frame is a
- * persistent map behind a `var`, so `define` rebinds this node's map and
- * every holder of the node sees it — the book's `define` and `set!` — while
- * [snapshot] gives 4.3's backtracking evaluator an isolated copy.
- */
+/** Transitional legacy environment over [Value]. Use [BindingFrame] for host data. */
 public class Env(
-    /** This frame's bindings; `define` rebinds it, `set!` rebinds the map
-     * of the frame that owns the name. */
     public var frame: PersistentMap<String, Value>,
-    /** The frame this one extends, if any. */
     public val parent: Env?,
 ) {
     public companion object {
-        /** A fresh frame with no outer frame: the global environment of 4.1. */
         public fun global(): Env = Env(persistentMapOf(), null)
 
-        /** A fresh frame extending `parent`: the book's `extend-environment`. */
         public fun child(parent: Env): Env = Env(persistentMapOf(), parent)
 
-        /** A fresh frame binding `names` to `values` over `parent`; a
-         * non-null `rest` binds the leftover values as a list, the book's
-         * dotted parameter. */
-        context(r: Raise<SchemeError>)
+        context(r: Raise<DataError>)
         public fun extend(
             names: List<String>,
             values: List<Value>,
@@ -38,22 +25,18 @@ public class Env(
             rest: String? = null,
         ): Env {
             if (rest == null && names.size != values.size) {
-                r.raise(SchemeError.WrongArity("extend", names.size.toString(), values.size))
+                r.raise(DataError.BadDatum("extend: expected ${names.size} arguments, got ${values.size}"))
             }
             if (rest != null && values.size < names.size) {
-                r.raise(SchemeError.WrongArity("extend", "at least ${names.size}", values.size))
+                r.raise(DataError.BadDatum("extend: expected at least ${names.size} arguments, got ${values.size}"))
             }
             val bound = names.zip(values).toMap(persistentMapOf<String, Value>().builder())
             val env = Env(bound.build(), parent)
-            if (rest != null) {
-                env.frame = env.frame.putting(rest, vlist(values.drop(names.size)))
-            }
+            if (rest != null) env.frame = env.frame.putting(rest, vlist(values.drop(names.size)))
             return env
         }
     }
 
-    /** The book's `define-variable!`: binds (or rebinds) `name` in this
-     * frame, shadowing any outer binding without touching it. */
     public fun define(
         name: String,
         value: Value,
@@ -61,21 +44,18 @@ public class Env(
         frame = frame.putting(name, value)
     }
 
-    /** The book's `lookup-variable-value`: walks the chain outwards. */
-    context(r: Raise<SchemeError>)
+    context(r: Raise<DataError>)
     public fun lookup(name: String): Value {
         var cursor: Env? = this
         while (cursor != null) {
-            val hit = cursor.frame[name]
-            if (hit != null) return hit
+            val value = cursor.frame[name]
+            if (value != null) return value
             cursor = cursor.parent
         }
-        r.raise(SchemeError.Unbound(name))
+        r.raise(DataError.BadDatum(name))
     }
 
-    /** The book's `set-variable-value!`: rebinds the nearest existing
-     * binding of `name` on the chain without creating one. */
-    context(r: Raise<SchemeError>)
+    context(r: Raise<DataError>)
     public fun set(
         name: String,
         value: Value,
@@ -88,12 +68,8 @@ public class Env(
             }
             cursor = cursor.parent
         }
-        r.raise(SchemeError.Unbound(name))
+        r.raise(DataError.BadDatum(name))
     }
 
-    /** A deep copy of the chain: new nodes sharing the same persistent
-     * maps, so `define` and `set!` on the copy never reach the original.
-     * The nondeterministic evaluator snapshots at each `amb` choice so an
-     * abandoned branch's assignments die with it. */
     public fun snapshot(): Env = Env(frame, parent?.snapshot())
 }

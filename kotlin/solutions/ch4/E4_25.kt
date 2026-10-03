@@ -3,78 +3,72 @@
 
 package sicp.ch4.solutions
 
-import arrow.core.raise.either
-import sicp.ch4.Evaluator
-import sicp.ch4.LazyEvaluator
-import sicp.ch4.OutputSink
-import sicp.ch4.formatError
-import sicp.ch4.lazyTranscriptOn
-import sicp.ch4.parseProgram
-import sicp.ch4.printValue
-import sicp.ch4.readProgram
-import sicp.ch4.setupEnvironment
-import sicp.runtime.DefineE
-import sicp.runtime.Env
+import sicp.ch4.Direct
+import sicp.ch4.LazyModule
 
-// Exercise 4.25: `unless` under delayed arguments. In the lazy evaluator
-// `unless` is an ordinary procedure whose condition is forced only when the
-// body's `if` demands it and whose two arms are thunks, so the
-// `unless`-based `factorial` bottoms out at 1 and the product climbs back
-// up: `(factorial 5)` answers 120. In an applicative-order language the
-// arms are evaluated before `unless` is ever called, which the armed call
-// shows directly -- `(/ 1 0)` raises before `42` is even reached -- and
-// which dooms the recursion: `(* n (factorial (- n 1)))` is evaluated on
-// every entry, so the descent never reaches the guard. The budgeted run
-// turns that unbounded descent into a typed fault instead of a hang.
+// Exercise 4.25: `unless` under delayed arguments. In the lazy experiment a
+// compound procedure's unannotated parameters are delayed, so `unless`'s
+// three operands reach it as memoized thunks: the condition is forced only
+// when the body's `if` demands it and the unchosen arm is never forced.
+// The `unless`-based `factorial` therefore bottoms out at 1 and the product
+// climbs back up: `factorial(5)` answers 120. In an applicative-order run
+// every operand evaluates before `unless` is ever entered, which the armed
+// call shows directly -- `1 / 0` raises before `42` is even reached -- and
+// which dooms the recursion: `n * factorial(n - 1)` evaluates on every
+// entry, so the descent never reaches the guard. The engine has no step
+// budget, so the probe carries an honest entry budget of its own: under
+// strict evaluation the descent exhausts it and the run reports the budget
+// instead of hanging the suite.
 
-/** The statement's definitions, shared by the lazy and strict runs. */
-private val FACTORIAL_PROGRAM: String =
+/** The statement's definitions and recursion, carrying the entry budget.
+ * The lazy run answers 120; the strict run exhausts the budget. */
+internal val UNLESS_FACTORIAL_PROGRAM: String =
     """
-    (define (unless condition usual-value exceptional-value)
-      (if condition exceptional-value usual-value))
-    (define (factorial n)
-      (unless (= n 1)
-              (* n (factorial (- n 1)))
-              1))
-    (factorial 5)
+var entries: Long = 0L
+
+fun unless(condition: Boolean, usual: Long, exceptional: Long): Long = if (condition) exceptional else usual
+
+fun factorial(n: Long): Long {
+    entries = entries + 1L
+    if (entries > 200L) {
+        return -1L
+    }
+    return unless(n == 1L, n * factorial(n - 1L), 1L)
+}
+
+fun main() {
+    val answer = factorial(5L)
+    if (entries > 200L) {
+        println("entry budget exhausted")
+    } else {
+        println(answer)
+    }
+}
+    """.trimIndent()
+
+/** The armed call: the operands evaluate before `unless` is entered, so the
+ * exceptional arm's division raises first. */
+internal val ARMED_UNLESS_PROGRAM: String =
+    """
+fun unless(condition: Boolean, usual: Long, exceptional: Long): Long = if (condition) exceptional else usual
+
+fun main() {
+    println(unless(1L == 1L, 1L / 0L, 42L))
+}
     """.trimIndent()
 
 /** The recursion under delayed arguments bottoms out and answers.
  * => "120\n" */
-public fun lazyFactorialTranscript(): String = lazyTranscriptOn(::LazyEvaluator, FACTORIAL_PROGRAM)
+public fun lazyFactorialTranscript(): String = outcomeText(LazyModule.run(UNLESS_FACTORIAL_PROGRAM).map { it.result })
 
-/** The armed call on the strict evaluator: the arms evaluate before
- * `unless` is called, so the exceptional arm raises first.
- * => "Error: division by zero\n" */
-public fun strictArmedUnlessTranscript(): String =
-    transcriptOn(
-        ::Evaluator,
-        """
-        (define (unless condition usual-value exceptional-value)
-          (if condition exceptional-value usual-value))
-        (unless (= 1 1) (/ 1 0) 42)
-        """.trimIndent(),
-    )
+/** The armed call under applicative order: `1 / 0` raises before `42` is
+ * reached. => "Error: DivisionByZero\n" */
+public fun strictArmedUnlessTranscript(): String = outcomeText(Direct.run(ARMED_UNLESS_PROGRAM))
 
-/** The same recursion on the strict evaluator under a step budget: the
- * arms evaluate on every entry, so the descent never reaches the guard and
- * the budget fires. => "Error: machine fault: step budget exhausted after
- * 200 steps\n" */
-public fun strictFactorialTranscript(): String {
-    val sink = OutputSink()
-    val env = setupEnvironment(sink)
-    val evaluator = Bounded(env, 200)
-    either {
-        for (expr in parseProgram(readProgram(FACTORIAL_PROGRAM))) {
-            if (expr is DefineE) {
-                evaluator.eval(expr, env) // a define prints nothing
-                continue
-            }
-            sink.line(printValue(evaluator.eval(expr, env)))
-        }
-    }.fold(
-        { e -> sink.line("Error: ${formatError(e)}") },
-        { },
-    )
-    return sink.toString()
-}
+/** The same recursion under applicative order and the entry budget: the
+ * arms evaluate on every entry, so the descent never reaches the guard.
+ * => "entry budget exhausted\n" */
+public fun strictFactorialTranscript(): String = outcomeText(Direct.run(UNLESS_FACTORIAL_PROGRAM))
+
+/** The strict armed run as data: the typed fault category, or null. */
+internal fun strictArmedCategory(): String? = Direct.run(ARMED_UNLESS_PROGRAM).fold({ null }, { it.error?.category })

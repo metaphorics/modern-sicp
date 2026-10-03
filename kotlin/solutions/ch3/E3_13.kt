@@ -3,14 +3,10 @@
 
 package sicp.ch3.exercises
 
-import sicp.runtime.VPair
-import sicp.runtime.setCdr
+import sicp.runtime.PairCell
 
-/**
- * The book's `make-cycle`: point the last pair of `x` back at `x` itself
- * and return `x`, closing the chain into a loop.
- */
-public fun makeCycle(x: VPair): VPair {
-    lastPair(x).setCdr(x)
+/** Close the final link of [x] back onto its first pair. */
+public fun makeCycle(x: PairCell): PairCell {
+    lastPair(x).second = x
     return x
 }

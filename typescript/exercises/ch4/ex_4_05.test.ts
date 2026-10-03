@@ -3,4 +3,4 @@
 
 import { test } from "vitest";
 
-test.todo("Exercise 4.5: cond arrow clauses");
+test.todo("Exercise 4.5: conditional arrow clauses");

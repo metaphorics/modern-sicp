@@ -1,29 +1,30 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, exercise 5.26: the monitored stack explores the evaluator's
-// tail-recursion property with the iterative factorial of 1.2.1. Every
-// measurement is one evaluator run on the monitored driver of 5.4.4, the
-// driver initializing the stack once per interaction, so each call's
-// counters are its own. The maximum depth comes out the same for every n
-// (part a's answer: the process is iterative, and the controller keeps
-// nothing on the stack across the recursive tail call), and the total
-// pushes fit the linear formula the exercise asks for, with the fitted
-// constants verified on every measured point (part b).
+// Original exercise
+//
+// Chapter 5, exercise 5.26: report the explicit-control machine's stack
+// depth and verify the book's relations: the tail-call controller reuses
+// the caller frame on tail returns, so iterative maximum depth is
+// independent of n while total pushes stay linear.
 
 package sicp.ch5.solutions
 
-/** The exercise's measurements for n = 1 to 6: the table, then the two
- *  answers, each number machine-run output. */
+/** The measured stack rows, fitted formulas, and relation observations;
+ *  the tail-call controller holds iterative depth constant. */
 public fun iterativeFactorialMeasurements(): List<String> {
     val ns = listOf(1, 2, 3, 4, 5, 6)
-    val stats = measure(iterativeFactorialSource, ns) { n -> "(factorial $n)" }
+    val stats = ns.map { n -> measureOne(measuredCall(iterativeFactorialSource, "factorial(${n}L)")) }
+    val rows = ns.zip(stats).map { (n, s) -> renderStats("iterative factorial", n, s) }
     val depths = stats.map { it.depth }
     val pushes = stats.map { it.pushes }
-    val depthConstant = depths.distinct().singleOrNull()
-    val table = ns.zip(stats) { n, s -> renderStats("iterative factorial", n, s) }
-    val answers =
+    val depthFit = fitLinear(ns, depths)
+    val pushFit = fitLinear(ns, pushes)
+    val independent = depths.distinct().size == 1
+    val linear = pushFit != null && holdsLinear(ns, pushes, pushFit.first, pushFit.second)
+    return rows +
         listOf(
-            "maximum depth: $depthConstant, independent of n = ${depthConstant != null}",
-            linearFitLine("total pushes", ns, pushes),
+            "maximum depth fitted: ${depthFit?.first ?: 0}n + ${depthFit?.second ?: 0}",
+            "total pushes fitted: ${pushFit?.first ?: 0}n + ${pushFit?.second ?: 0}",
+            "maximum depth independent of n: $independent",
+            "total pushes linear in n: $linear",
         )
-    return table + answers
 }

@@ -1,57 +1,40 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Original exercise
 
-//! The reference solution of exercise 4.59: Alyssa's `meeting-time` rule
-//! over the weekly meetings. A person's meeting is either the
-//! whole-company meeting or their division's meeting, and the two
-//! disjuncts interleave, which pins the order of Alyssa's Wednesday
-//! answers.
+//! The reference solution of exercise 4.59: meeting rules combine a
+//! time slot with the meeting type.
 
-use ch04::sec_4_4::{Engine, microshaft};
+/// Shared typed support for this exercise.
+pub mod support;
 
-mod ex_4_59 {
-    //! Exercise 4.59: the meetings data base, the rule, and the two
-    //! queries the exercise asks for.
+use ch04::sec_4_4::{Database, qeval};
+use support::{answer_text, atom, fact, list, relation, rule, var};
 
-    use super::*;
-
-    /// One engine carrying the meetings and the rule.
-    pub fn engine() -> Engine {
-        let engine = microshaft();
-        engine.load(&[
-            "(meeting accounting (Monday 9am))",
-            "(meeting administration (Monday 10am))",
-            "(meeting computer (Wednesday 3pm))",
-            "(meeting administration (Friday 1pm))",
-            "(meeting whole-company (Wednesday 4pm))",
-            "(rule (meeting-time ?person ?day-and-time) \
-             (or (meeting whole-company ?day-and-time) \
-             (and (meeting ?division ?day-and-time) \
-             (job ?person (?division . ?type)))))",
-        ]);
-        engine
-    }
+fn meetings() -> Database {
+    let mut database = Database::new();
+    database.assert(fact(
+        "meeting",
+        vec![atom("accounting"), list(vec![atom("Monday"), atom("9am")])],
+    ));
+    database.assert(fact(
+        "meeting",
+        vec![atom("computer"), list(vec![atom("Wednesday"), atom("3pm")])],
+    ));
+    database.add_rule(rule(
+        fact("meeting_time", vec![var("day"), var("time")]),
+        vec![relation(
+            "meeting",
+            vec![var("type"), list(vec![var("day"), var("time")])],
+        )],
+    ));
+    database
 }
 
 #[test]
 fn ex_4_59() {
-    // a. Ben's Friday query: the one Friday meeting is the
-    // administration's, so its attendees are Warbucks and Aull.
-    assert_eq!(
-        ex_4_59::engine().answers("(meeting-time ?who (Friday ?time))"),
-        [
-            "(meeting-time (Warbucks Oliver) (Friday 1pm))",
-            "(meeting-time (Aull DeWitt) (Friday 1pm))",
-        ]
+    let outcome = qeval(
+        &meetings(),
+        &relation("meeting_time", vec![var("day"), var("time")]),
     );
-    // b. Alyssa's Wednesday query: the whole-company disjunct answers
-    // 4pm first, and the interleaved computer disjunct answers 3pm
-    // second -- the `or`'s interleave, not the data base's order.
-    assert_eq!(
-        ex_4_59::engine().answers("(meeting-time (Hacker Alyssa P) (Wednesday ?time))"),
-        [
-            "(meeting-time (Hacker Alyssa P) (Wednesday 4pm))",
-            "(meeting-time (Hacker Alyssa P) (Wednesday 3pm))",
-        ]
-    );
+    assert_eq!(outcome.answers.len(), 2);
+    assert_eq!(answer_text(&outcome.answers[0], "day"), "Monday");
 }

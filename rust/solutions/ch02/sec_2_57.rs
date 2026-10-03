@@ -4,7 +4,7 @@
 //! The reference solution of exercise 2.57, one module and one test.
 
 mod ex_2_57 {
-    use sicp_runtime::{SchemeError, Symbol};
+    use sicp_runtime::{SicpError, Symbol};
     use std::fmt;
 
     /// The section's `Expr`, with `Sum` and `Product` holding any
@@ -71,7 +71,7 @@ mod ex_2_57 {
         }
     }
 
-    fn make_sum(a1: Expr, a2: Expr) -> Result<Expr, SchemeError> {
+    fn make_sum(a1: Expr, a2: Expr) -> Result<Expr, SicpError> {
         if is_number(&a1, 0) {
             return Ok(a2);
         }
@@ -79,12 +79,12 @@ mod ex_2_57 {
             return Ok(a1);
         }
         if let (Expr::Num(x), Expr::Num(y)) = (&a1, &a2) {
-            return Ok(Expr::Num(x.checked_add(*y).ok_or(SchemeError::Overflow)?));
+            return Ok(Expr::Num(x.checked_add(*y).ok_or(SicpError::Overflow)?));
         }
         Ok(Expr::Sum(vec![a1, a2]))
     }
 
-    fn make_product(m1: Expr, m2: Expr) -> Result<Expr, SchemeError> {
+    fn make_product(m1: Expr, m2: Expr) -> Result<Expr, SicpError> {
         if is_number(&m1, 0) || is_number(&m2, 0) {
             return Ok(Expr::Num(0));
         }
@@ -95,7 +95,7 @@ mod ex_2_57 {
             return Ok(m1);
         }
         if let (Expr::Num(x), Expr::Num(y)) = (&m1, &m2) {
-            return Ok(Expr::Num(x.checked_mul(*y).ok_or(SchemeError::Overflow)?));
+            return Ok(Expr::Num(x.checked_mul(*y).ok_or(SicpError::Overflow)?));
         }
         Ok(Expr::Product(vec![m1, m2]))
     }
@@ -107,9 +107,9 @@ mod ex_2_57 {
     /// to handle more than two terms is the entire adaptation.
     ///
     /// # Errors
-    /// [`SchemeError::Overflow`] on a numeric fold past the `i128`
+    /// [`SicpError::Overflow`] on a numeric fold past the `i128`
     /// range.
-    fn deriv(exp: &Expr, var: &Symbol) -> Result<Expr, SchemeError> {
+    fn deriv(exp: &Expr, var: &Symbol) -> Result<Expr, SicpError> {
         match exp {
             Expr::Num(_) => Ok(Expr::Num(0)),
             Expr::Var(x) => Ok(Expr::Num(i128::from(x == var))),

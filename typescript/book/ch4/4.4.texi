@@ -10,7 +10,8 @@ implementation, a substantial amount of methodological knowledge that frees the
 user from concern with many details of how a specified computation will
 progress.
 
-Most programming languages, including Lisp, are organized around computing the
+Most programming languages, including the guest language, are organized around
+computing the
 values of mathematical functions.  Expression-oriented languages (such as Lisp,
 Fortran, and Algol) capitalize on the ``pun'' that an expression that describes
 the value of a function may also be interpreted as a means of computing that
@@ -68,22 +69,26 @@ Part of the power comes from the fact that a single ``what is'' fact can be
 used to solve a number of different problems that would have different ``how
 to'' components.  As an example, consider the @code{append} operation, which
 takes two lists as arguments and combines their elements to form a single list.
-In a procedural language such as Lisp, we could define @code{append} in terms
-of the basic list constructor @code{cons}, as we did in @ref{2.2.1}:
+In a procedural language such as the guest language, we could define
+@code{append} in terms
+of the basic pair constructor of the runtime's list values, as we did in
+@ref{2.2.1}:
 
 @example typescript
 readAll(`
-(define (append x y)
-  (if (null? x) 
-      y 
-      (cons (car x) (append (cdr x) y))))
+  const append = (x: number[], y: number[]): number[] => @{
+    const first = x[0];
+    return first === undefined ? y : [first, ...append(x.slice(1), y)];
+  @};
 `);
 @end example
 
 @noindent
-This procedure can be regarded as a translation into Lisp of the following two
+This procedure can be regarded as a translation into the guest language of the
+following two
 rules, the first of which covers the case where the first list is empty and the
-second of which handles the case of a nonempty list, which is a @code{cons} of
+second of which handles the case of a nonempty list, which is a @code{cons}
+pair of
 two parts:
 
 @itemize @bullet
@@ -93,12 +98,15 @@ For any list @code{y}, the empty list and @code{y} @code{append} to form
 @code{y}.
 
 @item
-For any @code{u}, @code{v}, @code{y}, and @code{z}, @code{(cons u v)} and
-@code{y} @code{append} to form @code{(cons u z)} if @code{v} and @code{y}
+For any @code{u}, @code{v}, @code{y}, and @code{z}, a @code{cons} pair of
+@code{u} and @code{v} and
+@code{y} @code{append} to form a @code{cons} pair of @code{u} and @code{z} if
+@code{v} and @code{y}
 @code{append} to form @code{z}.@footnote{To see the correspondence between the
 rules and the procedure, let @code{x} in the procedure (where @code{x} is
-nonempty) correspond to @code{(cons u v)} in the rule.  Then @code{z} in the
-rule corresponds to the @code{append} of @code{(cdr x)} and @code{y}.}
+nonempty) correspond to the pair of @code{u} and @code{v} in the rule.  Then
+@code{z} in the
+rule corresponds to the @code{append} of the tail of @code{x} and @code{y}.}
 
 @end itemize
 
@@ -151,24 +159,27 @@ such as the ability to deal with numerical constraints such as the ones
 illustrated in the constraint-propagation system of @ref{3.3.5}.}
 
 Earlier in this chapter we explored the technology of implementing interpreters
-and described the elements that are essential to an interpreter for a Lisp-like
-language (indeed, to an interpreter for any conventional language).  Now we
+and described the elements that are essential to an interpreter for a
+language of this family (indeed, to an interpreter for any conventional language).  Now we
 will apply these ideas to discuss an interpreter for a logic programming
 language.  We call this language the @newterm{query language}, because it is
 very useful for retrieving information from data bases by formulating
 @newterm{queries}, or questions, expressed in the language.  Even though the
-query language is very different from Lisp, we will find it convenient to
+query language is very different from the guest language, we will find it
+convenient to
 describe the language in terms of the same general framework we have been using
 all along: as a collection of primitive elements, together with means of
 combination that enable us to combine simple elements to create more complex
 elements and means of abstraction that enable us to regard complex elements as
 single conceptual units.  An interpreter for a logic programming language is
-considerably more complex than an interpreter for a language like Lisp.
+considerably more complex than an interpreter for a language like the guest
+language.
 Nevertheless, we will see that our query-language interpreter contains many of
 the same elements found in the interpreter of @ref{4.1}.  In
 particular, there will be an ``eval'' part that classifies expressions
 according to type and an ``apply'' part that implements the language's
-abstraction mechanism (procedures in the case of Lisp, and @newterm{rules} in
+abstraction mechanism (procedures in the case of ordinary programs, and
+@newterm{rules} in
 the case of logic programming).  Also, a central role is played in the
 implementation by a frame data structure, which determines the correspondence
 between symbols and their associated values.  One additional interesting aspect
@@ -202,12 +213,21 @@ company personnel.  Here is the information about Ben Bitdiddle, the resident
 computer wizard:
 
 @example typescript
-readAll(`
-(address (Bitdiddle Ben) 
-         (Slumerville (Ridge Road) 10))
-(job (Bitdiddle Ben) (computer wizard))
-(salary (Bitdiddle Ben) 60000)
-`);
+queryAtom("address",
+  qlist(qtext("Bitdiddle"), qtext("Ben")),
+  qlist(qtext("Slumerville"),
+    qlist(qtext("Ridge"), qtext("Road")),
+    qtext("10")
+  )
+),
+queryAtom("job",
+  qlist(qtext("Bitdiddle"), qtext("Ben")),
+  qlist(qtext("computer"), qtext("wizard"))
+),
+queryAtom("salary",
+  qlist(qtext("Bitdiddle"), qtext("Ben")),
+  qtext("60000")
+);
 @end example
 
 @noindent
@@ -219,40 +239,92 @@ supervises two programmers and one technician.  Here is the information about
 them:
 
 @example typescript
-readAll(`
-(address (Hacker Alyssa P) 
-         (Cambridge (Mass Ave) 78))
-(job (Hacker Alyssa P) (computer programmer))
-(salary (Hacker Alyssa P) 40000)
-(supervisor (Hacker Alyssa P) (Bitdiddle Ben))
-
-(address (Fect Cy D) 
-         (Cambridge (Ames Street) 3))
-(job (Fect Cy D) (computer programmer))
-(salary (Fect Cy D) 35000)
-(supervisor (Fect Cy D) (Bitdiddle Ben))
-
-(address (Tweakit Lem E) 
-         (Boston (Bay State Road) 22))
-(job (Tweakit Lem E) (computer technician))
-(salary (Tweakit Lem E) 25000)
-(supervisor (Tweakit Lem E) (Bitdiddle Ben))
-`);
+queryAtom("address",
+  qlist(qtext("Hacker"), qtext("Alyssa"), qtext("P")),
+  qlist(qtext("Cambridge"),
+    qlist(qtext("Mass"), qtext("Ave")),
+    qtext("78")
+  )
+),
+queryAtom("job",
+  qlist(qtext("Hacker"), qtext("Alyssa"), qtext("P")),
+  qlist(qtext("computer"), qtext("programmer"))
+),
+queryAtom("salary",
+  qlist(qtext("Hacker"), qtext("Alyssa"), qtext("P")),
+  qtext("40000")
+),
+queryAtom("supervisor",
+  qlist(qtext("Hacker"), qtext("Alyssa"), qtext("P")),
+  qlist(qtext("Bitdiddle"), qtext("Ben"))
+),
+queryAtom("address",
+  qlist(qtext("Fect"), qtext("Cy"), qtext("D")),
+  qlist(qtext("Cambridge"),
+    qlist(qtext("Ames"), qtext("Street")),
+    qtext("3")
+  )
+),
+queryAtom("job",
+  qlist(qtext("Fect"), qtext("Cy"), qtext("D")),
+  qlist(qtext("computer"), qtext("programmer"))
+),
+queryAtom("salary",
+  qlist(qtext("Fect"), qtext("Cy"), qtext("D")),
+  qtext("35000")
+),
+queryAtom("supervisor",
+  qlist(qtext("Fect"), qtext("Cy"), qtext("D")),
+  qlist(qtext("Bitdiddle"), qtext("Ben"))
+),
+queryAtom(
+  "address",
+  qlist(qtext("Tweakit"), qtext("Lem"), qtext("E")),
+  qlist(
+    qtext("Boston"),
+    qlist(qtext("Bay"), qtext("State"), qtext("Road")),
+    qtext("22")
+  )
+),
+queryAtom("job",
+  qlist(qtext("Tweakit"), qtext("Lem"), qtext("E")),
+  qlist(qtext("computer"), qtext("technician"))
+),
+queryAtom("salary",
+  qlist(qtext("Tweakit"), qtext("Lem"), qtext("E")),
+  qtext("25000")
+),
+queryAtom("supervisor",
+  qlist(qtext("Tweakit"), qtext("Lem"), qtext("E")),
+  qlist(qtext("Bitdiddle"), qtext("Ben"))
+);
 @end example
 
 @noindent
 There is also a programmer trainee, who is supervised by Alyssa:
 
 @example typescript
-readAll(`
-(address (Reasoner Louis) 
-         (Slumerville (Pine Tree Road) 80))
-(job (Reasoner Louis) 
-     (computer programmer trainee))
-(salary (Reasoner Louis) 30000)
-(supervisor (Reasoner Louis) 
-            (Hacker Alyssa P))
-`);
+queryAtom(
+  "address",
+  qlist(qtext("Reasoner"), qtext("Louis")),
+  qlist(
+    qtext("Slumerville"),
+    qlist(qtext("Pine"), qtext("Tree"), qtext("Road")),
+    qtext("80")
+  )
+),
+queryAtom("job",
+  qlist(qtext("Reasoner"), qtext("Louis")),
+  qlist(qtext("computer"), qtext("programmer"), qtext("trainee"))
+),
+queryAtom("salary",
+  qlist(qtext("Reasoner"), qtext("Louis")),
+  qtext("30000")
+),
+queryAtom("supervisor",
+  qlist(qtext("Reasoner"), qtext("Louis")),
+  qlist(qtext("Hacker"), qtext("Alyssa"), qtext("P"))
+);
 @end example
 
 @noindent
@@ -263,14 +335,24 @@ Ben is a high-level employee.  His supervisor is the company's big wheel
 himself:
 
 @example typescript
-readAll(`
-(supervisor (Bitdiddle Ben) (Warbucks Oliver))
-(address (Warbucks Oliver) 
-         (Swellesley (Top Heap Road)))
-(job (Warbucks Oliver) 
-     (administration big wheel))
-(salary (Warbucks Oliver) 150000)
-`);
+queryAtom("supervisor",
+  qlist(qtext("Bitdiddle"), qtext("Ben")),
+  qlist(qtext("Warbucks"), qtext("Oliver"))
+),
+queryAtom("address",
+  qlist(qtext("Warbucks"), qtext("Oliver")),
+  qlist(qtext("Swellesley"),
+    qlist(qtext("Top"), qtext("Heap"), qtext("Road"))
+  )
+),
+queryAtom("job",
+  qlist(qtext("Warbucks"), qtext("Oliver")),
+  qlist(qtext("administration"), qtext("big"), qtext("wheel"))
+),
+queryAtom("salary",
+  qlist(qtext("Warbucks"), qtext("Oliver")),
+  qtext("150000")
+);
 @end example
 
 @noindent
@@ -278,33 +360,73 @@ Besides the computer division supervised by Ben, the company has an accounting
 division, consisting of a chief accountant and his assistant:
 
 @example typescript
-readAll(`
-(address (Scrooge Eben) 
-         (Weston (Shady Lane) 10))
-(job (Scrooge Eben) 
-     (accounting chief accountant))
-(salary (Scrooge Eben) 75000)
-(supervisor (Scrooge Eben) (Warbucks Oliver))
-
-(address (Cratchet Robert) 
-         (Allston (N Harvard Street) 16))
-(job (Cratchet Robert) (accounting scrivener))
-(salary (Cratchet Robert) 18000)
-(supervisor (Cratchet Robert) (Scrooge Eben))
-`);
+queryAtom("address",
+  qlist(qtext("Scrooge"), qtext("Eben")),
+  qlist(qtext("Weston"),
+    qlist(qtext("Shady"), qtext("Lane")),
+    qtext("10")
+  )
+),
+queryAtom("job",
+  qlist(qtext("Scrooge"), qtext("Eben")),
+  qlist(qtext("accounting"), qtext("chief"), qtext("accountant"))
+),
+queryAtom("salary",
+  qlist(qtext("Scrooge"), qtext("Eben")),
+  qtext("75000")
+),
+queryAtom("supervisor",
+  qlist(qtext("Scrooge"), qtext("Eben")),
+  qlist(qtext("Warbucks"), qtext("Oliver"))
+),
+queryAtom(
+  "address",
+  qlist(qtext("Cratchet"), qtext("Robert")),
+  qlist(
+    qtext("Allston"),
+    qlist(qtext("N"), qtext("Harvard"), qtext("Street")),
+    qtext("16")
+  )
+),
+queryAtom("job",
+  qlist(qtext("Cratchet"), qtext("Robert")),
+  qlist(qtext("accounting"), qtext("scrivener"))
+),
+queryAtom("salary",
+  qlist(qtext("Cratchet"), qtext("Robert")),
+  qtext("18000")
+),
+queryAtom("supervisor",
+  qlist(qtext("Cratchet"), qtext("Robert")),
+  qlist(qtext("Scrooge"), qtext("Eben"))
+);
 @end example
 
 @noindent
 There is also a secretary for the big wheel:
 
 @example typescript
-readAll(`
-(address (Aull DeWitt) 
-         (Slumerville (Onion Square) 5))
-(job (Aull DeWitt) (administration secretary))
-(salary (Aull DeWitt) 25000)
-(supervisor (Aull DeWitt) (Warbucks Oliver))
-`);
+queryAtom(
+  "address",
+  qlist(qtext("Aull"), qtext("DeWitt")),
+  qlist(
+    qtext("Slumerville"),
+    qlist(qtext("Onion"), qtext("Square")),
+    qtext("5")
+  )
+),
+queryAtom("job",
+  qlist(qtext("Aull"), qtext("DeWitt")),
+  qlist(qtext("administration"), qtext("secretary"))
+),
+queryAtom("salary",
+  qlist(qtext("Aull"), qtext("DeWitt")),
+  qtext("25000")
+),
+queryAtom("supervisor",
+  qlist(qtext("Aull"), qtext("DeWitt")),
+  qlist(qtext("Warbucks"), qtext("Oliver"))
+);
 @end example
 
 @noindent
@@ -313,33 +435,34 @@ people holding other kinds of jobs.  For instance, a computer wizard can do the
 jobs of both a computer programmer and a computer technician:
 
 @example typescript
-readAll(`
-(can-do-job (computer wizard) 
-            (computer programmer))
-
-(can-do-job (computer wizard) 
-            (computer technician))
-`);
+queryAtom("can-do-job",
+  qlist(qtext("computer"), qtext("wizard")),
+  qlist(qtext("computer"), qtext("programmer"))
+),
+queryAtom("can-do-job",
+  qlist(qtext("computer"), qtext("wizard")),
+  qlist(qtext("computer"), qtext("technician"))
+);
 @end example
 
 @noindent
 A computer programmer could fill in for a trainee:
 
 @example typescript
-readAll(`
-(can-do-job (computer programmer)
-            (computer programmer trainee))
-`);
+queryAtom("can-do-job",
+  qlist(qtext("computer"), qtext("programmer")),
+  qlist(qtext("computer"), qtext("programmer"), qtext("trainee"))
+);
 @end example
 
 @noindent
 Also, as is well known,
 
 @example typescript
-readAll(`
-(can-do-job (administration secretary)
-            (administration big wheel))
-`);
+queryAtom("can-do-job",
+  qlist(qtext("administration"), qtext("secretary")),
+  qlist(qtext("administration"), qtext("big"), qtext("wheel"))
+);
 @end example
 
 @subsubheading Simple queries
@@ -349,21 +472,20 @@ posing queries in response to the system's prompt.  For example, to find all
 computer programmers one can say
 
 @example typescript
-readAll(`
-@i{;;; Query input:}
-(job ?x (computer programmer))
-`);
+// ;;; Query input:
+queryAtom("job",
+  qvar("x"),
+  qlist(qtext("computer"), qtext("programmer"))
+);
 @end example
 
 @noindent
 The system will respond with the following items:
 
 @example typescript
-readAll(`
-@i{;;; Query results:}
-(job (Hacker Alyssa P) (computer programmer))
-(job (Fect Cy D) (computer programmer))
-`);
+// ;;; Query results:
+// (job (Hacker Alyssa P) (computer programmer))
+// (job (Fect Cy D) (computer programmer))
 @end example
 
 @noindent
@@ -382,9 +504,10 @@ showing all entries in the data base that match the specified pattern.
 A pattern can have more than one variable.  For example, the query
 
 @example typescript
-readAll(`
-(address ?x ?y)
-`);
+queryAtom("address",
+  qvar("x"),
+  qvar("y")
+);
 @end example
 
 @noindent
@@ -399,9 +522,10 @@ the same ``anything'' must appear in each position.  This is why variables have
 names.  For example,
 
 @example typescript
-readAll(`
-(supervisor ?x ?x)
-`);
+queryAtom("supervisor",
+  qvar("x"),
+  qvar("x")
+);
 @end example
 
 @noindent
@@ -411,9 +535,10 @@ in our sample data base).
 The query
 
 @example typescript
-readAll(`
-(job ?x (computer ?type))
-`);
+queryAtom("job",
+  qvar("x"),
+  qlist(qtext("computer"), qvar("type"))
+);
 @end example
 
 @noindent
@@ -421,22 +546,32 @@ matches all job entries whose third item is a two-element list whose first item
 is @code{computer}:
 
 @example typescript
-readAll(`
-(job (Bitdiddle Ben) (computer wizard))
-(job (Hacker Alyssa P) (computer programmer))
-(job (Fect Cy D) (computer programmer))
-(job (Tweakit Lem E) (computer technician))
-`);
+queryAtom("job",
+  qlist(qtext("Bitdiddle"), qtext("Ben")),
+  qlist(qtext("computer"), qtext("wizard"))
+),
+queryAtom("job",
+  qlist(qtext("Hacker"), qtext("Alyssa"), qtext("P")),
+  qlist(qtext("computer"), qtext("programmer"))
+),
+queryAtom("job",
+  qlist(qtext("Fect"), qtext("Cy"), qtext("D")),
+  qlist(qtext("computer"), qtext("programmer"))
+),
+queryAtom("job",
+  qlist(qtext("Tweakit"), qtext("Lem"), qtext("E")),
+  qlist(qtext("computer"), qtext("technician"))
+);
 @end example
 
 @noindent
 This same pattern does @emph{not} match
 
 @example typescript
-readAll(`
-(job (Reasoner Louis) 
-     (computer programmer trainee))
-`);
+queryAtom("job",
+  qlist(qtext("Reasoner"), qtext("Louis")),
+  qlist(qtext("computer"), qtext("programmer"), qtext("trainee"))
+);
 @end example
 
 @noindent
@@ -447,27 +582,27 @@ to change the pattern so that the third item could be any list beginning with
 introduced in @ref{Exercise 2.20}.}
 
 @example typescript
-readAll(`
-(job ?x (computer . ?type))
-`);
+queryAtom("job",
+  qvar("x"),
+  qpair(qtext("computer"), qvar("type"))
+);
 @end example
 
 @noindent
 For example,
 
 @example typescript
-readAll(`
-(computer . ?type)
-`);
+qpair(qtext("computer"), qvar("type"));
 @end example
 
 @noindent
 matches the data
 
 @example typescript
-readAll(`
-(computer programmer trainee)
-`);
+queryAtom("computer",
+  qtext("programmer"),
+  qtext("trainee")
+);
 @end example
 
 @noindent
@@ -475,18 +610,16 @@ with @code{?type} as the list @code{(programmer trainee)}.  It also
 matches the data
 
 @example typescript
-readAll(`
-(computer programmer)
-`);
+queryAtom("computer",
+  qtext("programmer")
+);
 @end example
 
 @noindent
 with @code{?type} as the list @code{(programmer)}, and matches the data
 
 @example typescript
-readAll(`
-(computer)
-`);
+queryAtom("computer");
 @end example
 
 @noindent
@@ -539,42 +672,57 @@ to form compound operations, the query language provides means of combination.
 One thing that makes the query language a logic programming language is that
 the means of combination mirror the means of combination used in forming
 logical expressions: @code{and}, @code{or}, and @code{not}.  (Here @code{and},
-@code{or}, and @code{not} are not the Lisp primitives, but rather operations
+@code{or}, and @code{not} are not the guest language's primitives, but rather
+operations
 built into the query language.)
 
 We can use @code{and} as follows to find the addresses of all the computer
 programmers:
 
 @example typescript
-readAll(`
-(and (job ?person (computer programmer))
-     (address ?person ?where))
-`);
+const job = queryAtom("job",
+  qvar("person"),
+  qlist(qtext("computer"), qtext("programmer")));
+const address = queryAtom("address",
+  qvar("person"),
+  qvar("where"));
+@{ tag: "and", clauses: [job, address] @};
 @end example
 
 @noindent
 The resulting output is
 
 @example typescript
-readAll(`
-(and (job (Hacker Alyssa P) 
-          (computer programmer))
-     (address (Hacker Alyssa P) 
-              (Cambridge (Mass Ave) 78)))
-
-(and (job (Fect Cy D) (computer programmer))
-     (address (Fect Cy D) 
-              (Cambridge (Ames Street) 3)))
-`);
+@{ tag: "and", clauses: [
+  queryAtom("job",
+    qlist(qtext("Hacker"), qtext("Alyssa"), qtext("P")),
+    qlist(qtext("computer"), qtext("programmer"))),
+  queryAtom("address",
+    qlist(qtext("Hacker"), qtext("Alyssa"), qtext("P")),
+    qlist(qtext("Cambridge"),
+      qlist(qtext("Mass"), qtext("Ave")),
+      qtext("78")))] @},
+@{ tag: "and", clauses: [
+  queryAtom("job",
+    qlist(qtext("Fect"), qtext("Cy"), qtext("D")),
+    qlist(qtext("computer"), qtext("programmer"))),
+  queryAtom("address",
+    qlist(qtext("Fect"), qtext("Cy"), qtext("D")),
+    qlist(qtext("Cambridge"),
+      qlist(qtext("Ames"), qtext("Street")),
+      qtext("3")))] @};
 @end example
 
 @noindent
 In general,
 
 @example typescript
-readAll(`
-(and ⟨@var{query₁}⟩ ⟨@var{query₂}⟩ @r{…} ⟨@var{queryₙ}⟩)
-`);
+@{ tag: "and", clauses: [
+  ⟨@var{query₁}⟩,
+  ⟨@var{query₂}⟩,
+  @r{…},
+  ⟨@var{queryₙ}⟩
+] @}
 @end example
 
 @noindent
@@ -589,46 +737,59 @@ Another means of constructing compound queries is through @code{or}.  For
 example,
 
 @example typescript
-readAll(`
-(or (supervisor ?x (Bitdiddle Ben))
-    (supervisor ?x (Hacker Alyssa P)))
-`);
+const supervisorBen = queryAtom("supervisor",
+  qvar("x"),
+  qlist(qtext("Bitdiddle"), qtext("Ben")));
+const supervisorAlyssa = queryAtom("supervisor",
+  qvar("x"),
+  qlist(qtext("Hacker"), qtext("Alyssa"), qtext("P")));
+@{ tag: "or", clauses: [supervisorBen, supervisorAlyssa] @};
 @end example
 
 @noindent
 will find all employees supervised by Ben Bitdiddle or Alyssa P.  Hacker:
 
 @example typescript
-readAll(`
-(or (supervisor (Hacker Alyssa P) 
-                (Bitdiddle Ben))
-    (supervisor (Hacker Alyssa P) 
-                (Hacker Alyssa P)))
-
-(or (supervisor (Fect Cy D) 
-                (Bitdiddle Ben))
-    (supervisor (Fect Cy D) 
-                (Hacker Alyssa P)))
-
-(or (supervisor (Tweakit Lem E) 
-                (Bitdiddle Ben))
-    (supervisor (Tweakit Lem E) 
-                (Hacker Alyssa P)))
-
-(or (supervisor (Reasoner Louis) 
-                (Bitdiddle Ben))
-    (supervisor (Reasoner Louis) 
-                (Hacker Alyssa P)))
-`);
+@{ tag: "or", clauses: [
+  queryAtom("supervisor",
+    qlist(qtext("Hacker"), qtext("Alyssa"), qtext("P")),
+    qlist(qtext("Bitdiddle"), qtext("Ben"))),
+  queryAtom("supervisor",
+    qlist(qtext("Hacker"), qtext("Alyssa"), qtext("P")),
+    qlist(qtext("Hacker"), qtext("Alyssa"), qtext("P")))] @},
+@{ tag: "or", clauses: [
+  queryAtom("supervisor",
+    qlist(qtext("Fect"), qtext("Cy"), qtext("D")),
+    qlist(qtext("Bitdiddle"), qtext("Ben"))),
+  queryAtom("supervisor",
+    qlist(qtext("Fect"), qtext("Cy"), qtext("D")),
+    qlist(qtext("Hacker"), qtext("Alyssa"), qtext("P")))] @},
+@{ tag: "or", clauses: [
+  queryAtom("supervisor",
+    qlist(qtext("Tweakit"), qtext("Lem"), qtext("E")),
+    qlist(qtext("Bitdiddle"), qtext("Ben"))),
+  queryAtom("supervisor",
+    qlist(qtext("Tweakit"), qtext("Lem"), qtext("E")),
+    qlist(qtext("Hacker"), qtext("Alyssa"), qtext("P")))] @},
+@{ tag: "or", clauses: [
+  queryAtom("supervisor",
+    qlist(qtext("Reasoner"), qtext("Louis")),
+    qlist(qtext("Bitdiddle"), qtext("Ben"))),
+  queryAtom("supervisor",
+    qlist(qtext("Reasoner"), qtext("Louis")),
+    qlist(qtext("Hacker"), qtext("Alyssa"), qtext("P")))] @};
 @end example
 
 @noindent
 In general,
 
 @example typescript
-readAll(`
-(or ⟨@var{query₁}⟩ ⟨@var{query₂}⟩ @r{…} ⟨@var{queryₙ}⟩)
-`);
+@{ tag: "or", clauses: [
+  ⟨@var{query₁}⟩,
+  ⟨@var{query₂}⟩,
+  @r{…},
+  ⟨@var{queryₙ}⟩
+] @}
 @end example
 
 @noindent
@@ -638,10 +799,14 @@ least one of @math{{⟨\kern0.1em query_1⟩}} @r{…} @math{{⟨\kern0.1em quer
 Compound queries can also be formed with @code{not}. For example,
 
 @example typescript
-readAll(`
-(and (supervisor ?x (Bitdiddle Ben))
-     (not (job ?x (computer programmer))))
-`);
+@{ tag: "and", clauses: [
+  queryAtom("supervisor",
+    qvar("x"),
+    qlist(qtext("Bitdiddle"), qtext("Ben"))),
+  @{ tag: "not",
+  clause: queryAtom("job",
+    qvar("x"),
+    qlist(qtext("computer"), qtext("programmer"))) @}] @};
 @end example
 
 @noindent
@@ -649,9 +814,7 @@ finds all people supervised by Ben Bitdiddle who are not computer programmers.
 In general,
 
 @example typescript
-readAll(`
-(not ⟨@var{query₁}⟩)
-`);
+@{ tag: "not", clause: ⟨@var{query₁}⟩ @}
 @end example
 
 @noindent
@@ -661,32 +824,31 @@ only for simple cases.  The real behavior of @code{not} is more complex.  We
 will examine @code{not}'s peculiarities in @ref{4.4.2} and
 @ref{4.4.3}.}
 
-The final combining form is called @code{lisp-value}.  When @code{lisp-value}
-is the first element of a pattern, it specifies that the next element is a Lisp
+The final combining form is called @code{lispValue}.  When @code{lispValue}
+is the first element of a pattern, it specifies that the next element is a
+literal
 predicate to be applied to the rest of the (instantiated) elements as
 arguments.  In general,
 
 @example typescript
-readAll(`
-(lisp-value ⟨@var{predicate}⟩ ⟨@var{arg₁}⟩ @r{…} ⟨@var{argₙ}⟩)
-`);
+lispValue(⟨@var{predicate}⟩, ⟨@var{arg₁}⟩, @r{…}, ⟨@var{argₙ}⟩)
 @end example
 
 @noindent
 will be satisfied by assignments to the pattern variables for which the
 @code{⟨}@var{predicate}@code{⟩} applied to the instantiated @math{{⟨\kern0.1em arg_1⟩}} @r{…}
 @math{{⟨\kern0.1em arg_n⟩}} is true.  For example, to find all people whose salary is
-greater than $30,000 we could write@footnote{@code{Lisp-value} should be used
+greater than $30,000 we could write@footnote{@code{lispValue} should be used
 only to perform an operation not provided in the query language.  In
 particular, it should not be used to test equality (since that is what the
 matching in the query language is designed to do) or inequality (since that can
 be done with the @code{same} rule shown below).}
 
 @example typescript
-readAll(`
-(and (salary ?person ?amount)
-     (lisp-value > ?amount 30000))
-`);
+@{ tag: "and", clauses: [
+  queryAtom("salary", qvar("person"), qvar("amount")),
+  lispValue(greaterThan, qvar("amount"), qtext("30000"))
+] @};
 @end example
 
 @quotation
@@ -717,14 +879,18 @@ provides means for abstracting queries.  These are given by @newterm{rules}.
 The rule
 
 @example typescript
-readAll(`
-(rule (lives-near ?person-1 ?person-2)
-      (and (address ?person-1 
-                    (?town . ?rest-1))
-           (address ?person-2 
-                    (?town . ?rest-2))
-           (not (same ?person-1 ?person-2))))
-`);
+rule(queryAtom("lives-near", qvar("person-1"), qvar("person-2")),
+  @{ tag: "and", clauses: [
+    queryAtom("address",
+      qvar("person-1"),
+      qpair(qvar("town"), qvar("rest-1"))),
+    queryAtom("address",
+      qvar("person-2"),
+      qpair(qvar("town"), qvar("rest-2"))),
+    @{ tag: "not",
+      clause: queryAtom("same",
+        qvar("person-1"),
+        qvar("person-2")) @}] @});
 @end example
 
 @noindent
@@ -743,9 +909,7 @@ pattern variables does not force different values to appear.  (The values
 assigned to different pattern variables may be the same or different.)}
 
 @example typescript
-readAll(`
-(rule (same ?x ?x))
-`);
+rule(queryAtom("same", qvar("x"), qvar("x")));
 @end example
 
 @noindent
@@ -753,21 +917,21 @@ The following rule declares that a person is a ``wheel'' in an organization if
 he supervises someone who is in turn a supervisor:
 
 @example typescript
-readAll(`
-(rule (wheel ?person)
-      (and (supervisor ?middle-manager 
-                       ?person)
-           (supervisor ?x ?middle-manager)))
-`);
+rule(
+  queryAtom("wheel", qvar("person")),
+  @{ tag: "and", clauses: [
+    queryAtom("supervisor",
+      qvar("middle-manager"),
+      qvar("person")),
+    queryAtom("supervisor", qvar("x"), qvar("middle-manager"))] @}
+);
 @end example
 
 @noindent
 The general form of a rule is
 
 @example typescript
-readAll(`
-(rule ⟨@var{conclusion}⟩ ⟨@var{body}⟩)
-`);
+rule(⟨@var{conclusion}⟩, ⟨@var{body}⟩)
 @end example
 
 @noindent
@@ -783,29 +947,37 @@ pattern needn't be explicitly in the data base as an assertion.  It can be an
 implicit assertion implied by a rule.  For example, the query
 
 @example typescript
-readAll(`
-(lives-near ?x (Bitdiddle Ben))
-`);
+queryAtom("lives-near",
+  qvar("x"),
+  qlist(qtext("Bitdiddle"), qtext("Ben"))
+);
 @end example
 
 @noindent
 results in
 
 @example typescript
-readAll(`
-(lives-near (Reasoner Louis) (Bitdiddle Ben))
-(lives-near (Aull DeWitt) (Bitdiddle Ben))
-`);
+queryAtom("lives-near",
+  qlist(qtext("Reasoner"), qtext("Louis")),
+  qlist(qtext("Bitdiddle"), qtext("Ben"))
+),
+queryAtom("lives-near",
+  qlist(qtext("Aull"), qtext("DeWitt")),
+  qlist(qtext("Bitdiddle"), qtext("Ben"))
+);
 @end example
 
 @noindent
 To find all computer programmers who live near Ben Bitdiddle, we can ask
 
 @example typescript
-readAll(`
-(and (job ?x (computer programmer))
-     (lives-near ?x (Bitdiddle Ben)))
-`);
+@{ tag: "and", clauses: [
+  queryAtom("job", qvar("x"),
+    qlist(qtext("computer"), qtext("programmer"))),
+  queryAtom("lives-near",
+    qvar("x"),
+    qlist(qtext("Bitdiddle"), qtext("Ben")))
+] @};
 @end example
 
 @noindent
@@ -814,14 +986,18 @@ rules (as we saw with the @code{lives-near} rule above) or even be defined
 recursively.  For instance, the rule
 
 @example typescript
-readAll(`
-(rule (outranked-by ?staff-person ?boss)
-      (or (supervisor ?staff-person ?boss)
-          (and (supervisor ?staff-person 
-                           ?middle-manager)
-               (outranked-by ?middle-manager 
-                             ?boss))))
-`);
+rule(queryAtom("outranked-by", qvar("staff-person"), qvar("boss")),
+  @{ tag: "or", clauses: [
+    queryAtom("supervisor",
+      qvar("staff-person"),
+      qvar("boss")),
+    @{ tag: "and", clauses: [
+      queryAtom("supervisor",
+        qvar("staff-person"),
+        qvar("middle-manager")),
+      queryAtom("outranked-by",
+        qvar("middle-manager"),
+        qvar("boss"))] @}] @});
 @end example
 
 @noindent
@@ -861,12 +1037,22 @@ his job, Ben decides to do something about it.  He adds all the weekly meetings
 of the firm to the Microshaft data base by asserting the following:
 
 @example typescript
-readAll(`
-(meeting accounting (Monday 9am))
-(meeting administration (Monday 10am))
-(meeting computer (Wednesday 3pm))
-(meeting administration (Friday 1pm))
-`);
+queryAtom("meeting",
+  qtext("accounting"),
+  qlist(qtext("Monday"), qtext("9am"))
+),
+queryAtom("meeting",
+  qtext("administration"),
+  qlist(qtext("Monday"), qtext("10am"))
+),
+queryAtom("meeting",
+  qtext("computer"),
+  qlist(qtext("Wednesday"), qtext("3pm"))
+),
+queryAtom("meeting",
+  qtext("administration"),
+  qlist(qtext("Friday"), qtext("1pm"))
+);
 @end example
 
 Each of the above assertions is for a meeting of an entire division.  Ben also
@@ -874,9 +1060,10 @@ adds an entry for the company-wide meeting that spans all the divisions.  All
 of the company's employees attend this meeting.
 
 @example typescript
-readAll(`
-(meeting whole-company (Wednesday 4pm))
-`);
+queryAtom("meeting",
+  qtext("whole-company"),
+  qlist(qtext("Wednesday"), qtext("4pm"))
+);
 @end example
 
 @enumerate a
@@ -893,10 +1080,13 @@ plus all meetings of that person's division.  Fill in the body of Alyssa's
 rule.
 
 @example typescript
-readAll(`
-(rule (meeting-time ?person ?day-and-time)
-      ⟨@var{rule-body}⟩)
-`);
+rule(
+  queryAtom("meeting-time",
+    qvar("person"),
+    qvar("day-and-time")
+  ),
+  ⟨@var{ruleBody}⟩,
+)
 @end example
 
 @item
@@ -911,9 +1101,10 @@ to find this out?
 @strong{@anchor{Exercise 4.60}Exercise 4.60:} By giving the query
 
 @example typescript
-readAll(`
-(lives-near ?person (Hacker Alyssa P))
-`);
+queryAtom("lives-near",
+  qvar("person"),
+  qlist(qtext("Hacker"), qtext("Alyssa"), qtext("P"))
+);
 @end example
 
 Alyssa P. Hacker is able to find people who live near her, with whom she can
@@ -921,9 +1112,10 @@ ride to work.  On the other hand, when she tries to find all pairs of people
 who live near each other by querying
 
 @example typescript
-readAll(`
-(lives-near ?person-1 ?person-2)
-`);
+queryAtom("lives-near",
+  qvar("person-1"),
+  qvar("person-2")
+);
 @end example
 
 @noindent
@@ -931,10 +1123,14 @@ she notices that each pair of people who live near each other is listed twice;
 for example,
 
 @example typescript
-readAll(`
-(lives-near (Hacker Alyssa P) (Fect Cy D))
-(lives-near (Fect Cy D) (Hacker Alyssa P))
-`);
+queryAtom("lives-near",
+  qlist(qtext("Hacker"), qtext("Alyssa"), qtext("P")),
+  qlist(qtext("Fect"), qtext("Cy"), qtext("D"))
+),
+queryAtom("lives-near",
+  qlist(qtext("Fect"), qtext("Cy"), qtext("D")),
+  qlist(qtext("Hacker"), qtext("Alyssa"), qtext("P"))
+);
 @end example
 
 Why does this happen?  Is there a way to find a list of people who live near
@@ -968,9 +1164,11 @@ For any @code{u}, @code{v}, @code{y}, and @code{z}, @code{(cons u v)} and
 To express this in our query language, we define two rules for a relation
 
 @example typescript
-readAll(`
-(append-to-form x y z)
-`);
+queryAtom("append-to-form",
+  qtext("x"),
+  qtext("y"),
+  qtext("z")
+);
 @end example
 
 @noindent
@@ -978,11 +1176,16 @@ which we can interpret to mean ``@code{x} and @code{y} @code{append} to form
 @code{z}'':
 
 @example typescript
-readAll(`
-(rule (append-to-form () ?y ?y))
-(rule (append-to-form (?u . ?v) ?y (?u . ?z))
-      (append-to-form ?v ?y ?z))
-`);
+rule(queryAtom("append-to-form", qlist(), qvar("y"), qvar("y"))),
+rule(
+  queryAtom(
+    "append-to-form",
+    qpair(qvar("u"), qvar("v")),
+    qvar("y"),
+    qpair(qvar("u"), qvar("z"))
+  ),
+  queryAtom("append-to-form", qvar("v"), qvar("y"), qvar("z"))
+);
 @end example
 
 @noindent
@@ -994,13 +1197,14 @@ Given these two rules, we can formulate queries that compute the @code{append}
 of two lists:
 
 @example typescript
-readAll(`
-@i{;;; Query input:}
-(append-to-form (a b) (c d) ?z)
-
-@i{;;; Query results:}
-(append-to-form (a b) (c d) (a b c d))
-`);
+// ;;; Query input:
+queryAtom("append-to-form",
+  qlist(qtext("a"), qtext("b")),
+  qlist(qtext("c"), qtext("d")),
+  qvar("z")
+);
+// ;;; Query results:
+// (append-to-form (a b) (c d) (a b c d))
 @end example
 
 @noindent
@@ -1009,13 +1213,14 @@ list, when @code{append}ed to @code{(a b)}, yields @code{(a b c d)}?''  This is
 done as follows:
 
 @example typescript
-readAll(`
-@i{;;; Query input:}
-(append-to-form (a b) ?y (a b c d))
-
-@i{;;; Query results:}
-(append-to-form (a b) (c d) (a b c d))
-`);
+// ;;; Query input:
+queryAtom("append-to-form",
+  qlist(qtext("a"), qtext("b")),
+  qvar("y"),
+  qlist(qtext("a"), qtext("b"), qtext("c"), qtext("d"))
+);
+// ;;; Query results:
+// (append-to-form (a b) (c d) (a b c d))
 @end example
 
 @noindent
@@ -1023,17 +1228,18 @@ We can also ask for all pairs of lists that @code{append} to form @code{(a b c
 d)}:
 
 @example typescript
-readAll(`
-@i{;;; Query input:}
-(append-to-form ?x ?y (a b c d))
-
-@i{;;; Query results:}
-(append-to-form () (a b c d) (a b c d))
-(append-to-form (a) (b c d) (a b c d))
-(append-to-form (a b) (c d) (a b c d))
-(append-to-form (a b c) (d) (a b c d))
-(append-to-form (a b c d) () (a b c d))
-`);
+// ;;; Query input:
+queryAtom("append-to-form",
+  qvar("x"),
+  qvar("y"),
+  qlist(qtext("a"), qtext("b"), qtext("c"), qtext("d"))
+);
+// ;;; Query results:
+// (append-to-form () (a b c d) (a b c d))
+// (append-to-form (a) (b c d) (a b c d))
+// (append-to-form (a b) (c d) (a b c d))
+// (append-to-form (a b c) (d) (a b c d))
+// (append-to-form (a b c d) () (a b c d))
 @end example
 
 @noindent
@@ -1049,20 +1255,50 @@ cases, as we will see in @ref{4.4.3}.
 @code{next-to} relation that finds adjacent elements of a list:
 
 @example typescript
-readAll(`
-(rule (?x next-to ?y in (?x ?y . ?u)))
-(rule (?x next-to ?y in (?v . ?z))
-      (?x next-to ?y in ?z))
-`);
+rule(
+  qlist(
+    qvar("x"),
+    qtext("next-to"),
+    qvar("y"),
+    qtext("in"),
+    qpair(qvar("x"), qpair(qvar("y"), qvar("u")))
+  )
+),
+rule(
+  qlist(
+    qvar("x"),
+    qtext("next-to"),
+    qvar("y"),
+    qtext("in"),
+    qpair(qvar("v"), qvar("z"))
+  ),
+  qlist(
+    qvar("x"),
+    qtext("next-to"),
+    qvar("y"),
+    qtext("in"),
+    qvar("z"),
+  )
+);
 @end example
 
 What will the response be to the following queries?
 
 @example typescript
-readAll(`
-(?x next-to ?y in (1 (2 3) 4))
-(?x next-to 1 in (2 1 3 1))
-`);
+qlist(
+  qvar("x"),
+  qtext("next-to"),
+  qvar("y"),
+  qtext("in"),
+  qlist(qtext("1"), qlist(qtext("2"), qtext("3")), qtext("4"))
+),
+qlist(
+  qvar("x"),
+  qtext("next-to"),
+  qtext("1"),
+  qtext("in"),
+  qlist(qtext("2"), qtext("1"), qtext("3"), qtext("1"))
+);
 @end example
 @end quotation
 
@@ -1081,14 +1317,42 @@ Genesis 4) traces the genealogy of the descendants of Ada back to Adam, by way
 of Cain:
 
 @example typescript
-readAll(`
-(son Adam Cain) (son Cain Enoch)
-(son Enoch Irad) (son Irad Mehujael)
-(son Mehujael Methushael)
-(son Methushael Lamech)
-(wife Lamech Ada) (son Ada Jabal)
-(son Ada Jubal)
-`);
+queryAtom("son",
+  qtext("Adam"),
+  qtext("Cain")
+),
+queryAtom("son",
+  qtext("Cain"),
+  qtext("Enoch")
+),
+queryAtom("son",
+  qtext("Enoch"),
+  qtext("Irad")
+),
+queryAtom("son",
+  qtext("Irad"),
+  qtext("Mehujael")
+),
+queryAtom("son",
+  qtext("Mehujael"),
+  qtext("Methushael")
+),
+queryAtom("son",
+  qtext("Methushael"),
+  qtext("Lamech")
+),
+queryAtom("wife",
+  qtext("Lamech"),
+  qtext("Ada")
+),
+queryAtom("son",
+  qtext("Ada"),
+  qtext("Jabal")
+),
+queryAtom("son",
+  qtext("Ada"),
+  qtext("Jubal")
+);
 @end example
 
 Formulate rules such as ``If @math{S} is the son of @math{f}, and @math{f} is the son of
@@ -1159,9 +1423,10 @@ The pattern matcher is all the mechanism that is needed to process simple
 queries that don't involve rules.  For instance, to process the query
 
 @example typescript
-readAll(`
-(job ?x (computer programmer))
-`);
+queryAtom("job",
+  qvar("x"),
+  qlist(qtext("computer"), qtext("programmer"))
+);
 @end example
 
 @noindent
@@ -1173,10 +1438,10 @@ use the frame returned by the match to instantiate the pattern with a value for
 @subsubheading Streams of frames
 
 The testing of patterns against frames is organized through the use of streams.
-Given a single frame, the matching process runs through the data-base entries
-one by one.  For each data-base entry, the matcher generates either a special
+Given a single frame, the matching process runs through the database entries
+one by one.  For each database entry, the matcher generates either a special
 symbol indicating that the match has failed or an extension to the frame.  The
-results for all the data-base entries are collected into a stream, which is
+results for all the database entries are collected into a stream, which is
 passed through a filter to weed out the failures.  The result is a stream of
 all the frames that extend the given frame via a match to some assertion in the
 data base.@footnote{Because matching is generally very expensive, we would like
@@ -1187,7 +1452,7 @@ candidates for the final match.  With care, we can arrange our data base so
 that some of the work of coarse matching can be done when the data base is
 constructed rather then when we want to select the candidates.  This is called
 @newterm{indexing} the data base.  There is a vast technology built around
-data-base-indexing schemes.  Our implementation, described in 
+database-indexing schemes.  Our implementation, described in 
 @ref{4.4.4}, contains a simple-minded form of such an optimization.}
 
 In our system, a query takes an input stream of frames and performs the above
@@ -1220,7 +1485,7 @@ This stream is the output of the query.
 @image{../../text/original/figures/chap4/Fig4.4a,,147mm,Figure 4.4: A query processes a stream of frames.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap4/Fig4.4a.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap4/Fig4.4a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 4.4:} A query processes a stream of frames.}
@@ -1236,18 +1501,19 @@ is finally printed.
 
 @subsubheading Compound queries
 
-The real elegance of the stream-of-frames implementation is evident when we
+The real elegance of the streamOfFrames implementation is evident when we
 deal with compound queries.  The processing of compound queries makes use of
 the ability of our matcher to demand that a match be consistent with a
 specified frame.  For example, to handle the @code{and} of two queries, such as
 
 @example typescript
-readAll(`
-(and (can-do-job 
-      ?x 
-      (computer programmer trainee))
-     (job ?person ?x))
-`);
+const candojob = queryAtom("can-do-job",
+  qvar("x"),
+  qlist(qtext("computer"), qtext("programmer"), qtext("trainee")));
+const job = queryAtom("job",
+  qvar("person"),
+  qvar("x"));
+@{ tag: "and", clauses: [candojob, job] @};
 @end example
 
 @noindent
@@ -1255,9 +1521,10 @@ readAll(`
 trainee''), we first find all entries that match the pattern
 
 @example typescript
-readAll(`
-(can-do-job ?x (computer programmer trainee))
-`);
+queryAtom("can-do-job",
+  qvar("x"),
+  qlist(qtext("computer"), qtext("programmer"), qtext("trainee"))
+);
 @end example
 
 @noindent
@@ -1265,9 +1532,10 @@ This produces a stream of frames, each of which contains a binding for
 @code{?x}.  Then for each frame in the stream we find all entries that match
 
 @example typescript
-readAll(`
-(job ?person ?x)
-`);
+queryAtom("job",
+  qvar("person"),
+  qvar("x")
+);
 @end example
 
 @noindent
@@ -1286,7 +1554,7 @@ by operating on the stream of frames in series.
 
 @example
                 +----------------------+
-                |       (and A B)      |
+                |       conjoin(A, B)      |
   input stream  |                      |  output stream
   of frames     |   +---+       +---+  |  of frames
 ------------------->| A +------>| B +-------------------->
@@ -1303,7 +1571,7 @@ by operating on the stream of frames in series.
 @image{../../text/original/figures/chap4/Fig4.5a,,143mm,Figure 4.5: The and combination of two queries is produced by operating on the stream of frames in series.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap4/Fig4.5a.std,,143mm,,.pdf}
+@image{../../text/original/figures/pdf/chap4/Fig4.5a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 4.5:} The @code{and} combination of two queries is produced by operating on the stream of frames in series.}
@@ -1323,7 +1591,7 @@ by operating on the stream of frames in parallel and merging the results.
 
 @example
            +---------------------------+
-           |          (or A B)         |
+           |          disjoin(A, B)         |
            |    +---+                  |
 input      | +->| A |------------+     |  output
 stream of  | |  +---+            V     |  stream of
@@ -1346,7 +1614,7 @@ frames     | |    ^          +-------+ |  frames
 @image{../../text/original/figures/chap4/Fig4.6a,,147mm,Figure 4.6: The or combination of two queries is produced by operating on the stream of frames in parallel and merging the results.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap4/Fig4.6a.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap4/Fig4.6a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 4.6:} The @code{or} combination of two queries is produced by operating on the stream of frames in parallel and merging the results.}
@@ -1362,18 +1630,19 @@ explosion is not common in @code{and} queries because the added conditions tend
 to reduce rather than expand the number of frames produced.} Though systems for
 handling only simple queries are quite practical, dealing with complex queries
 is extremely difficult.@footnote{There is a large literature on
-data-base-management systems that is concerned with how to handle complex
+database-management systems that is concerned with how to handle complex
 queries efficiently.}
 
 @noindent
-From the stream-of-frames viewpoint, the @code{not} of some query acts as a
+From the streamOfFrames viewpoint, the @code{not} of some query acts as a
 filter that removes all frames for which the query can be satisfied.  For
 instance, given the pattern
 
 @example typescript
-readAll(`
-(not (job ?x (computer programmer)))
-`);
+@{ tag: "not",
+  clause: queryAtom("job",
+    qvar("x"),
+    qlist(qtext("computer"), qtext("programmer"))) @};
 @end example
 
 @noindent
@@ -1385,10 +1654,12 @@ satisfy @code{(job ?x (computer programmer))}.  For example, in processing the
 query
 
 @example typescript
-readAll(`
-(and (supervisor ?x ?y)
-     (not (job ?x (computer programmer))))
-`);
+@{ tag: "and", clauses: [
+  queryAtom("supervisor", qvar("x"), qvar("y")),
+  @{ tag: "not",
+  clause: queryAtom("job",
+    qvar("x"),
+    qlist(qtext("computer"), qtext("programmer"))) @}] @};
 @end example
 
 @noindent
@@ -1399,9 +1670,9 @@ a computer programmer.@footnote{There is a subtle difference between this
 filter implementation of @code{not} and the usual meaning of @code{not} in
 mathematical logic.  See @ref{4.4.3}.}
 
-The @code{lisp-value} special form is implemented as a similar filter on frame
+The @code{lispValue} special form is implemented as a similar filter on frame
 streams.  We use each frame in the stream to instantiate any variables in the
-pattern, then apply the Lisp predicate.  We remove from the input stream all
+pattern, then apply the host predicate.  We remove from the input stream all
 frames for which the predicate fails.
 
 @subsubheading Unification
@@ -1438,38 +1709,30 @@ the unknown (the pattern variable).} For example, unifying @code{(?x ?x)} and
 @code{((a ?y c) (a b ?z))} may be thought of as specifying the simultaneous
 equations
 
-@example typescript
-readAll(`
+@example
 ?x = (a ?y c)
 ?x = (a b ?z)
-`);
 @end example
 
 @noindent
 These equations imply that
 
-@example typescript
-readAll(`
+@example
 (a ?y c) = (a b ?z)
-`);
 @end example
 
 @noindent
 which in turn implies that
 
-@example typescript
-readAll(`
+@example
 a = a, ?y = b, c = ?z,
-`);
 @end example
 
 @noindent
 and hence that
 
-@example typescript
-readAll(`
+@example
 ?x = (a b c)
-`);
 @end example
 
 @noindent
@@ -1506,13 +1769,14 @@ inferences from rules. To see how this is accomplished, consider processing a
 query that involves applying a rule, such as
 
 @example typescript
-readAll(`
-(lives-near ?x (Hacker Alyssa P))
-`);
+queryAtom("lives-near",
+  qvar("x"),
+  qlist(qtext("Hacker"), qtext("Alyssa"), qtext("P"))
+);
 @end example
 
 @noindent
-To process this query, we first use the ordinary pattern-match procedure
+To process this query, we first use the ordinary patternMatch procedure
 described above to see if there are any assertions in the data base that match
 this pattern.  (There will not be any in this case, since our data base
 includes no direct assertions about who lives near whom.)  The next step is to
@@ -1520,14 +1784,18 @@ attempt to unify the query pattern with the conclusion of each rule.  We find
 that the pattern unifies with the conclusion of the rule
 
 @example typescript
-readAll(`
-(rule (lives-near ?person-1 ?person-2)
-      (and (address ?person-1 
-                    (?town . ?rest-1))
-           (address ?person-2 
-                    (?town . ?rest-2))
-           (not (same ?person-1 ?person-2))))
-`);
+rule(queryAtom("lives-near", qvar("person-1"), qvar("person-2")),
+  @{ tag: "and", clauses: [
+    queryAtom("address",
+      qvar("person-1"),
+      qpair(qvar("town"), qvar("rest-1"))),
+    queryAtom("address",
+      qvar("person-2"),
+      qpair(qvar("town"), qvar("rest-2"))),
+    @{ tag: "not",
+      clause: queryAtom("same",
+        qvar("person-1"),
+        qvar("person-2")) @}] @});
 @end example
 
 @noindent
@@ -1556,7 +1824,7 @@ rule.
 
 @noindent
 Notice how similar this is to the method for applying a procedure in the
-@code{eval}/@code{apply} evaluator for Lisp:
+@code{evaluate}/@code{applyProcedure} evaluator for the guest language:
 
 @itemize @bullet
 
@@ -1572,7 +1840,8 @@ body of the procedure.
 
 @noindent
 The similarity between the two evaluators should come as no surprise.  Just as
-procedure definitions are the means of abstraction in Lisp, rule definitions
+procedure definitions are the means of abstraction in ordinary programs, rule
+definitions
 are the means of abstraction in the query language.  In each case, we unwind
 the abstraction by creating appropriate bindings and evaluating the rule or
 procedure body relative to these.
@@ -1614,16 +1883,17 @@ given pattern.
 Despite the complexity of the underlying matching operations, the system is
 organized much like an evaluator for any language.  The procedure that
 coordinates the matching operations is called @code{qeval}, and it plays a role
-analogous to that of the @code{eval} procedure for Lisp.  @code{Qeval} takes as
+analogous to that of the @code{evaluate} procedure for the guest language.
+@code{Qeval} takes as
 inputs a query and a stream of frames.  Its output is a stream of frames,
 corresponding to successful matches to the query pattern, that extend some
 frame in the input stream, as indicated in @ref{Figure 4.4}.  Like @code{eval},
 @code{qeval} classifies the different types of expressions (queries) and
 dispatches to an appropriate procedure for each.  There is a procedure for each
-special form (@code{and}, @code{or}, @code{not}, and @code{lisp-value}) and one
+special form (@code{and}, @code{or}, @code{not}, and @code{lispValue}) and one
 for simple queries.
 
-The driver loop, which is analogous to the @code{driver-loop} procedure for the
+The driver loop, which is analogous to the @code{driverLoop} procedure for the
 other evaluators in this chapter, reads queries from the terminal.  For each
 query, it calls @code{qeval} with the query and a stream that consists of a
 single empty frame.  This will produce the stream of all possible matches (all
@@ -1641,18 +1911,18 @@ that the input is not a query but rather an assertion or rule to be added to
 the data base.  For instance,
 
 @example typescript
-readAll(`
-(assert!
- (job (Bitdiddle Ben)
-      (computer wizard)))
-
-(assert!
- (rule (wheel ?person)
-       (and (supervisor 
-             ?middle-manager ?person)
-            (supervisor
-             ?x ?middle-manager))))
-`);
+queryAtom("job",
+  qlist(qtext("Bitdiddle"), qtext("Ben")),
+  qlist(qtext("computer"), qtext("wizard"))
+),
+rule(
+  queryAtom("wheel", qvar("person")),
+  @{ tag: "and", clauses: [
+    queryAtom("supervisor",
+      qvar("middle-manager"),
+      qvar("person")),
+    queryAtom("supervisor", qvar("x"), qvar("middle-manager"))] @}
+);
 @end example
 
 @node	4.4.3, 4.4.4, 4.4.2, 4.4
@@ -1675,20 +1945,22 @@ supervisors of programmers we could formulate a query in either of two
 logically equivalent forms:
 
 @example typescript
-readAll(`
-(and (job ?x (computer programmer))
-     (supervisor ?x ?y))
-`);
+@{ tag: "and", clauses: [
+  queryAtom("job", qvar("x"),
+    qlist(qtext("computer"), qtext("programmer"))),
+  queryAtom("supervisor", qvar("x"), qvar("y"))
+] @};
 @end example
 
 @noindent
 or
 
 @example typescript
-readAll(`
-(and (supervisor ?x ?y)
-     (job ?x (computer programmer)))
-`);
+@{ tag: "and", clauses: [
+  queryAtom("supervisor", qvar("x"), qvar("y")),
+  queryAtom("job", qvar("x"),
+    qlist(qtext("computer"), qtext("programmer")))
+] @};
 @end example
 
 @noindent
@@ -1726,11 +1998,11 @@ accomplished by a logic program, we assume that the computation terminates.
 Unfortunately, even this qualified statement is false for our implementation of
 the query language (and also false for programs in Prolog and most other
 current logic programming languages) because of our use of @code{not} and
-@code{lisp-value}.  As we will describe below, the @code{not} implemented in
+@code{lispValue}.  As we will describe below, the @code{not} implemented in
 the query language is not always consistent with the @code{not} of mathematical
-logic, and @code{lisp-value} introduces additional complications.  We could
+logic, and @code{lispValue} introduces additional complications.  We could
 implement a language consistent with mathematical logic by simply removing
-@code{not} and @code{lisp-value} from the language and agreeing to write
+@code{not} and @code{lispValue} from the language and agreeing to write
 programs using only simple queries, @code{and}, and @code{or}.  However, this
 would greatly restrict the expressive power of the language.  One of the major
 concerns of research in logic programming is to find ways to achieve more
@@ -1746,18 +2018,20 @@ infinite loops in making deductions.  As a simple example, suppose we are
 setting up a data base of famous marriages, including
 
 @example typescript
-readAll(`
-(assert! (married Minnie Mickey))
-`);
+queryAtom("married",
+  qtext("Minnie"),
+  qtext("Mickey")
+);
 @end example
 
 @noindent
 If we now ask
 
 @example typescript
-readAll(`
-(married Mickey ?who)
-`);
+queryAtom("married",
+  qtext("Mickey"),
+  qvar("who")
+);
 @end example
 
 @noindent
@@ -1765,19 +2039,20 @@ we will get no response, because the system doesn't know that if @math{A} is
 married to @math{B}, then @math{B} is married to @math{A}.  So we assert the rule
 
 @example typescript
-readAll(`
-(assert! (rule (married ?x ?y)
-               (married ?y ?x)))
-`);
+rule(
+  queryAtom("married", qvar("x"), qvar("y")),
+  queryAtom("married", qvar("y"), qvar("x"))
+);
 @end example
 
 @noindent
 and again query
 
 @example typescript
-readAll(`
-(married Mickey ?who)
-`);
+queryAtom("married",
+  qtext("Mickey"),
+  qvar("who")
+);
 @end example
 
 Unfortunately, this will drive the system into an infinite loop, as follows:
@@ -1832,13 +2107,18 @@ Another quirk in the query system concerns @code{not}.  Given the data base of
 @ref{4.4.1}, consider the following two queries:
 
 @example typescript
-readAll(`
-(and (supervisor ?x ?y)
-     (not (job ?x (computer programmer))))
-
-(and (not (job ?x (computer programmer)))
-     (supervisor ?x ?y))
-`);
+@{ tag: "and", clauses: [
+  queryAtom("supervisor", qvar("x"), qvar("y")),
+  @{ tag: "not",
+    clause: queryAtom("job",
+      qvar("x"),
+      qlist(qtext("computer"), qtext("programmer"))) @}] @},
+@{ tag: "and", clauses: [
+  @{ tag: "not",
+  clause: queryAtom("job",
+    qvar("x"),
+    qlist(qtext("computer"), qtext("programmer"))) @},
+  queryAtom("supervisor", qvar("x"), qvar("y"))] @};
 @end example
 
 @noindent
@@ -1858,7 +2138,7 @@ The trouble is that our implementation of @code{not} really is meant to serve
 as a filter on values for the variables.  If a @code{not} clause is processed
 with a frame in which some of the variables remain unbound (as does @code{?x}
 in the example above), the system will produce unexpected results. Similar
-problems occur with the use of @code{lisp-value}---the Lisp predicate can't
+problems occur with the use of @code{lispValue}---the host predicate can't
 work if some of its arguments are unbound.  See @ref{Exercise 4.77}.
 
 There is also a much more serious way in which the @code{not} of the query
@@ -1887,23 +2167,38 @@ realizes this, he quickly reinstalls it.  Unfortunately, he makes a slight
 change in the rule, and types it in as
 
 @example typescript
-readAll(`
-(rule (outranked-by ?staff-person ?boss)
-  (or (supervisor ?staff-person ?boss)
-      (and (outranked-by ?middle-manager
-                         ?boss)
-           (supervisor ?staff-person 
-                       ?middle-manager))))
-`);
+rule(
+  queryAtom(
+    "outranked-by",
+    qvar("staff-person"),
+    qvar("boss"),
+  ),
+  @{ tag: "or",
+  clauses: [
+    queryAtom(
+      "supervisor",
+      qvar("staff-person"),
+      qvar("boss"),
+    ),
+  @{ tag: "and",
+      clauses: [
+        queryAtom("outranked-by",
+          qvar("middle-manager"),
+          qvar("boss")),
+        queryAtom("supervisor",
+          qvar("staff-person"),
+          qvar("middle-manager"))] @}] @}
+);
 @end example
 
 Just after Louis types this information into the system, DeWitt Aull comes by
 to find out who outranks Ben Bitdiddle. He issues the query
 
 @example typescript
-readAll(`
-(outranked-by (Bitdiddle Ben) ?who)
-`);
+queryAtom("outranked-by",
+  qlist(qtext("Bitdiddle"), qtext("Ben")),
+  qvar("who")
+);
 @end example
 
 After answering, the system goes into an infinite loop.  Explain why.
@@ -1915,22 +2210,20 @@ the day when he will rise in the organization, gives a query to find all the
 wheels (using the @code{wheel} rule of @ref{4.4.1}):
 
 @example typescript
-readAll(`
-(wheel ?who)
-`);
+queryAtom("wheel",
+  qvar("who")
+);
 @end example
 
 To his surprise, the system responds
 
 @example typescript
-readAll(`
-@i{;;; Query results:}
-(wheel (Warbucks Oliver))
-(wheel (Bitdiddle Ben))
-(wheel (Warbucks Oliver))
-(wheel (Warbucks Oliver))
-(wheel (Warbucks Oliver))
-`);
+// ;;; Query results:
+// (wheel (Warbucks Oliver))
+// (wheel (Bitdiddle Ben))
+// (wheel (Warbucks Oliver))
+// (wheel (Warbucks Oliver))
+// (wheel (Warbucks Oliver))
 @end example
 
 Why is Oliver Warbucks listed four times?
@@ -1942,20 +2235,21 @@ query system to provide statistics about the company.  For example, to find the
 total salaries of all the computer programmers one will be able to say
 
 @example typescript
-readAll(`
-(sum ?amount
-     (and (job ?x (computer programmer))
-          (salary ?x ?amount)))
-`);
+queryAtom("sum",
+  qvar("amount"),
+  qlist(qtext("and"),
+    qlist(qtext("job"),
+      qvar("x"),
+      qlist(qtext("computer"), qtext("programmer"))),
+    qlist(qtext("salary"),
+      qvar("x"),
+      qvar("amount"))));
 @end example
 
 In general, Ben's new system allows expressions of the form
 
 @example typescript
-readAll(`
-(accumulation-function ⟨@var{variable}⟩
-                       ⟨@var{query pattern}⟩)
-`);
+accumulationFunction(⟨@var{variable}⟩, ⟨@var{query pattern}⟩)
 @end example
 
 @noindent
@@ -2040,50 +2334,54 @@ values supplied by the stream of frames, and this final stream is printed at
 the terminal:
 
 @example typescript
-readAll(`
-(define input-prompt  ";;; Query input:")
-(define output-prompt ";;; Query results:")
+// The book's inputPrompt and outputPrompt are the literal lines the
+// transcript reports: ";;; Query input:" and ";;; Query results:".
+const inputPrompt = ";;; Query input:";
+const outputPrompt = ";;; Query results:";
 
-(define (query-driver-loop)
-  (prompt-for-input input-prompt)
-  (let ((q (query-syntax-process (read))))
-    (cond ((assertion-to-be-added? q)
-           (add-rule-or-assertion! 
-            (add-assertion-body q))
-           (newline)
-           (display 
-            "Assertion added to data base.")
-           (query-driver-loop))
-          (else
-           (newline)
-           (display output-prompt)
-           (display-stream
-            (stream-map
-             (lambda (frame)
-               (instantiate
-                q
-                frame
-                (lambda (v f)
-                  (contract-question-mark v))))
-             (qeval q (singleton-stream '()))))
-           (query-driver-loop)))))
-`);
+// The only exported entry point of the section: queries arrive as typed
+// domain data, and the transcript they produce is the RunResult's.
+export const queryDriverLoop = (
+  database: Database,
+  queries: ReadonlyArray<Query>,
+): RunResult => @{
+  const transcript: string[] = [];
+  const frames: Frame[] = [];
+  for (const q of queries) @{
+    transcript.push(inputPrompt);
+    const processed = querySyntaxProcess(q);
+    if (isAssertionToBeAdded(processed)) @{
+      addRuleOrAssertion(database, addAssertionBody(processed));
+      transcript.push("Assertion added to data base.");
+      continue;
+    @}
+    transcript.push(outputPrompt);
+    for (const frame of queryDriverLoopFrames(database, processed)) @{
+      frames.push(frame);
+      transcript.push(
+        renderAnswer(
+          instantiate(processed, frame, contractQuestionMark)));
+    @}
+  @}
+  return @{ outcome: ok(frames.length === 0 ? undefined : frames),
+    transcript @};
+@};
 @end example
 
 @noindent
 Here, as in the other evaluators in this chapter, we use an abstract syntax for
 the expressions of the query language.  The implementation of the expression
-syntax, including the predicate @code{assertion-to-be-added?} and the selector
-@code{add-assertion-body}, is given in @ref{4.4.4.7}.
-@code{Add-rule-or-assertion!} is defined in @ref{4.4.4.5}.
+syntax, including the predicate @code{isAssertionToBeAdded} and the selector
+@code{addAssertionBody}, is given in @ref{4.4.4.7}.
+@code{addRuleOrAssertion} is defined in @ref{4.4.4.5}.
 
 Before doing any processing on an input expression, the driver loop transforms
 it syntactically into a form that makes the processing more efficient.  This
 involves changing the representation of pattern variables.  When the query is
 instantiated, any variables that remain unbound are transformed back to the
 input representation before being printed.  These transformations are performed
-by the two procedures @code{query-syntax-process} and
-@code{contract-question-mark} (@ref{4.4.4.7}).
+by the two procedures @code{querySyntaxProcess} and
+@code{contractQuestionMark} (@ref{4.4.4.7}).
 
 To instantiate an expression, we copy it, replacing any variables in the
 expression by their values in a given frame.  The values are themselves
@@ -2093,25 +2391,25 @@ in turn bound to 5).  The action to take if a variable cannot be instantiated
 is given by a procedural argument to @code{instantiate}.
 
 @example typescript
-readAll(`
-(define (instantiate 
-         exp frame unbound-var-handler)
-  (define (copy exp)
-    (cond ((var? exp)
-           (let ((binding 
-                  (binding-in-frame 
-                   exp frame)))
-             (if binding
-                 (copy 
-                  (binding-value binding))
-                 (unbound-var-handler 
-                  exp frame))))
-          ((pair? exp)
-           (cons (copy (car exp)) 
-                 (copy (cdr exp))))
-          (else exp)))
-  (copy exp))
-`);
+export const instantiate = (
+  exp: Term,
+  frame: Frame,
+  unboundVarHandler: (v: Term, f: Frame) => Term,
+): Term => @{
+  const copy = (inner: Term): Term => @{
+    if (isVar(inner)) @{
+      const binding = bindingInFrame(inner, frame);
+      return binding === undefined
+        ? unboundVarHandler(inner, frame)
+        : copy(binding.value);
+    @}
+    if (isPair(inner)) @{
+      return qpair(copy(inner.head), copy(inner.tail));
+    @}
+    return inner;
+  @};
+  return copy(exp);
+@};
 @end example
 
 @noindent
@@ -2120,22 +2418,24 @@ The procedures that manipulate bindings are defined in @ref{4.4.4.8}.
 @node 4.4.4.2, 4.4.4.3, 4.4.4.1, 4.4.4
 @subsubsection The Evaluator
 
-The @code{qeval} procedure, called by the @code{query-driver-loop}, is the
+The @code{qeval} procedure, called by the @code{queryDriverLoop}, is the
 basic evaluator of the query system.  It takes as inputs a query and a stream
 of frames, and it returns a stream of extended frames.  It identifies special
 forms by a data-directed dispatch using @code{get} and @code{put}, just as we
 did in implementing generic operations in @ref{Chapter 2}.  Any query that is
 not identified as a special form is assumed to be a simple query, to be
-processed by @code{simple-query}.
+processed by @code{simpleQuery}.
 
 @example typescript
-readAll(`
-(define (qeval query frame-stream)
-  (let ((qproc (get (type query) 'qeval)))
-    (if qproc
-        (qproc (contents query) frame-stream)
-        (simple-query query frame-stream))))
-`);
+export const qeval = (
+  query: Query,
+  frameStream: Stream<Frame>
+): Stream<Frame> => @{
+  const qproc = get(query.tag, "qeval");
+  return qproc === undefined
+    ? simpleQuery(query, frameStream)
+    : qproc(query, frameStream);
+@};
 @end example
 
 @noindent
@@ -2144,35 +2444,36 @@ the abstract syntax of the special forms.
 
 @subsubheading Simple queries
 
-The @code{simple-query} procedure handles simple queries.  It takes as
+The @code{simpleQuery} procedure handles simple queries.  It takes as
 arguments a simple query (a pattern) together with a stream of frames, and it
-returns the stream formed by extending each frame by all data-base matches of
+returns the stream formed by extending each frame by all database matches of
 the query.
 
 @example typescript
-readAll(`
-(define (simple-query query-pattern 
-                      frame-stream)
-  (stream-flatmap
-   (lambda (frame)
-     (stream-append-delayed
-      (find-assertions query-pattern frame)
-      (delay 
-        (apply-rules query-pattern frame))))
-   frame-stream))
-`);
+export const simpleQuery = (
+  queryPattern: Query,
+  frameStream: Stream<Frame>,
+): Stream<Frame> =>
+  streamFlatmap(
+    (frame) =>
+      streamAppendDelayed(
+        findAssertions(queryPattern, frame),
+        () => applyRules(queryPattern, frame),
+      ),
+    frameStream,
+  );
 @end example
 
 @noindent
-For each frame in the input stream, we use @code{find-assertions} 
+For each frame in the input stream, we use @code{findAssertions} 
 (@ref{4.4.4.3}) to match the pattern against all assertions in the data base,
-producing a stream of extended frames, and we use @code{apply-rules} 
+producing a stream of extended frames, and we use @code{applyRules} 
 (@ref{4.4.4.4}) to apply all possible rules, producing another stream of
 extended frames.  These two streams are combined (using
-@code{stream-append-delayed}, @ref{4.4.4.6}) to make a stream of all
+@code{streamAppendDelayed}, @ref{4.4.4.6}) to make a stream of all
 the ways that the given pattern can be satisfied consistent with the original
 frame (see @ref{Exercise 4.71}).  The streams for the individual input frames
-are combined using @code{stream-flatmap} (@ref{4.4.4.6}) to form one
+are combined using @code{streamFlatmap} (@ref{4.4.4.6}) to form one
 large stream of all the ways that any of the frames in the original input
 stream can be extended to produce a match with the given pattern.
 
@@ -2187,24 +2488,27 @@ as the new frame stream, it recursively applies @code{conjoin} to the rest of
 the queries.
 
 @example typescript
-readAll(`
-(define (conjoin conjuncts frame-stream)
-  (if (empty-conjunction? conjuncts)
-      frame-stream
-      (conjoin (rest-conjuncts conjuncts)
-               (qeval 
-                (first-conjunct conjuncts)
-                frame-stream))))
-`);
+export const conjoin = (
+  conjuncts: ReadonlyArray<Query>,
+  frameStream: Stream<Frame>,
+): Stream<Frame> =>
+  conjuncts.length === 0
+    ? frameStream
+    : conjoin(
+        restConjuncts(conjuncts),
+        qeval(firstConjunct(conjuncts), frameStream),
+      );
 @end example
 
 @noindent
 The expression
 
 @example typescript
-readAll(`
-(put 'and 'qeval conjoin)
-`);
+queryAtom("put",
+  qtext("and"),
+  qtext("qeval"),
+  qtext("conjoin")
+);
 @end example
 
 @noindent
@@ -2213,22 +2517,21 @@ encountered.
 
 @code{Or} queries are handled similarly, as shown in @ref{Figure 4.6}.  The
 output streams for the various disjuncts of the @code{or} are computed
-separately and merged using the @code{interleave-delayed} procedure from
+separately and merged using the @code{interleaveDelayed} procedure from
 @ref{4.4.4.6}.  (See @ref{Exercise 4.71} and @ref{Exercise 4.72}.)
 
 @example typescript
-readAll(`
-(define (disjoin disjuncts frame-stream)
-  (if (empty-disjunction? disjuncts)
-      the-empty-stream
-      (interleave-delayed
-       (qeval (first-disjunct disjuncts) 
-              frame-stream)
-       (delay (disjoin 
-               (rest-disjuncts disjuncts)
-               frame-stream)))))
-(put 'or 'qeval disjoin)
-`);
+export const disjoin = (
+  disjuncts: ReadonlyArray<Query>,
+  frameStream: Stream<Frame>,
+): Stream<Frame> =>
+  disjuncts.length === 0
+    ? Stream.empty()
+    : interleaveDelayed(
+        qeval(firstDisjunct(disjuncts), frameStream),
+        () => disjoin(restDisjuncts(disjuncts), frameStream),
+      );
+put("or", "qeval", disjoin);
 @end example
 
 @noindent
@@ -2243,124 +2546,123 @@ negated, and we include a given frame in the output stream only if it cannot be
 extended.
 
 @example typescript
-readAll(`
-(define (negate operands frame-stream)
-  (stream-flatmap
-   (lambda (frame)
-     (if (stream-null? 
-          (qeval (negated-query operands)
-                 (singleton-stream frame)))
-         (singleton-stream frame)
-         the-empty-stream))
-   frame-stream))
-(put 'not 'qeval negate)
-`);
+export const negate = (
+  operands: ReadonlyArray<Query>,
+  frameStream: Stream<Frame>,
+): Stream<Frame> =>
+  streamFlatmap(
+    (frame) =>
+      qeval(negatedQuery(operands), singletonStream(frame)).empty
+        ? singletonStream(frame)
+        : Stream.empty(),
+    frameStream,
+  );
+put("not", "qeval", negate);
 @end example
 
 @noindent
-@code{Lisp-value} is a filter similar to @code{not}.  Each frame in the stream
+@code{lispValue} is a filter similar to @code{not}.  Each frame in the stream
 is used to instantiate the variables in the pattern, the indicated predicate is
 applied, and the frames for which the predicate returns false are filtered out
 of the input stream.  An error results if there are unbound pattern variables.
 
 @example typescript
-readAll(`
-(define (lisp-value call frame-stream)
-  (stream-flatmap
-   (lambda (frame)
-     (if (execute
-          (instantiate
-           call
-           frame
-           (lambda (v f)
-             (error 
-              "Unknown pat var: LISP-VALUE" 
-              v))))
-         (singleton-stream frame)
-         the-empty-stream))
-   frame-stream))
-(put 'lisp-value 'qeval lisp-value)
-`);
+export const lispValue = (
+  call: Query,
+  frameStream: Stream<Frame>,
+): Stream<Frame> =>
+  streamFlatmap(
+    (frame) =>
+      execBody(
+        instantiate(call, frame, (v, f) => @{
+          throw new Error(`Unknown pat var: lispValue`);
+        @}),
+      )
+        ? singletonStream(frame)
+        : Stream.empty(),
+    frameStream,
+  );
+put("lispValue", "qeval", lispValue);
 @end example
 
 @noindent
 @code{Execute}, which applies the predicate to the arguments, must @code{eval}
 the predicate expression to get the procedure to apply.  However, it must not
 evaluate the arguments, since they are already the actual arguments, not
-expressions whose evaluation (in Lisp) will produce the arguments.  Note that
+expressions whose evaluation (in the host) will produce the arguments.  Note
+that
 @code{execute} is implemented using @code{eval} and @code{apply} from the
-underlying Lisp system.
+underlying runtime.
 
 @example typescript
-readAll(`
-(define (execute exp)
-  (apply (eval (predicate exp) 
-               user-initial-environment)
-         (args exp)))
-`);
+const execBody = (exp: Query): boolean => @{
+  const handler = get(predicate(exp), "lispValue");
+  return handler === undefined ? false : handler(args(exp));
+@};
 @end example
 
 @noindent
-The @code{always-true} special form provides for a query that is always
+The @code{alwaysTrue} special form provides for a query that is always
 satisfied.  It ignores its contents (normally empty) and simply passes through
-all the frames in the input stream.  @code{Always-true} is used by the
-@code{rule-body} selector (@ref{4.4.4.7}) to provide bodies for rules
+all the frames in the input stream.  @code{alwaysTrue} is used by the
+@code{ruleBody} selector (@ref{4.4.4.7}) to provide bodies for rules
 that were defined without bodies (that is, rules whose conclusions are always
 satisfied).
 
 @example typescript
-readAll(`
-(define (always-true ignore frame-stream) 
-  frame-stream)
-(put 'always-true 'qeval always-true)
-`);
+export const alwaysTrue = (
+  ignore: ReadonlyArray<Query>,
+  frameStream: Stream<Frame>,
+): Stream<Frame> => frameStream;
+put("alwaysTrue", "qeval", alwaysTrue);
 @end example
 
 @noindent
-The selectors that define the syntax of @code{not} and @code{lisp-value} are
+The selectors that define the syntax of @code{not} and @code{lispValue} are
 given in @ref{4.4.4.7}.
 
 @node 4.4.4.3, 4.4.4.4, 4.4.4.2, 4.4.4
 @subsubsection Finding Assertions by Pattern Matching
 
-@code{Find-assertions}, called by @code{simple-query} (@ref{4.4.4.2}),
+@code{Find-assertions}, called by @code{simpleQuery} (@ref{4.4.4.2}),
 takes as input a pattern and a frame.  It returns a stream of frames, each
-extending the given one by a data-base match of the given pattern.  It uses
-@code{fetch-assertions} (@ref{4.4.4.5}) to get a stream of all the
+extending the given one by a database match of the given pattern.  It uses
+@code{fetchAssertions} (@ref{4.4.4.5}) to get a stream of all the
 assertions in the data base that should be checked for a match against the
-pattern and the frame.  The reason for @code{fetch-assertions} here is that we
+pattern and the frame.  The reason for @code{fetchAssertions} here is that we
 can often apply simple tests that will eliminate many of the entries in the
 data base from the pool of candidates for a successful match.  The system would
-still work if we eliminated @code{fetch-assertions} and simply checked a stream
+still work if we eliminated @code{fetchAssertions} and simply checked a stream
 of all assertions in the data base, but the computation would be less efficient
 because we would need to make many more calls to the matcher.
 
 @example typescript
-readAll(`
-(define (find-assertions pattern frame)
-  (stream-flatmap 
-    (lambda (datum) 
-      (check-an-assertion datum pattern frame))
-    (fetch-assertions pattern frame)))
-`);
+export const findAssertions = (
+  pattern: Query,
+  frame: Frame,
+): Stream<Frame> =>
+  streamFlatmap(
+    (datum) => checkAnAssertion(datum, pattern, frame),
+    fetchAssertions(pattern, frame),
+  );
 @end example
 
 @noindent
 @code{Check-an-assertion} takes as arguments a pattern, a data object
 (assertion), and a frame and returns either a one-element stream containing the
-extended frame or @code{the-empty-stream} if the match fails.
+extended frame or @code{emptyStream} if the match fails.
 
 @example typescript
-readAll(`
-(define (check-an-assertion 
-         assertion query-pat query-frame)
-  (let ((match-result
-         (pattern-match 
-          query-pat assertion query-frame)))
-    (if (eq? match-result 'failed)
-        the-empty-stream
-        (singleton-stream match-result))))
-`);
+export const checkAnAssertion = (
+  assertion: Query,
+  queryPat: Query,
+  queryFrame: Frame,
+): Stream<Frame> => @{
+  const matchResult = patternMatch(queryPat, assertion, queryFrame);
+  return matchResult === undefined
+    ? Stream.empty()
+    : singletonStream(matchResult);
+@};
 @end example
 
 @noindent
@@ -2378,21 +2680,29 @@ frame; in this frame we then match the @code{cdr} of the pattern against the
 and we return the symbol @code{failed}.
 
 @example typescript
-readAll(`
-(define (pattern-match pat dat frame)
-  (cond ((eq? frame 'failed) 'failed)
-        ((equal? pat dat) frame)
-        ((var? pat) 
-         (extend-if-consistent 
-          pat dat frame))
-        ((and (pair? pat) (pair? dat))
-         (pattern-match 
-          (cdr pat) 
-          (cdr dat)
-          (pattern-match
-           (car pat) (car dat) frame)))
-        (else 'failed)))
-`);
+export const patternMatch = (
+  pat: Query,
+  dat: Query,
+  frame: Frame | undefined,
+): Frame | undefined => @{
+  if (frame === undefined) @{
+    return undefined;
+  @}
+  if (equal(pat, dat)) @{
+    return frame;
+  @}
+  if (isVar(pat)) @{
+    return extendIfConsistent(pat, dat, frame);
+  @}
+  if (isPair(pat) && isPair(dat)) @{
+    return patternMatch(
+      pat.tail,
+      dat.tail,
+      patternMatch(pat.head, dat.head, frame),
+    );
+  @}
+  return undefined;
+@};
 @end example
 
 @noindent
@@ -2400,14 +2710,16 @@ Here is the procedure that extends a frame by adding a new binding, if this is
 consistent with the bindings already in the frame:
 
 @example typescript
-readAll(`
-(define (extend-if-consistent var dat frame)
-  (let ((binding (binding-in-frame var frame)))
-    (if binding
-        (pattern-match 
-         (binding-value binding) dat frame)
-        (extend var dat frame))))
-`);
+export const extendIfConsistent = (
+  varTerm: Term,
+  dat: Query,
+  frame: Frame,
+): Frame | undefined => @{
+  const binding = bindingInFrame(varTerm, frame);
+  return binding === undefined
+    ? extend(varTerm, dat, frame)
+    : patternMatch(binding.value, dat, frame);
+@};
 @end example
 
 @noindent
@@ -2415,7 +2727,7 @@ If there is no binding for the variable in the frame, we simply add the binding
 of the variable to the data.  Otherwise we match, in the frame, the data
 against the value of the variable in the frame.  If the stored value contains
 only constants, as it must if it was stored during pattern matching by
-@code{extend-if-consistent}, then the match simply tests whether the stored and
+@code{extendIfConsistent}, then the match simply tests whether the stored and
 new values are the same.  If so, it returns the unmodified frame; if not, it
 returns a failure indication.  The stored value may, however, contain pattern
 variables if it was stored during unification (see @ref{4.4.4.4}).  The
@@ -2430,7 +2742,7 @@ frame.  Eventually this match extends the frame by adding a binding of
 modify a stored binding and we never store more than one binding for a given
 variable.
 
-The procedures used by @code{extend-if-consistent} to manipulate bindings are
+The procedures used by @code{extendIfConsistent} to manipulate bindings are
 defined in @ref{4.4.4.8}.
 
 @subsubheading Patterns with dotted tails
@@ -2439,8 +2751,8 @@ If a pattern contains a dot followed by a pattern variable, the pattern
 variable matches the rest of the data list (rather than the next element of the
 data list), just as one would expect with the dotted-tail notation described in
 @ref{Exercise 2.20}.  Although the pattern matcher we have just implemented
-doesn't look for dots, it does behave as we want.  This is because the Lisp
-@code{read} primitive, which is used by @code{query-driver-loop} to read the
+doesn't look for dots, it does behave as we want.  This is because the runtime's
+@code{read} primitive, which is used by @code{queryDriverLoop} to read the
 query and represent it as a list structure, treats dots in a special way.
 
 When @code{read} sees a dot, instead of making the next item be the next
@@ -2452,7 +2764,7 @@ expression @code{(cons 'computer (cons '?type '()))}, and that for
 @code{(computer . ?type)} could be constructed by evaluating the expression
 @code{(cons 'computer '?type)}.
 
-Thus, as @code{pattern-match} recursively compares @code{car}s and @code{cdr}s
+Thus, as @code{patternMatch} recursively compares @code{car}s and @code{cdr}s
 of a data list and a pattern that had a dot, it eventually matches the variable
 after the dot (which is a @code{cdr} of the pattern) against a sublist of the
 data list, binding the variable to that list.  For example, matching the
@@ -2462,21 +2774,22 @@ will match @code{?type} against the list @code{(programmer trainee)}.
 @node 4.4.4.4, 4.4.4.5, 4.4.4.3, 4.4.4
 @subsubsection Rules and Unification
 
-@code{Apply-rules} is the rule analog of @code{find-assertions} 
+@code{Apply-rules} is the rule analog of @code{findAssertions} 
 (@ref{4.4.4.3}).  It takes as input a pattern and a frame, and it forms a stream
 of extension frames by applying rules from the data base.
-@code{Stream-flatmap} maps @code{apply-a-rule} down the stream of possibly
-applicable rules (selected by @code{fetch-rules}, @ref{4.4.4.5}) and
+@code{Stream-flatmap} maps @code{applyARule} down the stream of possibly
+applicable rules (selected by @code{fetchRules}, @ref{4.4.4.5}) and
 combines the resulting streams of frames.
 
 @example typescript
-readAll(`
-(define (apply-rules pattern frame)
-  (stream-flatmap 
-   (lambda (rule)
-     (apply-a-rule rule pattern frame))
-   (fetch-rules pattern frame)))
-`);
+export const applyRules = (
+  pattern: Query,
+  frame: Frame,
+): Stream<Frame> =>
+  streamFlatmap(
+    (rule) => applyARule(rule, pattern, frame),
+    fetchRules(pattern, frame),
+  );
 @end example
 
 @noindent
@@ -2495,29 +2808,28 @@ fooled into thinking that the two bindings must be consistent.  Rather than
 rename variables, we could devise a more clever environment structure; however,
 the renaming approach we have chosen here is the most straightforward, even if
 not the most efficient.  (See @ref{Exercise 4.79}.)  Here is the
-@code{apply-a-rule} procedure:
+@code{applyARule} procedure:
 
 @example typescript
-readAll(`
-(define (apply-a-rule rule
-                      query-pattern
-                      query-frame)
-  (let ((clean-rule 
-         (rename-variables-in rule)))
-    (let ((unify-result
-           (unify-match query-pattern
-                        (conclusion clean-rule)
-                        query-frame)))
-      (if (eq? unify-result 'failed)
-          the-empty-stream
-          (qeval (rule-body clean-rule)
-                 (singleton-stream 
-                  unify-result))))))
-`);
+export const applyARule = (
+  rule: Rule,
+  queryPattern: Query,
+  queryFrame: Frame,
+): Stream<Frame> => @{
+  const cleanRule = renameVariablesIn(rule);
+  const unifyResult = unifyMatch(
+    queryPattern,
+    cleanRule.conclusion,
+    queryFrame,
+  );
+  return unifyResult === undefined
+    ? Stream.empty()
+    : qeval(cleanRule.body, singletonStream(unifyResult));
+@};
 @end example
 
 @noindent
-The selectors @code{rule-body} and @code{conclusion} that extract parts of a
+The selectors @code{ruleBody} and @code{conclusion} that extract parts of a
 rule are defined in @ref{4.4.4.7}.
 
 We generate unique variable names by associating a unique identifier (such as a
@@ -2525,25 +2837,27 @@ number) with each rule application and combining this identifier with the
 original variable names.  For example, if the rule-application identifier is 7,
 we might change each @code{?x} in the rule to @code{?x-7} and each @code{?y} in
 the rule to @code{?y-7}.  (@code{Make-new-variable} and
-@code{new-rule-application-id} are included with the syntax procedures in
+@code{newRuleApplicationId} are included with the syntax procedures in
 @ref{4.4.4.7}.)
 
 @example typescript
-readAll(`
-(define (rename-variables-in rule)
-  (let ((rule-application-id 
-         (new-rule-application-id)))
-    (define (tree-walk exp)
-      (cond ((var? exp)
-             (make-new-variable 
-              exp 
-              rule-application-id))
-            ((pair? exp)
-             (cons (tree-walk (car exp))
-                   (tree-walk (cdr exp))))
-            (else exp)))
-    (tree-walk rule)))
-`);
+export const renameVariablesIn = (rule: Rule): Rule => @{
+  const ruleApplicationId = newRuleApplicationId();
+  const treeWalk = (exp: Term): Term => @{
+    if (isVar(exp)) @{
+      return makeNewVariable(exp, ruleApplicationId);
+    @}
+    if (isPair(exp)) @{
+      return qpair(treeWalk(exp.head), treeWalk(exp.tail));
+    @}
+    return exp;
+  @};
+  return @{
+    tag: "rule",
+    conclusion: treeWalk(rule.conclusion),
+    body: treeWalk(rule.body)
+  @};
+@};
 @end example
 
 @noindent
@@ -2551,40 +2865,45 @@ The unification algorithm is implemented as a procedure that takes as inputs
 two patterns and a frame and returns either the extended frame or the symbol
 @code{failed}.  The unifier is like the pattern matcher except that it is
 symmetrical---variables are allowed on both sides of the match.
-@code{Unify-match} is basically the same as @code{pattern-match}, except that
+@code{Unify-match} is basically the same as @code{patternMatch}, except that
 there is extra code (marked ``@code{***}'' below) to handle the case where the
 object on the right side of the match is a variable.
 
 @example typescript
-readAll(`
-(define (unify-match p1 p2 frame)
-  (cond ((eq? frame 'failed) 'failed)
-        ((equal? p1 p2) frame)
-        ((var? p1)
-         (extend-if-possible p1 p2 frame))
-        ((var? p2)
-         (extend-if-possible 
-          p2 
-          p1 
-          frame))        ; @r{***}
-        ((and (pair? p1) 
-              (pair? p2))
-         (unify-match 
-          (cdr p1) 
-          (cdr p2)
-          (unify-match 
-           (car p1)
-           (car p2)
-           frame)))
-        (else 'failed)))
-`);
+export const unifyMatch = (
+  p1: Query,
+  p2: Query,
+  frame: Frame | undefined,
+): Frame | undefined => @{
+  if (frame === undefined) @{
+    return undefined;
+  @}
+  if (equal(p1, p2)) @{
+    return frame;
+  @}
+  if (isVar(p1)) @{
+    return extendIfPossible(p1, p2, frame);
+  @}
+  if (isVar(p2)) @{
+    // symmetric case: try the other orientation
+    return extendIfPossible(p2, p1, frame);
+  @}
+  if (isPair(p1) && isPair(p2)) @{
+    return unifyMatch(
+      p1.tail,
+      p2.tail,
+      unifyMatch(p1.head, p2.head, frame),
+    );
+  @}
+  return undefined;
+@};
 @end example
 
 @noindent
 In unification, as in one-sided pattern matching, we want to accept a proposed
 extension of the frame only if it is consistent with existing bindings.  The
-procedure @code{extend-if-possible} used in unification is the same as the
-@code{extend-if-consistent} used in pattern matching except for two special
+procedure @code{extendIfPossible} used in unification is the same as the
+@code{extendIfConsistent} used in pattern matching except for two special
 checks, marked ``@code{***}'' in the program below.  In the first case, if the
 variable we are trying to match is not bound, but the value we are trying to
 match it with is itself a (different) variable, it is necessary to check to see
@@ -2604,7 +2923,7 @@ of values for the pattern variables that make the patterns the same, then these
 patterns imply instructions to find a @code{?y} such that @code{?y} is equal to
 the expression involving @code{?y}.  There is no general method for solving
 such equations, so we reject such bindings; these cases are recognized by the
-predicate @code{depends-on?}.@footnote{In general, unifying @code{?y} with an
+predicate @code{dependsOn}.@footnote{In general, unifying @code{?y} with an
 expression involving @code{?y} would require our being able to find a fixed
 point of the equation @code{?y} = @code{⟨}@var{expression involving @code{?y}}@code{⟩}.  It
 is sometimes possible to syntactically form an expression that appears to be
@@ -2673,30 +2992,29 @@ other hand, we do not want to reject attempts to bind a variable to itself.
 For example, consider unifying @code{(?x ?x)} and @code{(?y ?y)}.  The second
 attempt to bind @code{?x} to @code{?y} matches @code{?y} (the stored value of
 @code{?x}) against @code{?y} (the new value of @code{?x}).  This is taken care
-of by the @code{equal?}  clause of @code{unify-match}.
+of by the @code{equal?}  clause of @code{unifyMatch}.
 
 @example typescript
-readAll(`
-(define (extend-if-possible var val frame)
-  (let ((binding (binding-in-frame var frame)))
-    (cond (binding
-           (unify-match
-            (binding-value binding) val frame))
-          ((var? val)                   @r{; ***}
-           (let ((binding 
-                  (binding-in-frame 
-                   val
-                   frame)))
-             (if binding
-                 (unify-match
-                  var 
-                  (binding-value binding) 
-                  frame)
-                 (extend var val frame))))
-          ((depends-on? val var frame)  @r{; ***}
-           'failed)
-          (else (extend var val frame)))))
-`);
+export const extendIfPossible = (
+  varTerm: Term,
+  val: Query,
+  frame: Frame,
+): Frame | undefined => @{
+  const binding = bindingInFrame(varTerm, frame);
+  if (binding !== undefined) @{
+    return unifyMatch(binding.value, val, frame);
+  @}
+  if (isVar(val)) @{
+    const valBinding = bindingInFrame(val, frame);
+    return valBinding === undefined
+      ? extend(varTerm, val, frame)
+      : unifyMatch(varTerm, valBinding.value, frame);
+  @}
+  if (dependsOn(val, varTerm, frame)) @{
+    return undefined;
+  @}
+  return extend(varTerm, val, frame);
+@};
 @end example
 
 @noindent
@@ -2704,37 +3022,37 @@ readAll(`
 be the value of a pattern variable depends on the variable.  This must be done
 relative to the current frame because the expression may contain occurrences of
 a variable that already has a value that depends on our test variable.  The
-structure of @code{depends-on?} is a simple recursive tree walk in which we
+structure of @code{dependsOn} is a simple recursive tree walk in which we
 substitute for the values of variables whenever necessary.
 
 @example typescript
-readAll(`
-(define (depends-on? exp var frame)
-  (define (tree-walk e)
-    (cond ((var? e)
-           (if (equal? var e)
-               true
-               (let
-                 ((b (binding-in-frame 
-                      e 
-                      frame)))
-                  (if b
-                      (tree-walk 
-                       (binding-value b))
-                      false))))
-          ((pair? e)
-           (or (tree-walk (car e))
-               (tree-walk (cdr e))))
-          (else false)))
-  (tree-walk exp))
-`);
+export const dependsOn = (
+  exp: Query,
+  varTerm: Term,
+  frame: Frame
+): boolean => @{
+  const treeWalk = (e: Query): boolean => @{
+    if (isVar(e)) @{
+      if (equal(varTerm, e)) @{
+        return true;
+      @}
+      const b = bindingInFrame(e, frame);
+      return b === undefined ? false : treeWalk(b.value);
+    @}
+    if (isPair(e)) @{
+      return treeWalk(e.head) || treeWalk(e.tail);
+    @}
+    return false;
+  @};
+  return treeWalk(exp);
+@};
 @end example
 
 @node 4.4.4.5, 4.4.4.6, 4.4.4.4, 4.4.4
 @subsubsection Maintaining the Data Base
 
 One important problem in designing logic programming languages is that of
-arranging things so that as few irrelevant data-base entries as possible will
+arranging things so that as few irrelevant database entries as possible will
 be examined in checking a given pattern.  In our system, in addition to storing
 all assertions in one big stream, we store all assertions whose @code{car}s are
 constant symbols in separate streams, in a table indexed by the symbol.  To
@@ -2749,20 +3067,20 @@ not a constant symbol.  We avoid building our criteria for indexing (using the
 instead we call on predicates and selectors that embody our criteria.
 
 @example typescript
-readAll(`
-(define THE-ASSERTIONS the-empty-stream)
+let theAssertions: Stream<Query> = Stream.empty();
 
-(define (fetch-assertions pattern frame)
-  (if (use-index? pattern)
-      (get-indexed-assertions pattern)
-      (get-all-assertions)))
+export const fetchAssertions = (
+  pattern: Query,
+  frame: Frame
+): Stream<Query> =>
+  useIndex(pattern)
+    ? getIndexedAssertions(pattern)
+    : getAllAssertions();
 
-(define (get-all-assertions) THE-ASSERTIONS)
+export const getAllAssertions = (): Stream<Query> => theAssertions;
 
-(define (get-indexed-assertions pattern)
-  (get-stream (index-key-of pattern)
-              'assertion-stream))
-`);
+export const getIndexedAssertions = (pattern: Query): Stream<Query> =>
+  getStream(indexKeyOf(pattern), "assertion-stream");
 @end example
 
 @noindent
@@ -2770,11 +3088,9 @@ readAll(`
 nothing is stored there.
 
 @example typescript
-readAll(`
-(define (get-stream key1 key2)
-  (let ((s (get key1 key2)))
-    (if s s the-empty-stream)))
-`);
+export const getStream = (key1: string, key2: string): Stream<Query> =>
+  const stored = get(key1, key2);
+  return stored === undefined ? Stream.empty() : stored;
 @end example
 
 @noindent
@@ -2790,51 +3106,46 @@ conclusions start with a variable in a separate stream in our table, indexed by
 the symbol @code{?}.
 
 @example typescript
-readAll(`
-(define THE-RULES the-empty-stream)
+let theRules: Stream<Rule> = Stream.empty();
 
-(define (fetch-rules pattern frame)
-  (if (use-index? pattern)
-      (get-indexed-rules pattern)
-      (get-all-rules)))
+export const fetchRules = (
+  pattern: Query,
+  frame: Frame
+): Stream<Rule> =>
+  useIndex(pattern) ? getIndexedRules(pattern) : getAllRules();
 
-(define (get-all-rules) THE-RULES)
+export const getAllRules = (): Stream<Rule> => theRules;
 
-(define (get-indexed-rules pattern)
-  (stream-append
-   (get-stream (index-key-of pattern)
-               'rule-stream)
-   (get-stream '? 'rule-stream)))
-`);
+export const getIndexedRules = (pattern: Query): Stream<Rule> =>
+  streamAppend(
+    getStream(indexKeyOf(pattern), "rule-stream") as Stream<Rule>,
+    getStream("?", "rule-stream") as Stream<Rule>,
+  );
 @end example
 
 @noindent
-@code{Add-rule-or-assertion!} is used by @code{query-driver-loop} to add
+@code{addRuleOrAssertion} is used by @code{queryDriverLoop} to add
 assertions and rules to the data base.  Each item is stored in the index, if
 appropriate, and in a stream of all assertions or rules in the data base.
 
 @example typescript
-readAll(`
-(define (add-rule-or-assertion! assertion)
-  (if (rule? assertion)
-      (add-rule! assertion)
-      (add-assertion! assertion)))
+export const addRuleOrAssertion = (statement: Query | Rule): void => @{
+  if (isRule(statement)) @{
+    addRule(statement);
+  @} else @{
+    addAssertion(statement);
+  @}
+@};
 
-(define (add-assertion! assertion)
-  (store-assertion-in-index assertion)
-  (let ((old-assertions THE-ASSERTIONS))
-    (set! THE-ASSERTIONS
-          (cons-stream assertion 
-                       old-assertions))
-    'ok))
+export const addAssertion = (assertion: Query): void => @{
+  storeAssertionInIndex(assertion);
+  theAssertions = Stream.cons(assertion, () => theAssertions);
+@};
 
-(define (add-rule! rule)
-  (store-rule-in-index rule)
-  (let ((old-rules THE-RULES))
-    (set! THE-RULES
-          (cons-stream rule old-rules))
-    'ok))
-`);
+export const addRule = (rule: Rule): void => @{
+  storeRuleInIndex(rule);
+  theRules = Stream.cons(rule, () => theRules);
+@};
 @end example
 
 @noindent
@@ -2842,45 +3153,39 @@ To actually store an assertion or a rule, we check to see if it can be indexed.
 If so, we store it in the appropriate stream.
 
 @example typescript
-readAll(`
-(define (store-assertion-in-index assertion)
-  (if (indexable? assertion)
-      (let ((key (index-key-of assertion)))
-        (let ((current-assertion-stream
-               (get-stream 
-                key 'assertion-stream)))
-          (put key
-               'assertion-stream
-               (cons-stream 
-                assertion
-                current-assertion-stream))))))
+export const storeAssertionInIndex = (assertion: Query): void => @{
+  if (indexable(assertion)) @{
+    const key = indexKeyOf(assertion);
+    put(
+      key,
+      "assertion-stream",
+      Stream.cons(assertion, () => getStream(key, "assertion-stream"))
+    );
+  @}
+@};
 
-(define (store-rule-in-index rule)
-  (let ((pattern (conclusion rule)))
-    (if (indexable? pattern)
-        (let ((key (index-key-of pattern)))
-          (let ((current-rule-stream
-                 (get-stream 
-                  key 'rule-stream)))
-            (put key
-                 'rule-stream
-                 (cons-stream 
-                  rule
-                  current-rule-stream)))))))
-`);
+export const storeRuleInIndex = (rule: Rule): void => @{
+  const pattern = rule.conclusion;
+  if (indexable(pattern)) @{
+    const key = indexKeyOf(pattern);
+    put(
+      key,
+      "rule-stream",
+      Stream.cons(rule, () => getStream(key, "rule-stream"))
+    );
+  @}
+@};
 @end example
 
 @noindent
-The following procedures define how the data-base index is used.  A pattern (an
+The following procedures define how the database index is used.  A pattern (an
 assertion or a rule conclusion) will be stored in the table if it starts with a
 variable or a constant symbol.
 
 @example typescript
-readAll(`
-(define (indexable? pat)
-  (or (constant-symbol? (car pat))
-      (var? (car pat))))
-`);
+export const indexable = (pat: Query): boolean =>
+  isAtom(pat)
+    && (isConstantSymbol(pat.relation) || isVar(pat.relation));
 @end example
 
 @noindent
@@ -2888,11 +3193,8 @@ The key under which a pattern is stored in the table is either @code{?} (if it
 starts with a variable) or the constant symbol with which it starts.
 
 @example typescript
-readAll(`
-(define (index-key-of pat)
-  (let ((key (car pat)))
-    (if (var? key) '? key)))
-`);
+export const indexKeyOf = (pat: Query): string =>
+  isAtom(pat) && isVar(pat.relation) ? "?" : relationName(pat);
 @end example
 
 @noindent
@@ -2900,28 +3202,24 @@ The index will be used to retrieve items that might match a pattern if the
 pattern starts with a constant symbol.
 
 @example typescript
-readAll(`
-(define (use-index? pat)
-  (constant-symbol? (car pat)))
-`);
+export const useIndex = (pat: Query): boolean =>
+  isAtom(pat) && isConstantSymbol(pat.relation);
 @end example
 
 @quotation
 @strong{@anchor{Exercise 4.70}Exercise 4.70:} What is the purpose of the
-@code{let} bindings in the procedures @code{add-assertion!} and
-@code{add-rule!}?  What would be wrong with the following implementation of
-@code{add-assertion!}?  Hint: Recall the definition of the infinite stream of
-ones in @ref{3.5.2}: @code{(define ones (cons-stream 1 ones))}.
+bindings in the procedures @code{addAssertion} and
+@code{addRule}?  What would be wrong with the following implementation of
+@code{addAssertion}?  Hint: Recall the infinite stream of ones of
+@ref{3.5.2}, whose definition refers to itself.
 
 @example typescript
-readAll(`
-(define (add-assertion! assertion)
-  (store-assertion-in-index assertion)
-  (set! THE-ASSERTIONS
-        (cons-stream assertion 
-                     THE-ASSERTIONS))
-  'ok)
-`);
+export const addAssertionUnindexed = (
+  assertion: Query,
+): void => @{
+  storeAssertionInIndex(assertion);
+  theAssertions = Stream.cons(assertion, () => theAssertions);
+@};
 @end example
 @end quotation
 
@@ -2931,30 +3229,31 @@ readAll(`
 The query system uses a few stream operations that were not presented in
 @ref{Chapter 3}.
 
-@code{Stream-append-delayed} and @code{interleave-delayed} are just like
+@code{Stream-append-delayed} and @code{interleaveDelayed} are just like
 @code{stream-append} and @code{interleave} (@ref{3.5.3}), except that
 they take a delayed argument (like the @code{integral} procedure in 
 @ref{3.5.4}).  This postpones looping in some cases (see @ref{Exercise 4.71}).
 
 @example typescript
-readAll(`
-(define (stream-append-delayed s1 delayed-s2)
-  (if (stream-null? s1)
-      (force delayed-s2)
-      (cons-stream
-       (stream-car s1)
-       (stream-append-delayed (stream-cdr s1)
-                              delayed-s2))))
+export const streamAppendDelayed = <A>(
+  s1: Stream<A>,
+  delayedS2: () => Stream<A>,
+): Stream<A> =>
+  s1.empty
+    ? delayedS2()
+    : Stream.cons(s1.head as A, () =>
+        streamAppendDelayed(s1.tail(), delayedS2),
+      );
 
-(define (interleave-delayed s1 delayed-s2)
-  (if (stream-null? s1)
-      (force delayed-s2)
-      (cons-stream
-       (stream-car s1)
-       (interleave-delayed 
-        (force delayed-s2)
-        (delay (stream-cdr s1))))))
-`);
+export const interleaveDelayed = <A>(
+  s1: Stream<A>,
+  delayedS2: () => Stream<A>,
+): Stream<A> =>
+  s1.empty
+    ? delayedS2()
+    : Stream.cons(s1.head as A, () =>
+        interleaveDelayed(delayedS2(), () => s1.tail()),
+      );
 @end example
 
 @noindent
@@ -2966,18 +3265,19 @@ accumulate the streams with an interleaving process, rather than simply
 appending them (see @ref{Exercise 4.72} and @ref{Exercise 4.73}).
 
 @example typescript
-readAll(`
-(define (stream-flatmap proc s)
-  (flatten-stream (stream-map proc s)))
+export const streamFlatmap = <A, B>(
+  proc: (a: A) => Stream<B>,
+  s: Stream<A>,
+): Stream<B> => flattenStream(streamMap(proc, s));
 
-(define (flatten-stream stream)
-  (if (stream-null? stream)
-      the-empty-stream
-      (interleave-delayed
-       (stream-car stream)
-       (delay (flatten-stream
-               (stream-cdr stream))))))
-`);
+export const flattenStream = <A>(
+  stream: Stream<Stream<A>>
+): Stream<A> =>
+  stream.empty
+    ? Stream.empty()
+    : interleaveDelayed(stream.head as Stream<A>, () =>
+        flattenStream(stream.tail()),
+      );
 @end example
 
 @noindent
@@ -2985,10 +3285,8 @@ The evaluator also uses the following simple procedure to generate a stream
 consisting of a single element:
 
 @example typescript
-readAll(`
-(define (singleton-stream x)
-  (cons-stream x the-empty-stream))
-`);
+export const singletonStream = <A>(x: A): Stream<A> =>
+  Stream.cons(x, () => Stream.empty());
 @end example
 
 @node 4.4.4.7, 4.4.4.8, 4.4.4.6, 4.4.4
@@ -3000,74 +3298,84 @@ They are the same as the @code{type-tag} and @code{contents} procedures in
 @ref{2.4.2}, except for the error message.
 
 @example typescript
-readAll(`
-(define (type exp)
-  (if (pair? exp)
-      (car exp)
-      (error "Unknown expression TYPE"
-             exp)))
+export const typeOf = (exp: Query): string => @{
+  if (isAtom(exp)) @{
+    return exp.tag;
+  @}
+  throw new Error("Unknown expression TYPE");
+@};
 
-(define (contents exp)
-  (if (pair? exp)
-      (cdr exp)
-      (error "Unknown expression CONTENTS"
-             exp)))
-`);
+export const contentsOf = (exp: Query): Query => @{
+  if (isAtom(exp)) @{
+    return exp;
+  @}
+  throw new Error("Unknown expression CONTENTS");
+@};
 @end example
 
 @noindent
-The following procedures, used by @code{query-driver-loop} (in 
+The following procedures, used by @code{queryDriverLoop} (in 
 @ref{4.4.4.1}), specify that rules and assertions are added to the data base by
 expressions of the form @code{(assert! ⟨@var{rule-or-assertion}⟩)}:
 
 @example typescript
-readAll(`
-(define (assertion-to-be-added? exp)
-  (eq? (type exp) 'assert!))
+export const isAssertionToBeAdded = (exp: Query): boolean =>
+  isAtom(exp) && exp.tag === "assert";
 
-(define (add-assertion-body exp)
-  (car (contents exp)))
-`);
+export const addAssertionBody = (exp: Query): Query =>
+  isAtom(exp) && exp.tag === "assert" ? exp.fields[0] : exp;
 @end example
 
 @noindent
 Here are the syntax definitions for the @code{and}, @code{or}, @code{not}, and
-@code{lisp-value} special forms (@ref{4.4.4.2}):
+@code{lispValue} special forms (@ref{4.4.4.2}):
 
 @example typescript
-readAll(`
-(define (empty-conjunction? exps) (null? exps))
-(define (first-conjunct exps) (car exps))
-(define (rest-conjuncts exps) (cdr exps))
-(define (empty-disjunction? exps) (null? exps))
-(define (first-disjunct exps) (car exps))
-(define (rest-disjuncts exps) (cdr exps))
-(define (negated-query exps) (car exps))
-(define (predicate exps) (car exps))
-(define (args exps) (cdr exps))
-`);
+export const emptyConjunction = (
+  exps: ReadonlyArray<Query>
+): boolean => exps.length === 0;
+export const firstConjunct = (
+  exps: ReadonlyArray<Query>
+): Query => exps[0];
+export const restConjuncts = (
+  exps: ReadonlyArray<Query>
+): ReadonlyArray<Query> => exps.slice(1);
+export const emptyDisjunction = (
+  exps: ReadonlyArray<Query>
+): boolean => exps.length === 0;
+export const firstDisjunct = (
+  exps: ReadonlyArray<Query>
+): Query => exps[0];
+export const restDisjuncts = (
+  exps: ReadonlyArray<Query>
+): ReadonlyArray<Query> => exps.slice(1);
+export const negatedQuery = (
+  exps: ReadonlyArray<Query>
+): Query => exps[0];
+export const predicate = (
+  exps: ReadonlyArray<Query>
+): string => relationName(exps[0]);
+export const args = (
+  exps: ReadonlyArray<Query>
+): ReadonlyArray<Term> => exps[0].fields;
 @end example
 
 @noindent
 The following three procedures define the syntax of rules:
 
 @example typescript
-readAll(`
-(define (rule? statement)
-  (tagged-list? statement 'rule))
+export const isRule = (
+  statement: Query | Rule
+): boolean => statement.tag === "rule";
 
-(define (conclusion rule) (cadr rule))
+export const conclusion = (rule: Rule): Query => rule.conclusion;
 
-(define (rule-body rule)
-  (if (null? (cddr rule))
-      '(always-true)
-      (caddr rule)))
-`);
+export const ruleBody = (rule: Rule): Query => rule.body;
 @end example
 
 @noindent
-@code{Query-driver-loop} (@ref{4.4.4.1}) calls
-@code{query-syntax-process} to transform pattern variables in the expression,
+@code{Query-driverLoop} (@ref{4.4.4.1}) calls
+@code{querySyntaxProcess} to transform pattern variables in the expression,
 which have the form @code{?symbol}, into the internal format @code{(? symbol)}.
 That is to say, a pattern such as @code{(job ?x ?y)} is actually represented
 internally by the system as @code{(job (? x) (? y))}.  This increases the
@@ -3075,54 +3383,48 @@ efficiency of query processing, since it means that the system can check to see
 if an expression is a pattern variable by checking whether the @code{car} of
 the expression is the symbol @code{?}, rather than having to extract characters
 from the symbol.  The syntax transformation is accomplished by the following
-procedure:@footnote{Most Lisp systems give the user the ability to modify the
-ordinary @code{read} procedure to perform such transformations by defining
-@newterm{reader macro characters}.  Quoted expressions are already handled in
-this way: The reader automatically translates @code{'expression} into
-@code{(quote expression)} before the evaluator sees it.  We could arrange for
-@code{?expression} to be transformed into @code{(? expression)} in the same
-way; however, for the sake of clarity we have included the transformation
+procedure:@footnote{Some language systems give the user the ability to modify
+the ordinary reader to perform such transformations by defining
+@newterm{reader macro characters}.  This edition's reader has no quotation or
+pattern shorthand at all: every query is built as typed data, and the
+question-mark spelling is expanded by @code{querySyntaxProcess} explicitly
+here; however, for the sake of clarity we have included the transformation
 procedure here explicitly.
 
-@code{Expand-question-mark} and @code{contract-question-mark} use several
-procedures with @code{string} in their names.  These are Scheme primitives.}
+@code{Expand-question-mark} and @code{contractQuestionMark} use several
+procedures with @code{string} in their names.  These are host primitives.}
 
 @example typescript
-readAll(`
-(define (query-syntax-process exp)
-  (map-over-symbols expand-question-mark exp))
+export const querySyntaxProcess = (exp: Term): Term =>
+  mapOverSymbols(expandQuestionMark, exp);
 
-(define (map-over-symbols proc exp)
-  (cond ((pair? exp)
-         (cons (map-over-symbols 
-                proc (car exp))
-               (map-over-symbols 
-                proc (cdr exp))))
-        ((symbol? exp) (proc exp))
-        (else exp)))
+export const mapOverSymbols = (
+  proc: (t: Term) => Term,
+  exp: Term
+): Term => @{
+  if (isPair(exp)) @{
+    return qpair(
+      mapOverSymbols(proc, exp.head),
+      mapOverSymbols(proc, exp.tail));
+  @}
+  return isVar(exp) || isText(exp) ? proc(exp) : exp;
+@};
 
-(define (expand-question-mark symbol)
-  (let ((chars (symbol->string symbol)))
-    (if (string=? (substring chars 0 1) "?")
-        (list '? (string->symbol
-                  (substring
-                   chars 
-                   1 
-                   (string-length chars))))
-        symbol)))
-`);
+export const expandQuestionMark = (term: Term): Term =>
+  isText(term) && term.value.startsWith("?")
+    ? qvar(term.value.slice(1))
+    : term;
 @end example
 
 @noindent
 Once the variables are transformed in this way, the variables in a pattern are
 lists starting with @code{?}, and the constant symbols (which need to be
-recognized for data-base indexing, @ref{4.4.4.5}) are just the symbols.
+recognized for database indexing, @ref{4.4.4.5}) are just the symbols.
 
 @example typescript
-readAll(`
-(define (var? exp) (tagged-list? exp '?))
-(define (constant-symbol? exp) (symbol? exp))
-`);
+export const isVar = (exp: Term): boolean => exp.tag === "var";
+export const isConstantSymbol = (exp: Term): boolean =>
+  exp.tag === "text";
 @end example
 
 @noindent
@@ -3132,37 +3434,27 @@ a rule application is a number, which is incremented each time a rule is
 applied.
 
 @example typescript
-readAll(`
-(define rule-counter 0)
+export let ruleCounter = 0;
 
-(define (new-rule-application-id)
-  (set! rule-counter (+ 1 rule-counter))
-  rule-counter)
+export const newRuleApplicationId = (): number => @{
+  ruleCounter = ruleCounter + 1;
+  return ruleCounter;
+@};
 
-(define (make-new-variable 
-         var rule-application-id)
-  (cons '? (cons rule-application-id
-                 (cdr var))))
-`);
+export const makeNewVariable = (
+  varTerm: Term,
+  ruleApplicationId: number
+): Term => qpair(qvar(String(ruleApplicationId)), varTerm);
 @end example
 
 @noindent
-When @code{query-driver-loop} instantiates the query to print the answer, it
+When @code{queryDriverLoop} instantiates the query to print the answer, it
 converts any unbound pattern variables back to the right form for printing,
 using
 
 @example typescript
-readAll(`
-(define (contract-question-mark variable)
-  (string->symbol
-   (string-append "?"
-     (if (number? (cadr variable))
-         (string-append
-          (symbol->string (caddr variable))
-          "-"
-          (number->string (cadr variable)))
-         (symbol->string (cadr variable))))))
-`);
+export const contractQuestionMark = (variable: Term): string =>
+  isVar(variable) ? `?$@{variable.name@}` : renderTerm(variable);
 @end example
 
 @node 4.4.4.8, Chapter 5, 4.3, 4.4.4
@@ -3171,50 +3463,64 @@ readAll(`
 Frames are represented as lists of bindings, which are variable-value pairs:
 
 @example typescript
-readAll(`
-(define (make-binding variable value)
-  (cons variable value))
+interface Binding @{
+  readonly variable: Term;
+  readonly value: Query;
+@}
 
-(define (binding-variable binding)
-  (car binding))
+export const makeBinding = (variable: Term, value: Query): Binding =>
+  (@{ variable, value @});
 
-(define (binding-value binding)
-  (cdr binding))
+export const bindingVariable = (
+  binding: Binding
+): Term => binding.variable;
 
-(define (binding-in-frame variable frame)
-  (assoc variable frame))
+export const bindingValue = (binding: Binding): Query => binding.value;
 
-(define (extend variable value frame)
-  (cons (make-binding variable value) frame))
-`);
+export const bindingInFrame = (
+  variable: Term,
+  frame: Frame
+): Binding | undefined => frame.bindingInFrame(variable);
+
+export const extend = (
+  variable: Term,
+  value: Query,
+  frame: Frame
+): Frame =>
+  frame.extend(makeBinding(variable, value));
 @end example
 
 @quotation
 @strong{@anchor{Exercise 4.71}Exercise 4.71:} Louis Reasoner wonders why the
-@code{simple-query} and @code{disjoin} procedures (@ref{4.4.4.2}) are
+@code{simpleQuery} and @code{disjoin} procedures (@ref{4.4.4.2}) are
 implemented using explicit @code{delay} operations, rather than being defined
 as follows:
 
 @example typescript
-readAll(`
-(define (simple-query 
-         query-pattern frame-stream)
-  (stream-flatmap
-   (lambda (frame)
-     (stream-append
-      (find-assertions query-pattern frame)
-      (apply-rules query-pattern frame)))
-   frame-stream))
+// Exercise 4.74's undelayed simpleQuery and disjoin.
+export const simpleQueryNoDelay = (
+  queryPattern: Query,
+  frameStream: Stream<Frame>,
+): Stream<Frame> =>
+  streamFlatmap(
+    (frame) =>
+      streamAppend(
+        findAssertions(queryPattern, frame),
+        applyRules(queryPattern, frame),
+      ),
+    frameStream,
+  );
 
-(define (disjoin disjuncts frame-stream)
-  (if (empty-disjunction? disjuncts)
-      the-empty-stream
-      (interleave
-       (qeval (first-disjunct disjuncts)
-              frame-stream)
-       (disjoin (rest-disjuncts disjuncts)
-                frame-stream))))
-`);
+export const disjoinNoDelay = (
+  disjuncts: ReadonlyArray<Query>,
+  frameStream: Stream<Frame>,
+): Stream<Frame> =>
+  disjuncts.length === 0
+    ? Stream.empty()
+    : interleave(
+        qeval(firstDisjunct(disjuncts), frameStream),
+        disjoinNoDelay(restDisjuncts(disjuncts), frameStream),
+      );
 @end example
 
 Can you give examples of queries where these simpler definitions would lead to
@@ -3223,31 +3529,31 @@ undesirable behavior?
 
 @quotation
 @strong{@anchor{Exercise 4.72}Exercise 4.72:} Why do @code{disjoin} and
-@code{stream-flatmap} interleave the streams rather than simply append them?
+@code{streamFlatmap} interleave the streams rather than simply append them?
 Give examples that illustrate why interleaving works better.  (Hint: Why did we
 use @code{interleave} in @ref{3.5.3}?)
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.73}Exercise 4.73:} Why does @code{flatten-stream}
+@strong{@anchor{Exercise 4.73}Exercise 4.73:} Why does @code{flattenStream}
 use @code{delay} explicitly?  What would be wrong with defining it as follows:
 
 @example typescript
-readAll(`
-(define (flatten-stream stream)
-  (if (stream-null? stream)
-      the-empty-stream
-      (interleave (stream-car stream)
-                  (flatten-stream 
-                   (stream-cdr stream)))))
-`);
+export const flattenStreamNoDelay = <A>(
+  stream: Stream<Stream<A>>
+): Stream<A> =>
+  stream.empty
+    ? Stream.empty()
+    : interleave(
+        stream.head as Stream<A>,
+        flattenStreamNoDelay(stream.tail()));
 @end example
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.74}Exercise 4.74:} Alyssa P. Hacker proposes to use
-a simpler version of @code{stream-flatmap} in @code{negate}, @code{lisp-value},
-and @code{find-assertions}.  She observes that the procedure that is mapped
+a simpler version of @code{streamFlatmap} in @code{negate}, @code{lispValue},
+and @code{findAssertions}.  She observes that the procedure that is mapped
 over the frame stream in these cases always produces either the empty stream or
 a singleton stream, so no interleaving is needed when combining these streams.
 
@@ -3257,15 +3563,21 @@ a singleton stream, so no interleaving is needed when combining these streams.
 Fill in the missing expressions in Alyssa's program.
 
 @example typescript
-readAll(`
-(define (simple-stream-flatmap proc s)
-  (simple-flatten (stream-map proc s)))
+// Exercise 4.74's simple-streamFlatmap:
+// map, keep the non-empty streams,
+// and take their first elements in order.
+export const simpleStreamFlatmap = <A, B>(
+  proc: (a: A) => Stream<B>,
+  s: Stream<A>,
+): Stream<B> => simpleFlatten(streamMap(proc, s));
 
-(define (simple-flatten stream)
-  (stream-map ⟨??⟩
-              (stream-filter ⟨??⟩ 
-                             stream)))
-`);
+export const simpleFlatten = <A>(
+  stream: Stream<Stream<A>>
+): Stream<A> =>
+  streamMap(
+    (inner) => inner.head as A,
+    streamFilter((inner) => !inner.empty, stream),
+  );
 @end example
 
 @item
@@ -3281,28 +3593,30 @@ is precisely one item in the data base satisfying a specified query.  For
 example,
 
 @example typescript
-readAll(`
-(unique (job ?x (computer wizard)))
-`);
+@{ tag: "unique",
+  clause: queryAtom("job",
+    qvar("x"),
+    qlist(qtext("computer"), qtext("wizard"))) @};
 @end example
 
 @noindent
 should print the one-item stream
 
 @example typescript
-readAll(`
-(unique (job (Bitdiddle Ben)
-             (computer wizard)))
-`);
+@{ tag: "unique",
+  clause: queryAtom("job",
+    qlist(qtext("Bitdiddle"), qtext("Ben")),
+    qlist(qtext("computer"), qtext("wizard"))) @};
 @end example
 
 @noindent
 since Ben is the only computer wizard, and
 
 @example typescript
-readAll(`
-(unique (job ?x (computer programmer)))
-`);
+@{ tag: "unique",
+  clause: queryAtom("job",
+    qvar("x"),
+    qlist(qtext("computer"), qtext("programmer"))) @};
 @end example
 
 @noindent
@@ -3310,10 +3624,11 @@ should print the empty stream, since there is more than one computer
 programmer.  Moreover,
 
 @example typescript
-readAll(`
-(and (job ?x ?j) 
-     (unique (job ?anyone ?j)))
-`);
+@{ tag: "and", clauses: [
+  queryAtom("job", qvar("x"), qvar("j")),
+  @{ tag: "unique",
+  clause: queryAtom("job", qvar("anyone"), qvar("j")) @}
+] @};
 @end example
 
 @noindent
@@ -3327,9 +3642,11 @@ procedure that handles this special form, and the second is to make
 called @code{uniquely-asserted}, all you need to do is
 
 @example typescript
-readAll(`
-(put 'unique 'qeval uniquely-asserted)
-`);
+queryAtom("put",
+  qtext("unique"),
+  qtext("qeval"),
+  qtext("uniquely-asserted")
+);
 @end example
 
 @noindent
@@ -3371,7 +3688,7 @@ the two sets of bindings.  This operation is similar to unification.
 
 @quotation
 @strong{@anchor{Exercise 4.77}Exercise 4.77:} In @ref{4.4.3} we saw
-that @code{not} and @code{lisp-value} can cause the query language to give
+that @code{not} and @code{lispValue} can cause the query language to give
 ``wrong'' answers if these filtering operations are applied to frames in which
 variables are unbound.  Devise a way to fix this shortcoming.  One idea is to
 perform the filtering in a ``delayed'' manner by appending to the frame a
@@ -3395,31 +3712,32 @@ you find examples that illustrate this difference?
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.79}Exercise 4.79:} When we implemented the Lisp
+@strong{@anchor{Exercise 4.79}Exercise 4.79:} When we implemented the guest-language
 evaluator in @ref{4.1}, we saw how to use local environments to avoid
 name conflicts between the parameters of procedures.  For example, in
 evaluating
 
 @example typescript
 readAll(`
-(define (square x) 
-  (* x x))
+  const square = (x: number): number => x * x;
 
-(define (sum-of-squares x y)
-  (+ (square x) (square y)))
+  const sumOfSquares = (
+    x: number,
+    y: number
+  ): number => square(x) + square(y);
 
-(sum-of-squares 3 4)
+  sumOfSquares(3, 4);
 `);
 @end example
 
 @noindent
 there is no confusion between the @code{x} in @code{square} and the @code{x} in
-@code{sum-of-squares}, because we evaluate the body of each procedure in an
+@code{sumOfSquares}, because we evaluate the body of each procedure in an
 environment that is specially constructed to contain bindings for the local
 variables.  In the query system, we used a different strategy to avoid name
 conflicts in applying rules.  Each time we apply a rule we rename the variables
 with new names that are guaranteed to be unique.  The analogous strategy for
-the Lisp evaluator would be to do away with local environments and simply
+the guest evaluator would be to do away with local environments and simply
 rename the variables in the body of a procedure each time we apply the
 procedure.
 
@@ -3449,22 +3767,24 @@ the clock are caused by a single weight.
 
 @noindent
 We began this book by studying processes and by describing processes in terms
-of procedures written in Lisp.  To explain the meanings of these procedures, we
+of procedures written in the guest language.  To explain the meanings of these
+procedures, we
 used a succession of models of evaluation: the substitution model of
 @ref{Chapter 1}, the environment model of @ref{Chapter 3}, and the metacircular
 evaluator of @ref{Chapter 4}.  Our examination of the metacircular evaluator,
-in particular, dispelled much of the mystery of how Lisp-like languages are
+in particular, dispelled much of the mystery of how languages of this family
+are
 interpreted.  But even the metacircular evaluator leaves important questions
-unanswered, because it fails to elucidate the mechanisms of control in a Lisp
+unanswered, because it fails to elucidate the mechanisms of control in a guest
 system.  For instance, the evaluator does not explain how the evaluation of a
 subexpression manages to return a value to the expression that uses this value,
 nor does the evaluator explain how some recursive procedures generate iterative
 processes (that is, are evaluated using constant space) whereas other recursive
 procedures generate recursive processes.  These questions remain unanswered
-because the metacircular evaluator is itself a Lisp program and hence inherits
-the control structure of the underlying Lisp system.  In order to provide a
-more complete description of the control structure of the Lisp evaluator, we
-must work at a more primitive level than Lisp itself.
+because the metacircular evaluator is itself a guest program and hence inherits
+the control structure of the underlying runtime.  In order to provide a
+more complete description of the control structure of the guest evaluator, we
+must work at a more primitive level than the guest language itself.
 
 In this chapter we will describe processes in terms of the step-by-step
 operation of a traditional computer.  Such a computer, or @newterm{register machine}, 
@@ -3475,13 +3795,14 @@ contents of some registers and assigns the result to another register.  Our
 descriptions of processes executed by register machines will look very much
 like ``machine-language'' programs for traditional computers.  However, instead
 of focusing on the machine language of any particular computer, we will examine
-several Lisp procedures and design a specific register machine to execute each
+several guest procedures and design a specific register machine to execute
+each
 procedure.  Thus, we will approach our task from the perspective of a hardware
 architect rather than that of a machine-language computer programmer.  In
 designing register machines, we will develop mechanisms for implementing
 important programming constructs such as recursion.  We will also present a
 language for describing designs for register machines.  In @ref{5.2} we
-will implement a Lisp program that uses these descriptions to simulate the
+will implement a guest program that uses these descriptions to simulate the
 machines we design.
 
 Most of the primitive operations of our register machines are very simple.  For
@@ -3496,10 +3817,10 @@ elementary operations.
 In @ref{5.4}, after we have accumulated experience formulating simple
 procedures as register machines, we will design a machine that carries out the
 algorithm described by the metacircular evaluator of @ref{4.1}.  This
-will fill in the gap in our understanding of how Scheme expressions are
+will fill in the gap in our understanding of how guest expressions are
 interpreted, by providing an explicit model for the mechanisms of control in
 the evaluator.  In @ref{5.5} we will study a simple compiler that
-translates Scheme programs into sequences of instructions that can be executed
+translates guest programs into sequences of instructions that can be executed
 directly with the registers and operations of the evaluator register machine.
 
 @menu

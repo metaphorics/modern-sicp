@@ -27,7 +27,7 @@ export const makeFromMagAngMessage = (r: number, a: number): MessageObject => {
       case "angle":
         return ok(a);
       default:
-        return err({ _tag: "UnknownMessage", op, source: "MAKE-FROM-MAG-ANG" });
+        return err({ _tag: "UnknownMessage", op, source: "makeFromMagAng" });
     }
   };
   return dispatch;

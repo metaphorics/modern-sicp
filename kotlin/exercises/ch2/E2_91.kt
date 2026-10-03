@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.91: division of polynomials. `divTerms` completes the
  * book's skeleton: divide leading term by leading term, multiply, subtract,
@@ -14,4 +12,4 @@ import sicp.runtime.PendingSolution
  * dividend is the remainder. `divPoly` checks the variable, delegates,
  * and reattaches.
  */
-public fun ex_2_91(): Pair<String, String> = throw PendingSolution()
+public fun ex_2_91(): Pair<String, String> = throw PendingExercise()

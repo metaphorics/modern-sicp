@@ -21,8 +21,8 @@ import { raiseToward } from "./ex_2_84.js";
  * Exercise 2.85: `drop`, the lowering operation. Each level but the
  * bottom installs a `project`; a datum can be dropped when projecting
  * it and raising the result back answers something `equ?`-al to what
- * it started as, and the drop repeats at the lower level. The section's
- * `apply-generic` then simplifies its answers with it.
+ * it started as, and the drop repeats at the lower level. The section
+dispatch then simplifies its answers with drop.
  */
 
 /** Installs the three project entries and the real-level equ? the
@@ -110,7 +110,7 @@ export const drop = (x: ArithDatum): Result<ArithDatum, GenError> => {
   return drop(p.value);
 };
 
-/** The apply-generic of this exercise: the answer of the section's
+/** The generic dispatch of this exercise: the answer of the section's
  * dispatch, simplified by drop. */
 export const applyGenericDropping = (
   opName: string,

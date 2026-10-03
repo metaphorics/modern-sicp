@@ -1,0 +1,5 @@
+{
+  "case_id": "amb/04-pythagorean-triples",
+  "constructor": "search_pythagorean",
+  "observation": "driver-dispatched named case; no expected result is recorded here"
+}

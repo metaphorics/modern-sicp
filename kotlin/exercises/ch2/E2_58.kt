@@ -3,19 +3,14 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
- * Exercise 2.58 (Class A): differentiate expressions written in ordinary
- * infix notation instead of the section's prefix `Sum`/`Product`. Part a)
- * assumes every expression is fully parenthesized, such as
- * `"(x + (3 * (x + (y + 2))))"`. Part b) drops that assumption and
- * requires the standard precedence rule that `*` binds tighter than `+`,
- * such as `"x + 3 * (x + y + 2)"`. Both parts parse into this section's
- * shared `Expr` (see `AlgExpr.kt`), so `deriv` differentiates the result
- * unchanged.
+ * Exercise 2.58 (Class A): differentiate expressions written in infix
+ * arithmetic notation. Part a) assumes full parentheses. Part b) uses
+ * standard precedence, with multiplication binding more tightly than
+ * addition. Both parsers build the shared typed `Expr` tree, so `deriv`
+ * consumes their results directly.
  *
- * The scaffold returns the printed derivative of `"x + 3 * (x + y + 2)"`
- * with respect to `x`, parsed with the precedence-aware parser of part b.
+ * The scaffold returns the derivative tree for the precedence-aware parser's
+ * sample expression.
  */
-public fun ex_2_58(): String = throw PendingSolution()
+public fun ex_2_58(): Expr = throw PendingExercise()

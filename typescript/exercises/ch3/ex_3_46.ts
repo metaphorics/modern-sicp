@@ -16,7 +16,7 @@ export class PendingSolution extends Error {
   }
 }
 
-/** The book's `test-and-set!` as the text's ordinary procedure, with
+/** The test-and-set race as an ordinary procedure, with
  * the window between the test and the set made an explicit
  * suspension: read the cell, suspend, then write it. */
 export function racyTestAndSet(_cell: Cell): Effect.Effect<boolean> {

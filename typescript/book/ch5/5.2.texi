@@ -14,35 +14,24 @@ simulate the machine by manipulating the model:
 
 @quotation
 
-@example
-makeMachine(@var{register-names}, @var{operations}, @var{controller})
+@example typescript
+const machine = makeMachine(spec);
 @end example
 
 @noindent
-constructs and returns a model of the machine with the given registers,
-operations, and controller.
+The simulator accepts one machine specification.  Its exact record fields are
+owned by the simulator module.  The lower-level @code{assemble(controller,
+operations)} prepares the controller with its operation table.
 
-@example
-setRegisterContents(@var{machine-model}, @var{register-name}, @var{value})
+@example typescript
+machine.writeRegister("a", 206);
+const result = machine.readRegister("a");
+const run = machine.run();
 @end example
 
 @noindent
-stores a value in a simulated register in the given machine.
-
-@example
-getRegisterContents(@var{machine-model}, @var{register-name})
-@end example
-
-@noindent
-returns the contents of a simulated register in the given machine.
-
-@example
-machine.start()
-@end example
-
-@noindent
-simulates the execution of the given machine, starting from the beginning of
-the controller sequence and stopping when it reaches the end of the sequence.
+These operations write and read register contents and run the controller from
+its beginning until it reaches the end or reports a typed machine error.
 @end quotation
 
 @noindent
@@ -53,55 +42,62 @@ call per line of the machine's diagram:
 
 @example typescript
 import @{
-  arithmeticOperations,
+  assemble,
   assign,
   branch,
-  c,
-  jump,
+  constant,
+  gotoLabel,
   makeMachine,
-  mark,
   op,
-  reg,
+  register,
   test,
 @} from "@sicp-ts{}/ch5/02-simulator";
 
-const gcdController: ControllerLine[] = [
-  mark("test-b"),
-  test("=", reg("b"), c(0)),
+const gcdController: MachineStatement[] = [
+  @{ tag: "label", name: "test-b" @},
+  test("=", register("b"), constant(0)),
   branch("gcd-done"),
-  assign("t", op("rem", reg("a"), reg("b"))),
-  assign("a", reg("b")),
-  assign("b", reg("t")),
-  jump("test-b"),
-  mark("gcd-done"),
+  assign("t", op("rem", register("a"), register("b"))),
+  assign("a", register("b")),
+  assign("b", register("t")),
+  gotoLabel("test-b"),
+  @{ tag: "label", name: "gcd-done" @},
 ];
 
-const gcdMachine = makeMachine(["a", "b", "t"], arithmeticOperations, gcdController);
+const arithmeticOperations: Readonly<Record<string, Operation>> = @{
+  rem: (a: number, b: number): number => a % b,
+  "=": (a: number, b: number): boolean => a === b,
+@};
+
+const gcdMachine = makeMachine(@{
+  registers: ["a", "b", "t"],
+  operations: arithmeticOperations,
+  controller: gcdController,
+@});
 @end example
 
 @noindent
-The first argument to @code{makeMachine} is a list of register names.  The
-next argument is the operations table, a record pairing each operation name
-with the TypeScript function that implements the operation (that is, produces
-the same output value given the same input values); @code{arithmeticOperations}
-holds the section's arithmetic, including @code{rem} and @code{=}.  The last
-argument specifies the controller as a list of labels and machine
-instructions, as in @ref{5.1}.  Assembly can fail, so @code{makeMachine}
-returns an @code{Outcome}: an @code{Ok} holding the machine, or a typed
-@code{MachineError} naming an unknown register, an undefined or duplicated
-label, or an unknown operation.
+@code{MakeMachine} takes the machine specification: the register names, the
+operations table, and the controller.  The operations table is a record
+pairing each operation name with the TypeScript function that implements the
+operation (that is, produces the same output value given the same input
+values); @code{arithmeticOperations} holds the section's arithmetic, including
+@code{rem} and @code{=}.  The controller is an array of labels and machine
+instructions, as in @ref{5.1}; the lower-level @code{assemble} builds the
+instruction stream from a controller and an operations table.  Assembly can
+fail, so @code{makeMachine} returns an @code{Outcome}: an @code{Ok} holding
+the machine, or a typed @code{MachineError} naming an unknown register, an
+undefined or duplicated label, or an unknown operation.
 
 To compute @abbr{GCD}s with this machine, we set the input registers, start
 the machine, and examine the result when the simulation terminates:
 
 @example typescript
-import @{ getRegisterContents, setRegisterContents @} from "@sicp-ts{}/ch5/02-simulator";
-
 const machine = expectOk(gcdMachine);
-expectOk(setRegisterContents(machine, "a", 206));
-expectOk(setRegisterContents(machine, "b", 40));
-expectOk(machine.start());
-expectOk(getRegisterContents(machine, "a"));
+machine.writeRegister("a", 206);
+machine.writeRegister("b", 40);
+machine.run();
+machine.readRegister("a");
 // 2
 @end example
 
@@ -151,7 +147,7 @@ can fault.
 const makeMachine = (
   registerNames: ReadonlyArray<string>,
   operations: Readonly<Record<string, Operation>>,
-  controller: ReadonlyArray<ControllerLine>,
+  controller: ReadonlyArray<MachineStatement>,
   options: MachineOptions = @{@},
 ): Outcome<Machine> => @{
   const machine = makeNewMachine(registerNames, operations, options);
@@ -219,7 +215,8 @@ export const makeStack = (): MachineStack => @{
       maxDepth = 0;
     @},
     statistics: () => (@{ pushes, maxDepth @}),
-    statisticsLine: () => `(total-pushes = $@{pushes@} maximum-depth = $@{maxDepth@})`,
+    statisticsLine: () =>
+      `(total-pushes = $@{pushes@} maximum-depth = $@{maxDepth@})`,
   @};
 @};
 @end example
@@ -252,7 +249,10 @@ export const makeNewMachine = (
   userOperations: Readonly<Record<string, Operation>>,
   options: MachineOptions = @{@},
 ): Machine => @{
-  const newRegister = options.makeRegister ?? makeRegister;
+  const newRegister =
+    options.makeRegister !== undefined
+      ? options.makeRegister
+      : makeRegister;
   const registers = new Map<string, Register>();
   const stack = makeStack();
   const transcript: string[] = [];
@@ -261,8 +261,9 @@ export const makeNewMachine = (
     registers,
     stack,
     operations: new Map([
-      ["initialize-stack", () => (stack.initialize(), 0)],
-      ["print-stack-statistics", () => (transcript.push(stack.statisticsLine()), 0)],
+      ["initializeStack", () => (stack.initialize(), 0)],
+      ["printStackStatistics",
+        () => (transcript.push(stack.statisticsLine()), 0)],
       ...Object.entries(userOperations),
     ]),
     transcript,
@@ -281,7 +282,10 @@ export const makeNewMachine = (
       if (options.deriveRegisters) return ok(allocateRegister(name));
       return fail(@{ tag: "UnknownRegister", reg: name @});
     @},
-    labelInEffect: (address) => labelInEffect[address] ?? null,
+    labelInEffect: (address) =>
+      labelInEffect[address] !== undefined
+        ? labelInEffect[address]
+        : null,
     start: () => @{
       machine.pc = 0;
       machine.parkedAt = null;
@@ -295,18 +299,23 @@ export const makeNewMachine = (
     @},
   @};
   const allocateRegister = (name: string): Register => @{
-    if (registers.has(name)) throw new Error(`multiply defined register: $@{name@}`);
+    if (registers.has(name)) throw new Error(
+      `multiply defined register: $@{name@}`);
     const register = newRegister(name);
     registers.set(name, register);
     return register;
   @};
-  const limit = options.stepLimit ?? 100_000;
+  const limit = options.stepLimit !== undefined
+    ? options.stepLimit
+    : 100000;
   let steps = 0;
   let insts: readonly AssembledInstruction[] = [];
   let labelInEffect: ReadonlyArray<string | null> = [];
   const runLoop = (): Outcome<null> => @{
     while (machine.pc < insts.length) @{
-      const parked = options.gate?.(machine) ?? null;
+      const parked = options.gate !== undefined
+        ? options.gate(machine)
+        : null;
       if (parked !== null) @{
         machine.parkedAt = parked;
         return ok(null);
@@ -373,7 +382,10 @@ For convenience, we provide the same procedural interface to a machine's
 contents, as specified at the beginning of @ref{5.2}:
 
 @example typescript
-export const getRegisterContents = (machine: Machine, name: string): Outcome<Value> => @{
+export const getRegisterContents = (
+  machine: Machine,
+  name: string
+): Outcome<Value> => @{
   const register = machine.registerFor(name);
   return register.ok ? ok(register.value.content()) : register;
 @};
@@ -408,7 +420,7 @@ type of expression in the language.
 The technique of producing an execution procedure for each instruction is just
 what we used in @ref{4.1.7} to speed up the evaluator by separating
 analysis from runtime execution.  As we saw in @ref{Chapter 4}, much useful
-analysis of Scheme expressions could be performed without knowing the actual
+analysis of guest expressions could be performed without knowing the actual
 values of variables.  Here, analogously, much useful analysis of
 register-machine-language expressions can be performed without knowing the
 actual contents of machine registers.  For example, we can replace references
@@ -429,12 +441,12 @@ program to be stored in the model.  @code{Assemble} calls
 @code{extractLabels} to build the initial instruction list and label table
 from the supplied controller text, then pairs every instruction with the
 execution procedure @code{executionProcedure} generates for it---the work of
-the book's @code{update-insts!}---and, walking the instructions once, also
+the book's @code{updateInstructions}---and, walking the instructions once, also
 gathers the summary of exercise 5.12:
 
 @example typescript
 export const assemble = (
-  controller: ReadonlyArray<ControllerLine>,
+  controller: ReadonlyArray<MachineStatement>,
   machine: Machine,
   options: AssemblerOptions = @{@},
 ): Outcome<Program> => @{
@@ -447,7 +459,11 @@ export const assemble = (
     if (!exec.ok) return exec;
     insts.push(@{ text: renderInstruction(instr), exec: exec.value @});
   @}
-  return ok(@{ insts, labels, summary: summarize(instructions, labels) @});
+  return ok(
+    @{ insts,
+    labels,
+    summary: summarize(instructions, labels) @}
+  );
 @};
 @end example
 
@@ -461,7 +477,7 @@ designates.
 
 @example typescript
 export const extractLabels = (
-  controller: ReadonlyArray<ControllerLine>,
+  controller: ReadonlyArray<MachineStatement>,
 ): Outcome<@{
   readonly instructions: Instruction[];
   readonly labels: ReadonlyMap<string, number>;
@@ -470,7 +486,10 @@ export const extractLabels = (
   const labels = new Map<string, number>();
   for (const line of controller) @{
     if (line.tag === "label") @{
-      if (labels.has(line.name)) return fail(@{ tag: "DuplicateLabel", label: line.name @});
+      if (labels.has(line.name)) return fail(
+        @{ tag: "DuplicateLabel",
+        label: line.name @}
+        );
       labels.set(line.name, instructions.length);
     @} else @{
       instructions.push(line);
@@ -514,20 +533,23 @@ export const lookupLabel = (
 @strong{@anchor{Exercise 5.8}Exercise 5.8:} The following register-machine code
 is ambiguous, because the label @code{here} is defined more than once:
 
-@example register-machine
-start
-  (goto (label here))
-here
-  (assign a (const 3))
-  (goto (label there))
-here
-  (assign a (const 4))
-  (goto (label there))
-there
+@example typescript
+const controller: MachineStatement[] = [
+  @{ tag: "label", name: "start" @},
+  gotoLabel("here"),
+  @{ tag: "label", name: "here" @},  // first definition
+  assign("a", constant(3)),
+  gotoLabel("there"),
+  // second definition: duplicate
+  @{ tag: "label", name: "here" @},
+  assign("a", constant(4)),
+  gotoLabel("there"),
+  @{ tag: "label", name: "there" @},
+];
 @end example
 
 With the simulator as written, what will the contents of register @code{a} be
-when control reaches @code{there}?  Modify the @code{extract-labels} procedure
+when control reaches @code{there}?  Modify the @code{extractLabels} procedure
 so that the assembler will signal an error if the same label name is used to
 indicate two different locations.
 @end quotation
@@ -649,7 +671,13 @@ const testExec = (
   labels: ReadonlyMap<string, number>,
   options: AssemblerOptions,
 ): Outcome<Exec> => @{
-  const condition = operationExp(instr.op, instr.args, machine, labels, options);
+  const condition = operationExp(
+    instr.op,
+    instr.args,
+    machine,
+    labels,
+    options
+  );
   if (!condition.ok) return condition;
   const condProc = condition.value;
   return ok(() => @{
@@ -683,7 +711,9 @@ const branchExec = (
   const dest = address.value;
   return ok(() => @{
     const flag = machine.flag.content();
-    if (typeof flag !== "boolean") return fail(@{ tag: "BranchWithoutTest" @});
+    if (typeof flag !== "boolean") return fail(
+      @{ tag: "BranchWithoutTest" @}
+      );
     machine.pc = flag ? dest : machine.pc + 1;
     return ok(null);
   @});
@@ -716,7 +746,11 @@ const gotoExec = (
   return ok(() => @{
     const value = register.content();
     if (typeof value !== "number")
-      return fail(@{ tag: "BadGotoTarget", reg: register.name, value @});
+      return fail(
+        @{ tag: "BadGotoTarget",
+        reg: register.name,
+        value @}
+      );
     machine.pc = value;
     return ok(null);
   @});
@@ -777,7 +811,13 @@ const performExec = (
   labels: ReadonlyMap<string, number>,
   options: AssemblerOptions,
 ): Outcome<Exec> => @{
-  const action = operationExp(instr.op, instr.args, machine, labels, options);
+  const action = operationExp(
+    instr.op,
+    instr.args,
+    machine,
+    labels,
+    options
+  );
   if (!action.ok) return action;
   const actionProc = action.value;
   return ok(() => @{
@@ -867,7 +907,7 @@ const operationExp = (
 
 @noindent
 Observe that the treatment of operation expressions is very much like the
-treatment of procedure applications by the @code{analyze-application} procedure
+treatment of procedure applications by the @code{analyzeApplication} procedure
 in the evaluator of @ref{4.1.7} in that we generate an execution
 procedure for each operand.  At simulation time, we call the operand procedures
 and apply the TypeScript function that simulates the operation to the resulting
@@ -901,10 +941,12 @@ and @code{restore} in @ref{5.1.4}, we didn't specify what would happen
 if you tried to restore a register that was not the last one saved, as in the
 sequence
 
-@example register-machine
-(save y)
-(save x)
-(restore y)
+@example typescript
+const controller: Instruction[] = [
+  save("y"),
+  save("x"),
+  restore("y"),
+];
 @end example
 
 There are several reasonable possibilities for the meaning of @code{restore}:
@@ -927,7 +969,7 @@ to put the register name on the stack along with the value.
 @code{(restore y)} puts into @code{y} the last value saved from @code{y}
 regardless of what other registers were saved after @code{y} and not restored.
 Modify the simulator to behave this way.  You will have to associate a separate
-stack with each register.  You should make the @code{initialize-stack}
+stack with each register.  You should make the @code{initializeStack}
 operation initialize all the register stacks.
 
 @end enumerate
@@ -969,8 +1011,8 @@ new information.  To test your analyzer, define the Fibonacci machine from
 @quotation
 @strong{@anchor{Exercise 5.13}Exercise 5.13:} Modify the simulator so that it
 uses the controller sequence to determine what registers the machine has rather
-than requiring a list of registers as an argument to @code{make-machine}.
-Instead of pre-allocating the registers in @code{make-machine}, you can
+than requiring a list of registers as an argument to @code{makeMachine}.
+Instead of pre-allocating the registers in @code{makeMachine}, you can
 allocate them one at a time when they are first seen during assembly of the
 instructions.
 @end quotation
@@ -989,8 +1031,9 @@ basic machine model to print the stack statistics, by initializing the
 machine's operations to
 
 @example typescript
-["initialize-stack", () => (stack.initialize(), 0)],
-["print-stack-statistics", () => (transcript.push(stack.statisticsLine()), 0)],
+["initializeStack", () => (stack.initialize(), 0)],
+["printStackStatistics",
+  () => (transcript.push(stack.statisticsLine()), 0)],
 @end example
 
 @noindent
@@ -1015,8 +1058,8 @@ the factorial machine with instructions to initialize the stack and print the
 statistics.  You may want to also modify the machine so that it repeatedly
 reads a value for @math{n}, computes the factorial, and prints the result (as we
 did for the @abbr{GCD} machine in @ref{Figure 5.4}), so that you will not
-have to repeatedly invoke @code{get-register-contents},
-@code{set-register-contents!}, and @code{start}.
+have to repeatedly invoke @code{getRegisterContents},
+@code{setRegisterContents}, and @code{start}.
 @end quotation
 
 @quotation
@@ -1045,7 +1088,7 @@ simulator retain the necessary label information.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 5.18}Exercise 5.18:} Modify the @code{make-register}
+@strong{@anchor{Exercise 5.18}Exercise 5.18:} Modify the @code{makeRegister}
 procedure of @ref{5.2.1} so that registers can be traced.  Registers
 should accept messages that turn tracing on and off.  When a register is
 traced, assigning a value to the register should print the name of the
@@ -1075,11 +1118,11 @@ setBreakpoint(gcdMachine, "test-b", 4);
 @end example
 
 @noindent
-installs a breakpoint in @code{gcd-machine} just before the assignment to
+installs a breakpoint in @code{gcdMachine} just before the assignment to
 register @code{a}.  When the simulator reaches the breakpoint it should print
 the label and the offset of the breakpoint and stop executing instructions.
-Alyssa can then use @code{get-register-contents} and
-@code{set-register-contents!} to manipulate the state of the simulated machine.
+Alyssa can then use @code{getRegisterContents} and
+@code{setRegisterContents} to manipulate the state of the simulated machine.
 She should then be able to continue execution by saying
 
 @example

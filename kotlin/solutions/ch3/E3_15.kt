@@ -3,17 +3,13 @@
 
 package sicp.ch3.exercises
 
-import sicp.runtime.VPair
-import sicp.runtime.VSym
-import sicp.runtime.setCar
+import sicp.runtime.PairCell
+import sicp.runtime.Symbol
 
 /**
- * The book's `set-to-wow!`: replace the car pointer of `x`'s first pair
- * with the symbol `wow` and return `x`. On the shared `z1` the change
- * shows through both the car and the cdr; on the unshared `z2` only the
- * car sees it.
+ * Replace the first datum in the nested pair reached from [x].
  */
-public fun setToWow(x: VPair): VPair {
-    (x.car as VPair).setCar(VSym("wow"))
+public fun setToWow(x: PairCell): PairCell {
+    (x.first as PairCell).first = Symbol("wow")
     return x
 }

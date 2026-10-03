@@ -11,7 +11,7 @@
 
 use std::rc::Rc;
 
-use sicp_runtime::{SchemeError, Value};
+use sicp_runtime::{SicpError, Value};
 
 use crate::sec_1_1::{average, square};
 
@@ -123,9 +123,9 @@ pub fn search(f: &dyn Fn(f64) -> f64, neg_point: f64, pos_point: f64) -> f64 {
 /// the signs agree.
 ///
 /// # Errors
-/// Returns [`SchemeError::UserRaised`] when the values of `f` at `a` and
-/// `b` are not of opposite sign, the book's `(error ...)` call.
-pub fn half_interval_method(f: impl Fn(f64) -> f64, a: f64, b: f64) -> Result<f64, SchemeError> {
+/// Returns [`SicpError::UserRaised`] when the values of `f` at `a` and
+/// `b` are not of opposite sign, the book's error case.
+pub fn half_interval_method(f: impl Fn(f64) -> f64, a: f64, b: f64) -> Result<f64, SicpError> {
     let a_value = f(a);
     let b_value = f(b);
     if a_value < 0.0 && b_value > 0.0 {
@@ -133,7 +133,7 @@ pub fn half_interval_method(f: impl Fn(f64) -> f64, a: f64, b: f64) -> Result<f6
     } else if b_value < 0.0 && a_value > 0.0 {
         Ok(search(&f, b, a))
     } else {
-        Err(SchemeError::UserRaised {
+        Err(SicpError::UserRaised {
             message: "Values are not of opposite sign".to_owned(),
             irritants: vec![Value::Real(a), Value::Real(b)],
         })

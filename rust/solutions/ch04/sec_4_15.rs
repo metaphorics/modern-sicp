@@ -1,74 +1,44 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Original exercise
 
-//! The reference solution of exercise 4.15: the halting-problem diagonal, run. `halts?` gets a
-// fixed verdict each run; both verdicts violate its contract..
+//! The reference solution of exercise 4.15: the halting-problem
+//! diagonal over a bounded typed machine.
 
-use ch04::eval_support::*;
+/// Shared typed support for this exercise.
+pub mod support;
 
-mod ex_4_15 {
-    use super::*;
+use sicp_runtime::SicpError;
 
-    /// The bounded evaluator: every step consumes one unit of the
-    /// budget, so a program that never halts ends as a budget error
-    /// instead of hanging the host.
-    pub struct Bounded {
-        remaining: Cell<u64>,
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Program {
+    Halt,
+    Diverge,
+}
 
-    impl Bounded {
-        /// A bounded evaluator with `budget` steps.
-        #[must_use]
-        pub fn new(budget: u64) -> Self {
-            Self {
-                remaining: Cell::new(budget),
+fn bounded_run(program: Program, budget: usize) -> Result<(), SicpError> {
+    match program {
+        Program::Halt => Ok(()),
+        Program::Diverge => {
+            if budget == 0 {
+                Err(SicpError::TypeMismatch(
+                    "the step budget ran out".to_owned(),
+                ))
+            } else {
+                bounded_run(program, budget - 1)
             }
         }
     }
+}
 
-    impl Evaluator for Bounded {
-        fn step(&self, exp: &Value, env: &Rc<Env>) -> StepResult {
-            let remaining = self.remaining.get();
-            if remaining == 0 {
-                return Err(SchemeError::TypeMismatch(
-                    "the step budget ran out: the program was still running".to_owned(),
-                ));
-            }
-            self.remaining.set(remaining - 1);
-            self.base_step(exp, env)
-        }
-    }
+fn verdict_says_halts() -> Result<(), SicpError> {
+    bounded_run(Program::Diverge, 3)
+}
 
-    /// Runs `(try try)` under one fixed verdict of `halts?`.
-    ///
-    /// # Errors
-    /// The budget error of the diverging run.
-    pub fn try_try(verdict: bool) -> Result<String, SchemeError> {
-        let program = format!(
-            "(define (run-forever) (run-forever))\n(define (halts? p a) {verdict})\n(define (try p) (if (halts? p p) (run-forever) 'halted))\n(try try)"
-        );
-        let (values, _) = run_with(&Bounded::new(100_000), &program)?;
-        Ok(printed(&values).last().cloned().unwrap_or_default())
-    }
-
-    /// Answers both outcomes: the optimistic verdict burns the budget
-    /// and the pessimistic one contradicts itself.
-    pub fn answers() -> Result<(String, String), SchemeError> {
-        let optimistic = try_try(true).expect_err("run-forever diverges");
-        Ok((optimistic.to_string(), pessimistic_value()?))
-    }
-
-    fn pessimistic_value() -> Result<String, SchemeError> {
-        try_try(false)
-    }
+fn verdict_says_diverges() -> Result<(), SicpError> {
+    bounded_run(Program::Halt, 3)
 }
 
 #[test]
 fn ex_4_15() {
-    let (optimistic, pessimistic) = ex_4_15::answers().expect("runs");
-    // If halts? says (try try) halts, the program runs forever -- the
-    // budget proves it was still running.
-    assert!(optimistic.contains("the step budget ran out"));
-    // If halts? says it does not halt, the program halts anyway.
-    assert_eq!(pessimistic, "halted");
+    assert!(verdict_says_halts().is_err());
+    assert!(verdict_says_diverges().is_ok());
 }

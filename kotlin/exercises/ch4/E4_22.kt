@@ -13,12 +13,12 @@ import sicp.runtime.PendingSolution
  * through `analyze`, the clause fires at every nesting depth. Handle
  * `let` directly in the analysis phase -- each initializer analyzed once,
  * the body analyzed once, execution only extending the frame and running
- * -- rather than re-deriving to the 4.6 lambda application.
+ * -- rather than re-deriving to the 4.6 `GLam`/`GApp` application.
  *
  * [letTranscript] runs the shadowing probe on the analyzer: the plain
- * lookup `(let ((x 7)) x)` => 7; an inner `let` shadowing the outer
+ * the `GLet(x = 7)` body answers 7; an inner `let` shadowing the outer
  * binding => 2; an initializer reading the outer binding => 5; and a
  * `let` inside an analyzed procedure body, `(f 10)` with body
- * `(let ((y (* x x))) (+ y 1))` => 101.
+ * the nested `GLet(y = x * x)` body answers 101.
  */
 public fun letTranscript(): String = throw PendingSolution()

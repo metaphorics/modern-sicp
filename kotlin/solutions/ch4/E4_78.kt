@@ -1,187 +1,91 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 4, exercise 4.78: the query language as a nondeterministic
-// program on the amb evaluator of 4.3.
+// Chapter 4, exercise 4.78: the query as a nondeterministic program.
 
 package sicp.ch4.solutions
 
-import sicp.ch4.AmbEvaluator
-import sicp.ch4.AmbExec
-import sicp.ch4.AmbFail
-import sicp.ch4.Frame
-import sicp.ch4.QueryFault
-import sicp.ch4.QuerySystem
-import sicp.ch4.ambDriver
-import sicp.ch4.conclusionOf
-import sicp.ch4.contractQuestionMark
-import sicp.ch4.listValueOf
-import sicp.ch4.patternMatch
-import sicp.ch4.querySyntaxProcess
-import sicp.ch4.ruleBodyOf
-import sicp.ch4.singletonStream
-import sicp.ch4.unifyMatch
-import sicp.runtime.AppE
-import sicp.runtime.Env
-import sicp.runtime.Expr
-import sicp.runtime.LStream
-import sicp.runtime.LitE
-import sicp.runtime.Random
-import sicp.runtime.SchemeError
-import sicp.runtime.VNil
-import sicp.runtime.VSym
-import sicp.runtime.Value
-import sicp.runtime.VarE
-import sicp.runtime.asSequence
-import sicp.runtime.cons
+import sicp.ch4.QPattern
+import sicp.ch4.QueryDriver
+import sicp.ch4.SearchModule
 
-/** Rebuilds the query datum the driver parsed, so the query forms can be
- * analyzed as data. */
-private fun datum(expr: Expr): Value =
-    when (expr) {
-        is LitE -> expr.v
-        is VarE -> VSym(expr.name)
-        is AppE -> cons(datum(expr.operator), expr.operands.foldRight(VNil as Value) { e, acc -> cons(datum(e), acc) })
-        else -> throw QueryFault(SchemeError.Parse("unsupported query form"))
+// Exercise 4.78: the query language as nondeterministic search. The
+// same question runs two ways: as a query over the data base, answered
+// in data-base order, and as a search program choosing staff indices
+// and demanding the supervisor relation from a guest table. Each
+// entered alternative is one choice, counted by a permanent write so
+// the cumulative count survives backtracking; the answers arrive with
+// the count that delivered them. Both engines agree on the answers;
+// the engine's own end-of-run counter agrees with the guest count.
+
+// Exercise 4.78: one question, two engines, agreeing answers and counts.
+
+/** Ben's direct reports, both engines' way. */
+internal val AMB_SEARCH_PROGRAM: String =
+    """
+var seen: Long = 0L
+
+fun showLong(n: Long): String = "${'$'}{n}"
+
+fun staffName(i: Long): String {
+    if (i == 0L) {
+        return "Hacker Alyssa P"
     }
-
-/**
- * Every enumeration point is a choice point of the amb engine: a simple
- * query chooses over its matching assertions and then its rule
- * applications, and an or chooses over its disjuncts -- depth-first,
- * which is exactly the behavioral difference from the interleaving
- * stream engine. The deterministic filters (not, lisp-value) re-enter
- * the substrate's stream machinery over the same data base, so no
- * choice point is spent on them.
- */
-public class QueryAmbEvaluator(
-    global: Env,
-    random: Random?,
-    public val database: QuerySystem,
-) : AmbEvaluator(global, random) {
-    private var frame: Frame = Frame.Empty
-
-    public override fun analyze(expr: Expr): AmbExec {
-        frame = Frame.Empty
-        val query = querySyntaxProcess(datum(expr))
-        val exec = analyzeQuery(query)
-        return { env, succeed ->
-            exec(env) { _ -> succeed(database.instantiate(query, frame) { v, _ -> VSym(contractQuestionMark(v)) }) }
-        }
+    if (i == 1L) {
+        return "Fect Cy D"
     }
-
-    private fun analyzeQuery(query: Value): AmbExec {
-        if (query !is sicp.runtime.VPair) return simpleQueryExec(query)
-        val head = query.car as? VSym ?: return simpleQueryExec(query)
-        return when (head.name) {
-            "and" -> conjoinExec(listValueOf(query.cdr))
-            "or" -> disjoinExec(listValueOf(query.cdr))
-            "not", "lisp-value" -> filterExec(query)
-            "always-true" -> succeedWith(VSym("ok"))
-            else -> simpleQueryExec(query)
-        }
+    if (i == 2L) {
+        return "Tweakit Lem E"
     }
-
-    private fun filterExec(query: Value): AmbExec =
-        { _, succeed ->
-            if (database.qeval(query, singletonStream(frame)) is LStream.Empty) throw AmbFail
-            succeed(VSym("ok"))
-        }
-
-    private fun conjoinExec(conjuncts: List<Value>): AmbExec {
-        if (conjuncts.isEmpty()) return { _, succeed -> succeed(VSym("ok")) }
-        val first = analyzeQuery(conjuncts.first())
-        val rest = conjoinExec(conjuncts.drop(1))
-        return { env, succeed -> first(env) { _ -> rest(env, succeed) } }
+    if (i == 3L) {
+        return "Reasoner Louis"
     }
-
-    private fun disjoinExec(disjuncts: List<Value>): AmbExec {
-        if (disjuncts.isEmpty()) return { _, _ -> throw AmbFail }
-        val alternatives: List<AmbExec> = disjuncts.map { analyzeQuery(it) }
-        return { env, succeed ->
-            val entryFrame = frame
-            deliverChoice(alternatives.map { restartFrom(entryFrame, it) }, env, succeed)
-        }
+    if (i == 4L) {
+        return "Bitdiddle Ben"
     }
-
-    /** Each disjunct runs from the frame captured when the or is
-     * delivered -- its true runtime entry frame. The wrapper restores
-     * on every entry, so on choice-point re-entry after a sibling
-     * disjunct exhausted, the shared var no longer holds the sibling's
-     * last binding, which would filter this disjunct's matches away.
-     * (`and` keeps the sequential flow of the shared var between
-     * conjuncts.) */
-    private fun restartFrom(
-        entryFrame: Frame,
-        exec: AmbExec,
-    ): AmbExec =
-        { env, succeed ->
-            frame = entryFrame
-            exec(env, succeed)
-        }
-
-    private fun simpleQueryExec(queryPattern: Value): AmbExec =
-        { _, succeed ->
-            val alternatives = mutableListOf<AmbExec>()
-            for (assertion in database.fetchAssertions(queryPattern).asSequence().toList()) {
-                val extended = patternMatch(queryPattern, assertion, frame)
-                if (extended != null) {
-                    val bound = extended
-                    alternatives.add { _, succeed ->
-                        frame = bound
-                        succeed(VSym("ok"))
-                    }
-                }
-            }
-            for (rule in database.fetchRules(queryPattern).asSequence().toList()) {
-                alternatives.add(ruleExec(rule, queryPattern))
-            }
-            deliverChoice(alternatives, global, succeed)
-        }
-
-    private fun ruleExec(
-        rule: Value,
-        queryPattern: Value,
-    ): AmbExec =
-        { _, succeed ->
-            val clean = database.renameVariablesIn(rule)
-            val unified = unifyMatch(queryPattern, conclusionOf(clean), frame) ?: throw AmbFail
-            frame = unified
-            analyzeQuery(ruleBodyOf(clean))(global, succeed)
-        }
+    if (i == 5L) {
+        return "Scrooge Eben"
+    }
+    if (i == 6L) {
+        return "Cratchet Robert"
+    }
+    return "Aull DeWitt"
 }
 
-private fun queryAmb(assertions: String): sicp.ch4.AmbDriver {
-    val shared = QuerySystem()
-    shared.load(assertions)
-    return ambDriver({ env, random -> QueryAmbEvaluator(env, random, shared) }, "")
+fun isDirectReport(i: Long): Boolean {
+    if (i == 0L) {
+        return true
+    }
+    if (i == 1L) {
+        return true
+    }
+    if (i == 2L) {
+        return true
+    }
+    return false
 }
 
-/** The port answers one at a time through try-again and reports
- * exhaustion; the or is depth-first where the stream engine
- * interleaves; the recursive married rule still yields its cycle one
- * demandable answer at a time. */
+fun noteChoice(): Unit {
+    setPermanent { seen = seen + 1L }
+}
+
+fun main() {
+    val i = choose(0L, 1L, 2L, 3L, 4L, 5L, 6L, 7L)
+    noteChoice()
+    demand(isDirectReport(i))
+    println(staffName(i) + " (choice " + showLong(seen) + ")")
+}
+    """.trimIndent()
+
+/** The nondeterministic answers with their choice counts, the stream
+ * answers, and the agreed total. */
 public fun ambQueryDemos(): List<String> {
-    val out = mutableListOf<String>()
-    val jobs = queryAmb(microshaftDatabase)
-    val jobSession = StringBuilder()
-    jobSession.append(jobs.input("(job ?x (computer programmer))"))
-    jobSession.append(jobs.input("try-again"))
-    jobSession.append(jobs.input("try-again"))
-    jobSession.append(jobs.input("try-again"))
-    out.add("session: (job ?x (computer programmer))")
-    out.add(jobSession.toString())
-    val orAmb = queryAmb(microshaftDatabase)
-    val orSession = StringBuilder()
-    orSession.append(orAmb.input("(or (supervisor ?x (Bitdiddle Ben)) (supervisor ?x (Hacker Alyssa P)))"))
-    repeat(4) { orSession.append(orAmb.input("try-again")) }
-    out.add("session: (or (supervisor ?x (Bitdiddle Ben)) (supervisor ?x (Hacker Alyssa P))) -- amb is depth-first")
-    out.add(orSession.toString())
-    val streamOrder = answersOf(microshaftSystem(), "(or (supervisor ?x (Bitdiddle Ben)) (supervisor ?x (Hacker Alyssa P)))")
-    out.add("the stream engine interleaves the same disjuncts: ${streamOrder.size} answers, first is ${streamOrder.firstOrNull()}")
-    val married = queryAmb(microshaftDatabase + "\n(assert! (married Minnie Mickey))\n(assert! (rule (married ?x ?y)\n(married ?y ?x)))")
-    val marriedSession = StringBuilder()
-    marriedSession.append(married.input("(married Mickey ?who)"))
-    marriedSession.append(married.input("try-again"))
-    out.add("session: (married Mickey ?who) through the recursive rule")
-    out.add(marriedSession.toString())
-    return out
+    val amb = searchLines(AMB_SEARCH_PROGRAM)
+    val db = microshaftSystem()
+    val stream =
+        answerLines(
+            QueryDriver.streaming(db),
+            QPattern(list(sym("supervisor"), v("x"), list(sym("Bitdiddle"), sym("Ben")))),
+            listOf(v("x")),
+        )
+    val total = searchRun(AMB_SEARCH_PROGRAM).choices
+    return amb + stream + listOf("total choices: $total")
 }

@@ -48,8 +48,8 @@ const figureTrees = (): readonly [string, ReturnType<typeof makeTreeSet>][] => [
 describe("exercise 2.63", () => {
   it("a. both procedures produce the same ordered list for every tree", () => {
     for (const [name, tree] of figureTrees()) {
-      expect(name && showList(treeToList1(tree))).toBe("(1 3 5 7 9 11)");
-      expect(showList(treeToList2(tree))).toBe("(1 3 5 7 9 11)");
+      expect(name && showList(treeToList1(tree))).toBe("[1, 3, 5, 7, 9, 11]");
+      expect(showList(treeToList2(tree))).toBe("[1, 3, 5, 7, 9, 11]");
     }
     const balanced = makeTreeSet(
       5,
@@ -60,9 +60,9 @@ describe("exercise 2.63", () => {
         makeTreeSet(11, emptyTreeSet, emptyTreeSet),
       ),
     );
-    expect(showList(treeToList1(balanced))).toBe("(1 3 5 7 9 11)");
-    expect(showList(treeToList2(balanced))).toBe("(1 3 5 7 9 11)");
-    expect(showList(treeToList1(emptyTreeSet))).toBe("()");
-    expect(showList(treeToList2(emptyTreeSet))).toBe("()");
+    expect(showList(treeToList1(balanced))).toBe("[1, 3, 5, 7, 9, 11]");
+    expect(showList(treeToList2(balanced))).toBe("[1, 3, 5, 7, 9, 11]");
+    expect(showList(treeToList1(emptyTreeSet))).toBe("[]");
+    expect(showList(treeToList2(emptyTreeSet))).toBe("[]");
   });
 });

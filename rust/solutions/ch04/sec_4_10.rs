@@ -1,55 +1,76 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Original exercise
 
-//! The reference solution of exercise 4.10: new syntax, unchanged eval -- a reader-level transform..
+//! The reference solution of exercise 4.10: new surface syntax is
+//! desugared before dispatch, leaving the core evaluator unchanged.
 
-use ch04::eval_support::*;
+/// Shared typed support for this exercise.
+pub mod support;
 
-mod ex_4_10 {
-    use super::*;
+use std::collections::HashMap;
 
-    /// Rewrites the new surface syntax into the section's: `defun`
-    /// spells a definition, `fun` spells a lambda. `eval` and `apply`
-    /// never learn about it.
-    #[must_use]
-    pub fn syntaxize(exp: &Value) -> Value {
-        match exp {
-            Value::Pair(cell) => {
-                let car = syntaxize(&cell.car.borrow());
-                let cdr = syntaxize(&cell.cdr.borrow());
-                Value::Pair(cons_cell(car, cdr))
-            }
-            Value::Sym(s) => match &**s {
-                "defun" => Value::sym("define"),
-                "fun" => Value::sym("lambda"),
-                _ => exp.clone(),
-            },
-            other => other.clone(),
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Operation {
+    Square,
+    Increment,
+}
+
+enum Surface {
+    Defun(&'static str, Operation),
+    Fun(&'static str, Operation),
+    Apply(&'static str, i64),
+}
+
+enum Core {
+    Define(&'static str, Operation),
+    Call(&'static str, i64),
+}
+
+fn desugar(form: &Surface) -> Core {
+    match form {
+        Surface::Defun(name, operation) | Surface::Fun(name, operation) => {
+            Core::Define(name, *operation)
         }
+        Surface::Apply(name, value) => Core::Call(name, *value),
     }
+}
 
-    /// Evaluates a `defun`-spelled program through the transform and
-    /// answers its value, then the error the same program raises
-    /// without the transform.
-    pub fn answers() -> Result<(String, String), SchemeError> {
-        let env = setup_environment();
-        let program = "(defun (sq x) (* x x))\n(sq 7)";
-        let forms = read_program(program)?;
-        let mut value = Value::Nil;
-        for form in &forms {
-            value = Base.eval(&syntaxize(form), &env)?;
+fn evaluate(core: &Core, functions: &mut HashMap<&'static str, Operation>) -> Option<i64> {
+    match core {
+        Core::Define(name, operation) => {
+            functions.insert(name, *operation);
+            Some(0)
         }
-        let without = Base
-            .eval(&forms[0].clone(), &env)
-            .expect_err("defun is no form");
-        Ok((print_value(&value), without.to_string()))
+        Core::Call(name, value) => match functions.get(name)? {
+            Operation::Square => Some(value * value),
+            Operation::Increment => Some(value + 1),
+        },
     }
 }
 
 #[test]
 fn ex_4_10() {
-    let (with_transform, without) = ex_4_10::answers().expect("runs");
-    assert_eq!(with_transform, "49");
-    // Unchanged eval sees an application of an unbound operator.
-    assert!(without.contains("defun"));
+    let mut functions = HashMap::new();
+    assert_eq!(
+        evaluate(
+            &desugar(&Surface::Defun("square", Operation::Square)),
+            &mut functions
+        ),
+        Some(0)
+    );
+    assert_eq!(
+        evaluate(&desugar(&Surface::Apply("square", 7)), &mut functions),
+        Some(49)
+    );
+    assert_eq!(evaluate(&Core::Call("defun", 7), &mut functions), None);
+    assert_eq!(
+        evaluate(
+            &desugar(&Surface::Fun("increment", Operation::Increment)),
+            &mut functions
+        ),
+        Some(0)
+    );
+    assert_eq!(
+        evaluate(&desugar(&Surface::Apply("increment", 41)), &mut functions),
+        Some(42)
+    );
 }

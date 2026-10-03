@@ -9,9 +9,17 @@ import io.kotest.matchers.shouldBe
 
 public class E5_24Test :
     FunSpec({
-        test("Exercise 5.24: the cond sessions through the clause-loop evaluator").config(
+        test("Exercise 5.24: the case-analysis sessions through the clause-loop evaluator").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            condBasicFormRuns() shouldBe emptyList()
+            condBasicFormRuns().filterNot { it.contains("instructions") || it.contains("stack depth") } shouldBe
+                listOf(
+                    "zero",
+                    "one",
+                    "many",
+                    "true",
+                    "false",
+                    "selected clause tail depth independent of n: true",
+                )
         }
     })

@@ -2,8 +2,8 @@
 // Original exercise
 
 /**
- * Exercise 4.18: the alternative scan-out strategy. Each define's value
- * expression is computed in an inner let before any set! runs. The
+ * Exercise 4.18: the alternative scan-out strategy. Each declaration's value
+ * expression is computed in an inner local block before any assignment runs. The
  * statement asks whether the solve procedure of 3.5.4 works under this
  * scan, and whether it works under the text's scan, and why.
  */
@@ -14,15 +14,31 @@ export class PendingSolution extends Error {
   }
 }
 
-/** The book's solve procedure, whose value expressions read each other. */
-export const solveSource = `((lambda (f y0 dt)
-  (define y (integral (delay dy) y0 dt))
-  (define dy (stream-map f y))
-  y) (lambda (x) x) 1 0.1)`;
+/** Typed solve premise: the two bindings read each other. */
+export type SolveBinding = {
+  readonly name: "y" | "dy";
+  readonly dependsOn: ReadonlyArray<"y" | "dy">;
+};
+export const solveBindings: readonly SolveBinding[] = [
+  { name: "y", dependsOn: ["dy"] },
+  { name: "dy", dependsOn: ["y"] },
+];
 
-/** The alternative's shape: values computed up front, assigned after. */
-export const alternativeSource =
-  "(let ((u '*unassigned*) (v '*unassigned*)) (let ((a e1) (b e2)) (set! u a) (set! v b)) e3)";
+/** The alternative's typed order: compute values before writes. */
+export type AlternativeStep =
+  | { readonly kind: "declare-unassigned"; readonly name: "u" | "v" }
+  | { readonly kind: "compute"; readonly name: "a" | "b"; readonly source: "e1" | "e2" }
+  | { readonly kind: "write"; readonly name: "u" | "v"; readonly source: "a" | "b" }
+  | { readonly kind: "read"; readonly name: "e3" };
+export const alternativeSteps: readonly AlternativeStep[] = [
+  { kind: "declare-unassigned", name: "u" },
+  { kind: "declare-unassigned", name: "v" },
+  { kind: "compute", name: "a", source: "e1" },
+  { kind: "compute", name: "b", source: "e2" },
+  { kind: "write", name: "u", source: "a" },
+  { kind: "write", name: "v", source: "b" },
+  { kind: "read", name: "e3" },
+];
 
 export function ex_4_18(): string {
   throw new PendingSolution();

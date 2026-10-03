@@ -27,7 +27,7 @@ enum Shape @{
 
 @code{match} takes a value apart by variant, and the compiler checks
 @newterm{exhaustiveness}: every variant needs an arm, or the program does not
-compile. This is the book's `` `cond` on the type of the data'' made
+compile.  This is the source book's `` `cond` on the type of the data'' made
 mechanical, and it is why chapter 2's tagged data (@ref{2.4}, sketched with
 this section's constructs) can be represented as a closed enum here even
 though the book installs new tags into an open dispatch table at runtime; the
@@ -38,7 +38,8 @@ notes.
 impl Shape @{
     fn area(&self) -> f64 @{
         match *self @{
-            Shape::Circle @{ radius @} => std::f64::consts::PI * radius * radius,
+            Shape::Circle @{ radius @} =>
+                std::f64::consts::PI * radius * radius,
             Shape::Rectangle @{ width, height @} => width * height,
         @}
     @}
@@ -98,7 +99,11 @@ fn list_sum(list: &List) -> i64 @{
     @}
 @}
 
-let list = List::Cons(1, Box::new(List::Cons(2, Box::new(List::Cons(3, Box::new(List::Nil))))));
+let list = List::Cons(1, Box::new(
+    List::Cons(2, Box::new(
+        List::Cons(3, Box::new(List::Nil))
+    ))
+));
 let sum = list_sum(&list);
 println!("@{sum@}");
 // => 6

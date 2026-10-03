@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.76: for each of the three strategies -- generic operations
  * with explicit dispatch, data-directed style, and message passing --
@@ -16,4 +14,4 @@ import sicp.runtime.PendingSolution
  * same complex number through all three strategies, to ground the
  * comparison before answering it.
  */
-public fun ex_2_76(): Triple<Pair<Double, Double>, Pair<Double, Double>, Pair<Double, Double>> = throw PendingSolution()
+public fun ex_2_76(): Triple<Pair<Double, Double>, Pair<Double, Double>, Pair<Double, Double>> = throw PendingExercise()

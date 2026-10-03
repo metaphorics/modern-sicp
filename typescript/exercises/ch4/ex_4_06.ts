@@ -2,11 +2,10 @@
 // Original exercise
 
 /**
- * Exercise 4.6: let expressions are derived expressions:
- * (let ((v1 e1) ... (vn en)) body) is the same as
- * ((lambda (v1 ... vn) body) e1 ... en). Write the syntactic transformation
- * let->combination that reduces evaluating a let to evaluating a
- * combination, and add the clause to eval.
+ * Exercise 4.6: local bindings are derived expressions. A block binding
+ * each name to its initializer is the same as an immediately invoked
+ * function over those names. Write the lowering from local bindings to a
+ * function call and add it to the evaluator's analysis.
  */
 export class PendingSolution extends Error {
   constructor() {

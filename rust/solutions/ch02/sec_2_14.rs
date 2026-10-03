@@ -7,9 +7,9 @@
 
 mod ex_2_14 {
     use ch02::sec_2_1::{Interval, add_interval, div_interval, mul_interval};
-    use sicp_runtime::SchemeError;
+    use sicp_runtime::SicpError;
 
-    fn from_center_percent(center: f64, percent: f64) -> Result<Interval, SchemeError> {
+    fn from_center_percent(center: f64, percent: f64) -> Result<Interval, SicpError> {
         Interval::from_center_width(center, center.abs() * percent / 100.0)
     }
 
@@ -28,9 +28,9 @@ mod ex_2_14 {
     /// fewer times.
     ///
     /// # Errors
-    /// [`SchemeError`] when the interval `1.0 / 1.0` fails to build,
+    /// [`SicpError`] when the interval `1.0 / 1.0` fails to build,
     /// which it does not.
-    fn par2(r1: &Interval, r2: &Interval) -> Result<Interval, SchemeError> {
+    fn par2(r1: &Interval, r2: &Interval) -> Result<Interval, SicpError> {
         let one = Interval::new(1.0, 1.0)?;
         let reciprocal_sum = add_interval(&div_interval(&one, r1), &div_interval(&one, r2));
         Ok(div_interval(&one, &reciprocal_sum))
@@ -48,9 +48,9 @@ mod ex_2_14 {
     /// variable as an independent uncertain quantity.
     ///
     /// # Errors
-    /// [`SchemeError`] when the fixed inputs below fail to build, which
+    /// [`SicpError`] when the fixed inputs below fail to build, which
     /// they do not.
-    pub fn ex_2_14() -> Result<(f64, f64, f64), SchemeError> {
+    pub fn ex_2_14() -> Result<(f64, f64, f64), SicpError> {
         let a = from_center_percent(10.0, 5.0)?;
         let a_over_a = div_interval(&a, &a);
 

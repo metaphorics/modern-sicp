@@ -20,7 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef enum { T_INT, T_REAL, T_BOOL, T_SYM, T_STR, T_NIL, T_PAIR, T_PRIM, T_COMP, T_ENV } Tag;
+typedef enum { T_INT, T_REAL, T_BOOL, T_SYM, T_STR, T_NIL, T_PAIR, T_VEC, T_PRIM, T_COMP, T_ENV } Tag;
 
 typedef struct Val Val;
 typedef struct Env Env;
@@ -33,6 +33,7 @@ struct Val {
         int boolean;
         const char *text;
         struct { Val *car, *cdr; } pair;
+        struct { Val **items; size_t length; size_t capacity; } vec;
         struct { Val *parameters; Val *body; Env *environment; } procedure;
         Env *environment;
     } u;
@@ -157,6 +158,54 @@ static Val *cons(Val *car, Val *cdr) {
     value->u.pair.car = car;
     value->u.pair.cdr = cdr;
     return value;
+}
+
+/* ------------------------------------------------------------------ */
+/* The section-5.52 object ABI: vectors and tagged option/result      */
+/* pairs. `Some` is the pair (1 . payload), `None` is (0 . ()), `Ok` */
+/* is (2 . payload), and `Err` is (3 . payload): the tag an integer, */
+/* the shape a pair no user list can be confused with once its `car` */
+/* is read as the discriminant.                                       */
+/* ------------------------------------------------------------------ */
+
+
+
+static Val *make_vector(void) {
+    Val *value = new_value(T_VEC);
+    value->u.vec.items = NULL;
+    value->u.vec.length = 0;
+    value->u.vec.capacity = 0;
+    return value;
+}
+
+/* `mc_vec_push`: append `item` to `vec` and answer the vector. The   */
+/* store grows geometrically, so a run of pushes costs linear time.  */
+static Val *mc_vec_push(Val *vec, Val *item) {
+    if (vec == NULL || vec->tag != T_VEC) {
+        die("mc_vec_push: not a vector");
+    }
+    if (vec->u.vec.length == vec->u.vec.capacity) {
+        size_t capacity = vec->u.vec.capacity == 0 ? 4 : vec->u.vec.capacity * 2;
+        vec->u.vec.items =
+            checked_grow(vec->u.vec.items, capacity * sizeof *vec->u.vec.items);
+        vec->u.vec.capacity = capacity;
+    }
+    vec->u.vec.items[vec->u.vec.length++] = item;
+    return vec;
+}
+
+static Val *opt_some(Val *payload) {
+    return cons(make_integer(1), payload);
+}
+
+static Val *opt_none(void) { return cons(make_integer(0), V_NIL); }
+
+static Val *res_ok(Val *payload) {
+    return cons(make_integer(2), payload);
+}
+
+static Val *res_err(Val *payload) {
+    return cons(make_integer(3), payload);
 }
 
 static Val *make_primitive(const char *name) {
@@ -409,6 +458,18 @@ static void print_value(Val *value) {
     case T_BOOL: fputs(value == V_FALSE ? "#f" : "#t", stdout); break;
     case T_SYM: fputs(value->u.text, stdout); break;
     case T_STR: print_string(value->u.text); break;
+    case T_VEC: {
+        putchar('#');
+        putchar('(');
+        for (size_t index = 0; index < value->u.vec.length; index++) {
+            if (index > 0) {
+                putchar(' ');
+            }
+            print_value(value->u.vec.items[index]);
+        }
+        putchar(')');
+        break;
+    }
     case T_NIL: fputs("()", stdout); break;
     case T_PRIM: printf("#[primitive-procedure %s]", value->u.text); break;
     case T_COMP: fputs("#[compound-procedure]", stdout); break;
@@ -463,6 +524,17 @@ static int equal_values(Val *left, Val *right) {
         return equal_values(left->u.pair.car, right->u.pair.car)
             && equal_values(left->u.pair.cdr, right->u.pair.cdr);
     case T_COMP: case T_ENV: return 0;
+    case T_VEC: {
+        if (left->u.vec.length != right->u.vec.length) {
+            return 0;
+        }
+        for (size_t index = 0; index < left->u.vec.length; index++) {
+            if (!equal_values(left->u.vec.items[index], right->u.vec.items[index])) {
+                return 0;
+            }
+        }
+        return 1;
+    }
     }
     return 0;
 }
@@ -660,184 +732,565 @@ static void initialize_world(void) {
 
 static int at_end(void) { return reader.position >= reader.length; }
 
-static int is_delimiter(int character) {
-    return character == EOF || isspace(character) || character == '(' || character == ')'
-        || character == '\'' || character == '"' || character == ';';
+/* ------------------------------------------------------------------ */
+/* The guest-slice front end                                            */
+/* ------------------------------------------------------------------ */
+
+/* The 5.51 object language is the admitted Rust slice the edition     */
+/* teaches: `fn` items, integer arithmetic, comparisons, `if`/`else`, */
+/* calls, and `println!` interactions. The parser desugars each item  */
+/* to the core Val form the controller already evaluates: `fn`       */
+/* becomes `define`, `if` becomes the core `if` form, `!=`/`<=`/`>=` */
+/* become `not` over the primitive comparison, and each `println!`   */
+/* of `main` becomes one interaction the driver evaluates and       */
+/* prints. Only checker-admitted programs are fed here; the harness  */
+/* admits every input before running the binary, so anything outside */
+/* the slice below dies loudly instead of guessing.                  */
+
+static Val *pending_head;
+static Val *pending_tail;
+static Val *interact_head;
+static Val *interact_tail;
+static int program_parsed;
+
+static void emit_at(Val **head, Val **tail, Val *form) {
+    Val *cell = cons(form, V_NIL);
+    if (*head == NULL) {
+        *head = cell;
+    } else {
+        (*tail)->u.pair.cdr = cell;
+    }
+    *tail = cell;
 }
 
-static int peek_at(size_t offset) {
-    return offset < reader.length ? (unsigned char)reader.text[offset] : EOF;
+static int peek_ch(void) {
+    if (at_end()) {
+        return EOF;
+    }
+    return (unsigned char)reader.text[reader.position];
 }
 
-/* Blanks and `;` comments, which run to the end of their line. */
-static void skip_space(void) {
+/* Blanks, `//` line comments, and slash-star block comments. */
+static void skip_ws(void) {
     for (;;) {
         while (!at_end() && isspace((unsigned char)reader.text[reader.position])) {
             reader.position++;
         }
-        if (at_end() || reader.text[reader.position] != ';') {
+        if (at_end() || reader.text[reader.position] != '/') {
             return;
         }
-        while (!at_end() && reader.text[reader.position] != '\n') {
+        if (reader.position + 1 >= reader.length) {
+            return;
+        }
+        char next = reader.text[reader.position + 1];
+        if (next == '/') {
+            reader.position += 2;
+            while (!at_end() && reader.text[reader.position] != '\n') {
+                reader.position++;
+            }
+            continue;
+        }
+        if (next != '*') {
+            return;
+        }
+        reader.position += 2;
+        for (;;) {
+            if (at_end()) {
+                die("unterminated block comment");
+            }
+            if (reader.text[reader.position] == '*'
+                && reader.position + 1 < reader.length
+                && reader.text[reader.position + 1] == '/') {
+                reader.position += 2;
+                break;
+            }
             reader.position++;
         }
     }
 }
 
-static Val *read_expression(void);
+static int is_ident_start(int c) { return isalpha(c) || c == '_'; }
+static int is_ident_char(int c) { return isalnum(c) || c == '_'; }
 
-static char *read_token(void) {
-    size_t start = reader.position;
-    while (!at_end() && !is_delimiter(peek_at(reader.position))) {
+/* Copies the identifier at the cursor; dies when none is there. */
+static void take_ident(char *out, size_t cap) {
+    size_t len = 0;
+    skip_ws();
+    if (!is_ident_start(peek_ch())) {
+        die("expected a name");
+    }
+    while (is_ident_char(peek_ch())) {
+        if (len + 1 >= cap) {
+            die("name too long");
+        }
+        out[len++] = (char)peek_ch();
         reader.position++;
     }
-    if (reader.position == start) {
-        die("empty token");
-    }
-    size_t length = reader.position - start;
-    char *token = checked_malloc(length + 1);
-    memcpy(token, reader.text + start, length);
-    token[length] = '\0';
-    return token;
+    out[len] = '\0';
 }
 
-static Val *read_string(void) {
-    Val *result = NULL;
-    size_t capacity = 32, length = 0;
-    char *buffer = checked_malloc(capacity);
+/* Eats `word` when it starts at the cursor with a word boundary. */
+static int take_keyword(const char *word) {
+    size_t save = reader.position;
+    size_t i = 0;
+    skip_ws();
+    save = reader.position;
+    while (word[i] != '\0') {
+        if (at_end() || reader.text[reader.position] != word[i]) {
+            reader.position = save;
+            return 0;
+        }
+        reader.position++;
+        i++;
+    }
+    if (is_ident_char(peek_ch())) {
+        reader.position = save;
+        return 0;
+    }
+    return 1;
+}
+
+static void expect_keyword(const char *word) {
+    if (!take_keyword(word)) {
+        fprintf(stderr, "eceval: expected `%s`\n", word);
+        exit(EXIT_FAILURE);
+    }
+}
+
+static int take_punct(char c) {
+    skip_ws();
+    if (peek_ch() != c) {
+        return 0;
+    }
     reader.position++;
-    while (!at_end()) {
-        int character = (unsigned char)reader.text[reader.position++];
-        if (character == '"') {
-            buffer = checked_grow(buffer, length + 1);
-            buffer[length] = '\0';
-            result = make_string(buffer);
+    return 1;
+}
+
+static void expect_punct(char c) {
+    if (!take_punct(c)) {
+        fprintf(stderr, "eceval: expected `%c`\n", c);
+        exit(EXIT_FAILURE);
+    }
+}
+
+static Val *parse_expr(void);
+
+/* One integer literal with `_` separators and an optional type suffix. */
+static Val *parse_integer(void) {
+    char buf[64];
+    size_t len = 0;
+    long long value;
+    skip_ws();
+    if (!isdigit(peek_ch())) {
+        die("expected an integer");
+    }
+    while (isdigit(peek_ch()) || peek_ch() == '_') {
+        int c = peek_ch();
+        reader.position++;
+        if (c == '_') {
+            continue;
+        }
+        if (len + 1 >= sizeof buf) {
+            die("integer too long");
+        }
+        buf[len++] = (char)c;
+    }
+    if (is_ident_start(peek_ch())) {
+        char suffix[8];
+        size_t suffix_len = 0;
+        while (is_ident_char(peek_ch())) {
+            if (suffix_len + 1 >= sizeof suffix) {
+                die("integer suffix too long");
+            }
+            suffix[suffix_len++] = (char)peek_ch();
+            reader.position++;
+        }
+        suffix[suffix_len] = '\0';
+        if (strcmp(suffix, "i64") != 0 && strcmp(suffix, "usize") != 0) {
+            die("invalid integer suffix");
+        }
+    }
+    buf[len] = '\0';
+    errno = 0;
+    value = strtoll(buf, NULL, 10);
+    if (errno == ERANGE) {
+        die("integer out of range");
+    }
+    return make_integer(value);
+}
+
+/* Skips one string literal with ordinary Rust escapes. */
+static void skip_string(void) {
+    skip_ws();
+    if (peek_ch() != '"') {
+        die("expected a string");
+    }
+    reader.position++;
+    for (;;) {
+        int c;
+        if (at_end()) {
+            die("unterminated string");
+        }
+        c = (unsigned char)reader.text[reader.position++];
+        if (c == '"') {
+            return;
+        }
+        if (c == '\\' && !at_end()) {
+            reader.position++;
+        }
+    }
+}
+
+/* Skips one type spelling; balanced brackets decide where it ends,   */
+/* so `Box<dyn FnMut() -> i64 + 'static>` stops at its comma.        */
+static void skip_type(void) {
+    int paren = 0;
+    int angle = 0;
+    int brack = 0;
+    int seen = 0;
+    for (;;) {
+        int c = peek_ch();
+        if (c == EOF) {
+            die("unterminated type");
+        }
+        if ((c == ',' || c == ')' || c == '{') && paren == 0 && angle == 0 && brack == 0) {
+            if (!seen) {
+                die("expected a type");
+            }
+            return;
+        }
+        if (c == '"') {
+            skip_string();
+            seen = 1;
+            continue;
+        }
+        if (c == '(') {
+            paren++;
+        } else if (c == ')') {
+            paren--;
+        } else if (c == '<') {
+            angle++;
+        } else if (c == '>') {
+            angle--;
+        } else if (c == '[') {
+            brack++;
+        } else if (c == ']') {
+            brack--;
+        }
+        if (paren < 0 || angle < 0 || brack < 0) {
+            die("unbalanced type");
+        }
+        if (!isspace(c)) {
+            seen = 1;
+        }
+        reader.position++;
+    }
+}
+
+static Val *apply2(const char *op, Val *left, Val *right) {
+    return cons(make_symbol(op), cons(left, cons(right, V_NIL)));
+}
+
+static Val *parse_primary(void) {
+    skip_ws();
+    if (peek_ch() == '(') {
+        Val *inner;
+        reader.position++;
+        inner = parse_expr();
+        expect_punct(')');
+        return inner;
+    }
+    if (isdigit(peek_ch())) {
+        return parse_integer();
+    }
+    if (is_ident_start(peek_ch())) {
+        char name[64];
+        take_ident(name, sizeof name);
+        return make_symbol(name);
+    }
+    die("expected an expression");
+    return NULL;
+}
+
+static Val *parse_postfix(void) {
+    Val *head = parse_primary();
+    for (;;) {
+        Val *args;
+        Val *last;
+        skip_ws();
+        if (peek_ch() != '(') {
+            return head;
+        }
+        reader.position++;
+        args = V_NIL;
+        last = NULL;
+        skip_ws();
+        if (peek_ch() != ')') {
+            for (;;) {
+                Val *cell = cons(parse_expr(), V_NIL);
+                if (last == NULL) {
+                    args = cell;
+                } else {
+                    last->u.pair.cdr = cell;
+                }
+                last = cell;
+                skip_ws();
+                if (!take_punct(',')) {
+                    break;
+                }
+            }
+        }
+        expect_punct(')');
+        head = cons(head, args);
+    }
+}
+
+static Val *parse_unary(void) {
+    skip_ws();
+    if (take_punct('-')) {
+        Val *operand = parse_unary();
+        return cons(make_symbol("-"), cons(operand, V_NIL));
+    }
+    if (take_punct('!')) {
+        Val *operand = parse_unary();
+        return cons(make_symbol("not"), cons(operand, V_NIL));
+    }
+    return parse_postfix();
+}
+
+static Val *parse_mul(void) {
+    Val *left = parse_unary();
+    for (;;) {
+        skip_ws();
+        if (take_punct('*')) {
+            left = apply2("*", left, parse_unary());
+        } else if (take_punct('/')) {
+            left = apply2("/", left, parse_unary());
+        } else if (take_punct('%')) {
+            left = apply2("remainder", left, parse_unary());
+        } else {
+            return left;
+        }
+    }
+}
+
+static Val *parse_add(void) {
+    Val *left = parse_mul();
+    for (;;) {
+        skip_ws();
+        if (take_punct('+')) {
+            left = apply2("+", left, parse_mul());
+        } else if (take_punct('-')) {
+            left = apply2("-", left, parse_mul());
+        } else {
+            return left;
+        }
+    }
+}
+
+static Val *boolean_not(Val *value) {
+    return cons(make_symbol("not"), cons(value, V_NIL));
+}
+
+static Val *parse_cmp(void) {
+    Val *left = parse_add();
+    skip_ws();
+    if (take_punct('=')) {
+        expect_punct('=');
+        return apply2("=", left, parse_add());
+    }
+    if (take_punct('!')) {
+        expect_punct('=');
+        return boolean_not(apply2("=", left, parse_add()));
+    }
+    if (take_punct('<')) {
+        if (take_punct('=')) {
+            return boolean_not(apply2(">", left, parse_add()));
+        }
+        return apply2("<", left, parse_add());
+    }
+    if (take_punct('>')) {
+        if (take_punct('=')) {
+            return boolean_not(apply2("<", left, parse_add()));
+        }
+        return apply2(">", left, parse_add());
+    }
+    return left;
+}
+
+static Val *parse_and(void) {
+    Val *left = parse_cmp();
+    for (;;) {
+        Val *right;
+        skip_ws();
+        if (peek_ch() != '&') {
+            return left;
+        }
+        reader.position++;
+        expect_punct('&');
+        right = parse_cmp();
+        left = cons(make_symbol("if"),
+            cons(left, cons(right, cons(make_symbol("false"), V_NIL))));
+    }
+}
+
+static Val *parse_or(void) {
+    Val *left = parse_and();
+    for (;;) {
+        Val *right;
+        skip_ws();
+        if (peek_ch() != '|') {
+            return left;
+        }
+        reader.position++;
+        expect_punct('|');
+        right = parse_and();
+        left = cons(make_symbol("if"),
+            cons(left, cons(make_symbol("true"), cons(right, V_NIL))));
+    }
+}
+
+/* `if test { yes } else { no }` becomes the core four-element form.  */
+/* Bare blocks hold one tail expression; anything else dies loudly.   */
+static Val *parse_block_expr(void) {
+    Val *value;
+    expect_punct('{');
+    value = parse_expr();
+    skip_ws();
+    if (peek_ch() == ';') {
+        die("statement sequences are outside the 5.51 object slice");
+    }
+    expect_punct('}');
+    return value;
+}
+
+static Val *parse_expr(void) {
+    skip_ws();
+    if (take_keyword("if")) {
+        Val *test = parse_or();
+        Val *yes = parse_block_expr();
+        Val *no;
+        expect_keyword("else");
+        no = parse_block_expr();
+        return cons(make_symbol("if"), cons(test, cons(yes, cons(no, V_NIL))));
+    }
+    if (take_keyword("let") || take_keyword("return") || take_keyword("while")
+        || take_keyword("for") || take_keyword("loop") || take_keyword("match")) {
+        die("that statement form is outside the 5.51 object slice");
+    }
+    return parse_or();
+}
+
+/* The slice's one interaction format: the display placeholder. */
+static void expect_format(void) {
+    skip_ws();
+    if (reader.position + 4 > reader.length
+        || reader.text[reader.position] != '"'
+        || reader.text[reader.position + 1] != '{'
+        || reader.text[reader.position + 2] != '}'
+        || reader.text[reader.position + 3] != '"') {
+        die("expected the \"{}\" format string");
+    }
+    reader.position += 4;
+}
+
+/* One `println!("{}", value);` interaction of `main`. */
+static void parse_println(void) {
+    Val *interaction;
+    expect_keyword("println");
+    expect_punct('!');
+    expect_punct('(');
+    expect_format();
+    expect_punct(',');
+    interaction = parse_expr();
+    expect_punct(')');
+    expect_punct(';');
+    emit_at(&interact_head, &interact_tail, interaction);
+}
+
+/* One `fn` item: a definition, or `main`'s run of interactions. */
+static void parse_fn(void) {
+    char name[64];
+    Val *params = V_NIL;
+    Val *last = NULL;
+    take_ident(name, sizeof name);
+    expect_punct('(');
+    skip_ws();
+    if (!take_punct(')')) {
+        for (;;) {
+            char pname[64];
+            Val *cell;
+            take_keyword("mut");
+            take_ident(pname, sizeof pname);
+            expect_punct(':');
+            skip_type();
+            cell = cons(make_symbol(pname), V_NIL);
+            if (last == NULL) {
+                params = cell;
+            } else {
+                last->u.pair.cdr = cell;
+            }
+            last = cell;
+            skip_ws();
+            if (take_punct(',')) {
+                continue;
+            }
+            expect_punct(')');
             break;
         }
-        if (character == '\\') {
-            if (at_end()) {
-                break;
-            }
-            character = (unsigned char)reader.text[reader.position++];
-            if (character == 'n') character = '\n';
-            else if (character == 'r') character = '\r';
-            else if (character == 't') character = '\t';
-        }
-        if (length + 2 > capacity) {
-            if (capacity > SIZE_MAX / 2) {
-                break;
-            }
-            capacity *= 2;
-            buffer = checked_grow(buffer, capacity);
-        }
-        buffer[length++] = (char)character;
     }
-    free(buffer);
-    if (result == NULL) {
-        die("unterminated string");
+    skip_ws();
+    if (take_punct('-')) {
+        expect_punct('>');
+        skip_type();
     }
-    return result;
+    if (strcmp(name, "main") == 0) {
+        expect_punct('{');
+        for (;;) {
+            skip_ws();
+            if (take_punct('}')) {
+                return;
+            }
+            parse_println();
+        }
+    }
+    {
+        Val *body = parse_block_expr();
+        Val *head = cons(make_symbol(name), params);
+        emit_at(&pending_head, &pending_tail,
+                cons(make_symbol("define"), cons(head, cons(body, V_NIL))));
+    }
 }
 
-/* Builds the list one element at a time, so a `'`-quoted element inside it
-   reads through the same path as a top-level form. */
-static Val *read_list(void) {
-    Val *head = V_NIL;
-    Val *last = NULL;
-    reader.position++;
-    skip_space();
-    if (!at_end() && reader.text[reader.position] == ')') {
-        reader.position++;
-        return V_NIL;
-    }
+static void parse_program(void) {
     for (;;) {
-        skip_space();
+        skip_ws();
         if (at_end()) {
-            die("unterminated list");
+            return;
         }
-        if (reader.text[reader.position] == ')') {
-            reader.position++;
-            return head;
-        }
-        if (reader.text[reader.position] == '.' && is_delimiter(peek_at(reader.position + 1))) {
-            if (last == NULL) {
-                die("dot before any list element");
-            }
-            reader.position++;
-            Val *tail = read_expression();
-            skip_space();
-            if (at_end() || reader.text[reader.position] != ')') {
-                die("a dotted list ends with one tail");
-            }
-            reader.position++;
-            last->u.pair.cdr = tail;
-            return head;
-        }
-        Val *cell = cons(read_expression(), V_NIL);
-        if (last == NULL) {
-            head = cell;
-        } else {
-            last->u.pair.cdr = cell;
-        }
-        last = cell;
+        expect_keyword("fn");
+        parse_fn();
     }
 }
 
-static Val *read_atom(void) {
-    char *token = read_token();
-    char *end;
-    long long integer;
-    double real;
-    Val *result;
-
-    if (strcmp(token, "#t") == 0) result = V_TRUE;
-    else if (strcmp(token, "#f") == 0) result = V_FALSE;
-    else {
-        errno = 0;
-        integer = strtoll(token, &end, 10);
-        if (errno != ERANGE && end != token && *end == '\0') {
-            result = make_integer(integer);
-        } else {
-            errno = 0;
-            real = strtod(token, &end);
-            int looks_real = strchr(token, '.') != NULL || strchr(token, 'e') != NULL
-                || strchr(token, 'E') != NULL;
-            if (errno != ERANGE && end != token && *end == '\0' && looks_real) {
-                result = make_real(real);
-            } else {
-                result = make_symbol(token);
-            }
-        }
-    }
-    free(token);
-    return result;
-}
-
-/* The next expression, or NULL at the end of the input. */
+/* The next interaction, or NULL at the end of the input. */
 static Val *read_expression(void) {
-    skip_space();
-    if (at_end()) {
+    Val *form;
+    if (!program_parsed) {
+        program_parsed = 1;
+        parse_program();
+    }
+    if (pending_head == NULL || pending_head == V_NIL) {
+        pending_head = interact_head;
+        interact_head = NULL;
+        interact_tail = NULL;
+    }
+    if (pending_head == NULL || pending_head == V_NIL) {
         return NULL;
     }
-    int character = (unsigned char)reader.text[reader.position];
-    if (character == '(') {
-        return read_list();
-    }
-    if (character == ')') {
-        die("unexpected close parenthesis");
-    }
-    if (character == '\'') {
-        reader.position++;
-        Val *quoted = read_expression();
-        if (quoted == NULL) {
-            die("quote without an expression");
-        }
-        return cons(make_symbol("quote"), cons(quoted, V_NIL));
-    }
-    if (character == '"') {
-        return read_string();
-    }
-    return read_atom();
+    form = pending_head->u.pair.car;
+    pending_head = pending_head->u.pair.cdr;
+    return form;
 }
 
 static char *read_all(FILE *stream, size_t *length) {
@@ -1159,7 +1612,7 @@ int main(int argc, char **argv) {
     int status = EXIT_FAILURE;
 
     if (argc > 2) {
-        fprintf(stderr, "usage: %s [scheme-file]\n", argv[0]);
+        fprintf(stderr, "usage: %s [program-file]\n", argv[0]);
         return EXIT_FAILURE;
     }
     if (argc == 2) {

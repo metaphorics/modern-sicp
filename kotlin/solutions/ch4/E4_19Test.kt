@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 4, exercise 4.19
+// Chapter 4, exercise 4.19: tests.
 
 package sicp.ch4.solutions
 
@@ -8,15 +8,15 @@ import io.kotest.matchers.shouldBe
 
 public class E4_19Test :
     FunSpec({
-        test("Exercise 4.19: Ben's sequential rule initializes b against the outer a and answers 16") {
+        test("Exercise 4.19: source order reads the outer binding") {
             benRuleTranscript() shouldBe "16\n"
         }
 
-        test("Exercise 4.19: Alyssa's scan-out rejects the read before assignment") {
-            alyssaRuleTranscript() shouldBe "Error: type mismatch: a is read before it is assigned\n"
+        test("Exercise 4.19: the reservation rejects the fellow read") {
+            alyssaRuleTranscript() shouldBe "error\n"
         }
 
-        test("Exercise 4.19: Eva's simultaneous rule initializes b against the final a and answers 20") {
+        test("Exercise 4.19: reserve-then-assign lets b see the final a") {
             evaRuleTranscript() shouldBe "20\n"
         }
     })

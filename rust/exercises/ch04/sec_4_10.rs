@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The pending scaffold of exercise 4.10: Exercise 4.10: new syntax, unchanged eval..
+//! The pending scaffold of exercise 4.10: surface sugar over an unchanged evaluator.
 
 /// The typed pending report of an unsolved scaffold: the body returns
 /// this instead of panicking, so the failure names its origin.
@@ -12,11 +12,11 @@ pub struct Pending {
 }
 
 mod ex_4_10 {
-    //! Exercise 4.10: new syntax, unchanged eval.
+    //! Exercise 4.10: surface sugar over an unchanged evaluator.
 
     use super::Pending;
 
-    /// Answers the value of a `defun`-spelled square under the reader
+    /// Answers the value of a sugar-spelled square under the desugaring
     /// transform, and the error the same form raises without it.
     pub fn ex_4_10() -> Result<(String, String), Pending> {
         Err(Pending { exercise: "4.10" })
@@ -28,5 +28,5 @@ mod ex_4_10 {
 fn ex_4_10() {
     let (with_transform, without) = ex_4_10::ex_4_10().expect("solved");
     assert_eq!(with_transform, "49");
-    assert!(without.contains("defun"));
+    assert!(!without.is_empty());
 }

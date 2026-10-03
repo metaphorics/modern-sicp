@@ -1,20 +1,32 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 5.5 *)
+   Adapted from SICP section 5.5 *)
 
-(** Exercise 5.37: the compiler with [preserving] disabled, and the
-    stack operations it wastes. *)
+(** Exercise 5.37: [preserving] made to save unconditionally.
 
-val factorial_source : string
-val no_preserving : Sicp_ch5.Sec_5_5.config
+    With the mechanism intact a register is saved around a sequence only
+    when the sequence modifies it and the code after it needs it.  The
+    blind variant saves every register the compiler names, so every
+    extra [save] it emits is one whose register the first sequence
+    leaves alone or the second sequence never reads. *)
 
-val compile_count
-  :  Sicp_ch5.Sec_5_5.config
+(** [always_preserving regs first second] runs [first] then [second],
+    saving and restoring every register of [regs] around [first]. *)
+val always_preserving
+  :  string list
+  -> Sicp_ch5.Sec_5_5.seq
+  -> Sicp_ch5.Sec_5_5.seq
+  -> Sicp_ch5.Sec_5_5.seq
+
+(** [compile_without_preserving state e target linkage] is the compiler
+    with [always_preserving] in place of [preserving]. *)
+val compile_without_preserving
+  :  Sicp_ch5.Sec_5_5.state
+  -> Sicp_common.Ast.expr
   -> string
-  -> (int * int, Sicp_ch5.Sec_5_5.error) result
+  -> Sicp_ch5.Sec_5_5.linkage
+  -> Sicp_ch5.Sec_5_5.seq
 
-val run_monitored
-  :  Sicp_ch5.Sec_5_5.config
-  -> int
-  -> (string list, Sicp_ch5.Sec_5_5.error) result
-
-val ex_5_37 : unit -> (string list, Sicp_ch5.Sec_5_5.error) result
+(** [ex_5_37 ()] compares both compilers on the combination
+    [f (g 1) 2] (its stack operations) and on the factorial (its size,
+    and the pushes and depth of [factorial 5]). *)
+val ex_5_37 : unit -> (string list, Sicp_common.Eval_error.t) result

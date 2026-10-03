@@ -1,588 +1,280 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 5.2 *)
+   Adapted from the Scheme programs in SICP section 5.2 *)
 
-(** The register-machine simulator of section 5.2: the assembler that
-    turns controller text into instruction objects with resolved
-    labels, the execution-procedure dispatch, and the monitored stack
-    of 5.2.4.
+let ( let* ) = Result.bind
 
-    The instruction ADT and the typed failures are the 5.1 substrate's,
-    re-exported here: a machine description is still data in the book's
-    notation, and nothing raises. The machine itself is an abstract
-    mutable record -- the edition's reading of the book's
-    message-passing model -- whose [pc] is an index into the
-    instruction array (labels assemble to indices) and whose [flag] is
-    an ordinary register that starts unassigned.
+module Eval_error = Sicp_common.Eval_error
+module Data = Sicp_common.Constructor_data
+module M = Sec_5_1
 
-    The machine type stays open, as in 5.1: the monitoring exercises of
-    5.2.4 wrap the same execution loop; 5.3 replaces the register file
-    and the stack by vector memory behind this surface; 5.4 shares the
-    instruction type with the explicit-control evaluator. *)
-
-let ( >>= ) = Result.bind
-
-(** {1:re-exports The 5.1 substrate's values, failures, and reader} *)
+type error = Sec_5_1.error
 
 type value = Sec_5_1.value =
   | Int of int
   | Float of float
   | Bool of bool
-  | Symbol of string
-  | Label of string
+  | Str of string
+  | Addr of string
+  | Unassigned
 
-type error = Sec_5_1.error =
-  | Parse of string
-  | Unknown_register of string
-  | Unknown_operation of string
-  | Unknown_label of string
-  | Bad_instruction of string
-  | Arity of string
-  | Op_failed of string
-  | Stack_underflow of string
-  | Branch_without_test
-
-type source = Sec_5_1.source =
-  | Reg of string
-  | Const of value
-  | Label_source of string
-
-type instruction = Sec_5_1.instruction =
-  | Assign of string * source
-  | Assign_op of string * string * source list
-  | Test of string * source list
-  | Branch of string
-  | Goto_label of string
-  | Goto_reg of string
-  | Perform of string * source list
-  | Save of string
-  | Restore of string
-
-type op = Sec_5_1.op =
-  | Value_op of (value list -> (value, error) result)
-  | Action_op of (value list -> (unit, error) result)
-
-let value_to_string = Sec_5_1.value_to_string
-let equal_value = Sec_5_1.equal_value
-let error_to_string = Sec_5_1.error_to_string
-let instruction_to_string = Sec_5_1.instruction_to_string
-let source_to_string = Sec_5_1.source_to_string
-let parse_program = Sec_5_1.parse_program
-let arith_operations = Sec_5_1.arith_operations
-
-(** A parsed controller, the reader's output and the assembler's input. *)
-type program = Sec_5_1.program =
-  { code : instruction array
-  ; labels : (string * int) list
-  }
-
-(** [instruction_registers inst] names every register [inst] reads or
-    writes, in order; the machine's own [flag] is never named. *)
-let source_register = function
-  | Reg r -> [ r ]
-  | _ -> []
-;;
-
-let instruction_registers = function
-  | Assign (r, src) -> r :: source_register src
-  | Assign_op (r, _, inputs) -> r :: List.concat_map source_register inputs
-  | Test (_, inputs) -> List.concat_map source_register inputs
-  | Branch _ | Goto_label _ -> []
-  | Goto_reg r -> [ r ]
-  | Perform (_, inputs) -> List.concat_map source_register inputs
-  | Save r | Restore r -> [ r ]
-;;
-
-(** {1:machine-model The machine model} *)
-
-(** One simulated register: its name and its contents. The book's
-    [make-register] is a message-passing object; the edition's is a
-    record with a mutable field. A register starts unassigned -- the
-    book's [*unassigned*] sentinel is the [Symbol] value below. *)
-type register =
-  { name : string
-  ; mutable contents : value
-  }
-
-let make_register name = { name; contents = Symbol "*unassigned*" }
-
-(** The monitored stack of 5.2.4: a push count and a maximum depth
-    beside the entries, with [initialize] clearing all of them and
-    [statistics] rendering the counters the exercises measure. *)
-type stack =
-  { push : value -> unit
-  ; pop : string -> (value, error) result
-    (* the argument names the register whose restore asked, for the
-           typed underflow report *)
-  ; initialize : unit -> unit
-  ; statistics : unit -> string
-  }
-
-(** [make_stack ()] is the empty stack. *)
-let make_stack () =
-  let entries = ref [] in
-  let number_pushes = ref 0 in
-  let current_depth = ref 0 in
-  let maximum_depth = ref 0 in
-  let push v =
-    entries := v :: !entries;
-    incr number_pushes;
-    incr current_depth;
-    if !current_depth > !maximum_depth then maximum_depth := !current_depth
-  in
-  let pop name =
-    match !entries with
-    | [] -> Error (Stack_underflow name)
-    | top :: rest ->
-      decr current_depth;
-      entries := rest;
-      Ok top
-  in
-  let initialize () =
-    entries := [];
-    number_pushes := 0;
-    current_depth := 0;
-    maximum_depth := 0
-  in
-  let statistics () =
-    Printf.sprintf "total-pushes = %d maximum-depth = %d" !number_pushes !maximum_depth
-  in
-  { push; pop; initialize; statistics }
-;;
-
-(** One instruction object of 5.2.2: the typed instruction -- the
-    book's [instruction-text], retained for the tracing exercises --
-    and the execution procedure built for it at assembly time. *)
-type inst =
-  { text : instruction
-  ; mutable exec : unit -> (unit, error) result
-  }
-
-(** [make_inst text] is the placeholder the assembler fills in: the
-    execution procedure is not yet available when the label scan runs. *)
-let make_inst text = { text; exec = (fun () -> Ok ()) }
-
-(** One machine: the register table (which always contains [flag]),
-    the operations list (which always begins with the stack
-    operations), the assembled instruction array with each label
-    resolved to an index, the monitored stack, the [pc], and the
-    transcript the [print-stack-statistics] action appends to. *)
 type machine =
-  { regs : (string, register) Hashtbl.t
-  ; ops : (string * op) list ref
-  ; mutable insts : inst array
-  ; labels : (string, int) Hashtbl.t
-  ; stack : stack
-  ; pc : int ref
-  ; output : string list ref
+  { simulator : value M.machine
+  ; lines : string list ref
   }
 
-(** [make_new_machine ()] is the basic machine of Figure 5.13: a stack,
-    an empty instruction sequence, the stack operations, and a register
-    table holding [flag]. The book's [pc] register holds the remaining
-    instruction list; the edition's is the index of the next
-    instruction, so [start] seeds it with [0] and the sequence ends
-    when the index reaches the array length. *)
-let make_new_machine () =
-  let m =
-    { regs = Hashtbl.create 16
-    ; ops = ref []
-    ; insts = [||]
-    ; labels = Hashtbl.create 16
-    ; stack = make_stack ()
-    ; pc = ref 0
-    ; output = ref []
-    }
-  in
-  Hashtbl.replace m.regs "flag" (make_register "flag");
-  let transcript line = m.output := !(m.output) @ [ line ] in
-  m.ops
-  := [ ( "initialize-stack"
-       , Action_op
-           (fun _ ->
-             m.stack.initialize ();
-             Ok ()) )
-     ; ( "print-stack-statistics"
-       , Action_op
-           (fun _ ->
-             transcript (m.stack.statistics ());
-             Ok ()) )
-     ];
-  m
+let simulator m = m.simulator
+
+let print_stack_statistics m =
+  let pushes, depth = M.stack_statistics m.simulator in
+  Printf.sprintf "total-pushes = %d maximum-depth = %d" pushes depth
 ;;
 
-(** [allocate_register m name] adds a register to the table; a name
-    used twice is a defect of the description. *)
-let allocate_register m name =
-  if Hashtbl.mem m.regs name
-  then Error (Bad_instruction ("the register " ^ name ^ " is declared twice"))
-  else (
-    Hashtbl.replace m.regs name (make_register name);
-    Ok ())
-;;
-
-let rec seq f = function
-  | [] -> Ok ()
-  | x :: xs -> f x >>= fun () -> seq f xs
-;;
-
-let register_of m name =
-  match Hashtbl.find_opt m.regs name with
-  | Some r -> Ok r
-  | None -> Error (Unknown_register name)
-;;
-
-(** [set_register m r v] is [set-register-contents!]: it stores a value
-    in the named register. *)
-let set_register m name v =
-  register_of m name
-  >>= fun r ->
-  r.contents <- v;
-  Ok ()
-;;
-
-(** [get_register m r] is [get-register-contents]. *)
-let get_register m name = register_of m name >>= fun r -> Ok r.contents
-
-let check_registers m (program : program) =
-  let defects =
-    Array.to_list program.code
-    |> List.concat_map instruction_registers
-    |> List.filter (fun r -> not (Hashtbl.mem m.regs r))
-  in
-  match defects with
-  | r :: _ -> Error (Unknown_register r)
-  | [] -> Ok ()
-;;
-
-(** {1:assembler The assembler} *)
-
-(** [make_label_entry l i] pairs a label with the index it names. *)
-let make_label_entry label index = label, index
-
-(** [lookup_label m l] resolves a label to an instruction index. *)
-let lookup_label m name =
-  match Hashtbl.find_opt m.labels name with
-  | Some i -> Ok i
-  | None -> Error (Unknown_label name)
-;;
-
-(** {1:execution Execution procedures for instructions} *)
-
-(** [lookup_prim name ops] finds the operation table's entry at assembly
-    time; an operation the table does not name fails the assembly. *)
-let lookup_prim name ops =
-  match List.assoc_opt name ops with
-  | Some o -> Ok o
-  | None -> Error (Unknown_operation name)
-;;
-
-(** [make_primitive_exp exp m] builds the execution procedure for one
-    [reg], [const], or [label] expression: the register is resolved to
-    its record and the label to its address now, once, so the procedure
-    only reads at simulation time. *)
-let make_primitive_exp exp m =
-  match exp with
-  | Const c -> Ok (fun () -> Ok c)
-  | Reg r -> register_of m r >>= fun reg -> Ok (fun () -> Ok reg.contents)
-  | Label_source l -> lookup_label m l >>= fun _ -> Ok (fun () -> Ok (Label l))
-;;
-
-(** [make_operation_exp name inputs m] builds the procedure that
-    produces an operation's argument values: one operand procedure per
-    operand, assembled now -- the same analysis the metacircular
-    evaluator's [analyze-application] performs. At simulation time the
-    operand procedures run and the table's operation consumes the
-    values. *)
-let make_operation_exp name inputs m =
-  lookup_prim name !(m.ops)
-  >>= fun o ->
-  let rec build = function
-    | [] -> Ok []
-    | e :: rest ->
-      make_primitive_exp e m >>= fun p -> build rest >>= fun ps -> Ok (p :: ps)
-  in
-  build inputs
-  >>= fun argprocs ->
-  let rec collect = function
-    | [] -> Ok []
-    | p :: rest -> p () >>= fun v -> collect rest >>= fun vs -> Ok (v :: vs)
-  in
-  Ok (fun () -> collect argprocs >>= fun args -> Ok (o, args))
-;;
-
-(** An operation expression used where a value is wanted ([assign],
-    [test]) refuses an action; one under [perform] refuses a value.
-    The mismatches are the typed failures the substrate pins. *)
-let apply_value_op name = function
-  | o, args ->
-    (match o with
-     | Value_op f -> f args
-     | Action_op _ ->
-       Error
-         (Bad_instruction ("the operation " ^ name ^ " is an action and produces no value")))
-;;
-
-let apply_action_op name = function
-  | o, args ->
-    (match o with
-     | Action_op f -> f args
-     | Value_op _ ->
-       Error
-         (Bad_instruction
-            ("the operation " ^ name ^ " produces a value; assign it, do not perform it")))
-;;
-
-(** [advance_pc m] steps past the instruction just executed; it is the
-    normal termination for every instruction except [branch] and
-    [goto]. *)
-let advance_pc m =
-  incr m.pc;
-  Ok ()
-;;
-
-(** [make_assign inst m] resolves the target register and the value
-    expression at assembly time. *)
-let make_assign inst m =
-  let finish target value_proc =
-    register_of m target
-    >>= fun reg ->
-    Ok
-      (fun () ->
-        value_proc ()
-        >>= fun v ->
-        reg.contents <- v;
-        advance_pc m)
-  in
-  match inst with
-  | Assign (target, src) -> make_primitive_exp src m >>= fun vp -> finish target vp
-  | Assign_op (target, name, inputs) ->
-    make_operation_exp name inputs m
-    >>= fun vp -> finish target (fun () -> vp () >>= apply_value_op name)
-  | _ -> Error (Bad_instruction "not an assign")
-;;
-
-(** [make_test inst m] requires the operation form -- the typed ADT
-    admits no other -- and the flag register is resolved at assembly
-    time; a test that answers a non-boolean fails at simulation time. *)
-let make_test inst m =
-  match inst with
-  | Test (name, inputs) ->
-    make_operation_exp name inputs m
-    >>= fun cond ->
-    register_of m "flag"
-    >>= fun flag ->
-    Ok
-      (fun () ->
-        cond ()
-        >>= apply_value_op name
-        >>= fun v ->
-        match v with
-        | Bool b ->
-          flag.contents <- Bool b;
-          advance_pc m
-        | other ->
-          Error
-            (Bad_instruction
-               ("the test "
-                ^ name
-                ^ " answered "
-                ^ value_to_string other
-                ^ ", not a boolean")))
-  | _ -> Error (Bad_instruction "not a test")
-;;
-
-(** [make_branch inst m] requires a label destination and resolves it
-    to an index now; the flag is read when the branch runs, and a
-    branch reached with no preceding test is the typed failure. *)
-let make_branch inst m =
-  match inst with
-  | Branch label_name ->
-    lookup_label m label_name
-    >>= fun target ->
-    register_of m "flag"
-    >>= fun flag ->
-    Ok
-      (fun () ->
-        match flag.contents with
-        | Bool b ->
-          if b
-          then (
-            m.pc := target;
-            Ok ())
-          else advance_pc m
-        | _ -> Error Branch_without_test)
-  | _ -> Error (Bad_instruction "not a branch")
-;;
-
-(** [make_goto inst m] accepts either destination: a label resolved
-    now, or a register whose [Label] contents name the target when the
-    instruction runs. *)
-let make_goto inst m =
-  match inst with
-  | Goto_label label_name ->
-    lookup_label m label_name
-    >>= fun target ->
-    Ok
-      (fun () ->
-        m.pc := target;
-        Ok ())
-  | Goto_reg reg_name ->
-    register_of m reg_name
-    >>= fun reg ->
-    Ok
-      (fun () ->
-        match reg.contents with
-        | Label l ->
-          lookup_label m l
-          >>= fun target ->
-          m.pc := target;
-          Ok ()
-        | other ->
-          Error
-            (Bad_instruction
-               ("goto reads "
-                ^ value_to_string other
-                ^ " from "
-                ^ reg_name
-                ^ ", not a label")))
-  | _ -> Error (Bad_instruction "not a goto")
-;;
-
-(** The stack instructions use the machine's monitored stack with the
-    designated register and advance the [pc]. *)
-let make_save inst m =
-  match inst with
-  | Save reg_name ->
-    register_of m reg_name
-    >>= fun reg ->
-    Ok
-      (fun () ->
-        m.stack.push reg.contents;
-        advance_pc m)
-  | _ -> Error (Bad_instruction "not a save")
-;;
-
-let make_restore inst m =
-  match inst with
-  | Restore reg_name ->
-    register_of m reg_name
-    >>= fun reg ->
-    Ok
-      (fun () ->
-        m.stack.pop reg.name
-        >>= fun v ->
-        reg.contents <- v;
-        advance_pc m)
-  | _ -> Error (Bad_instruction "not a restore")
-;;
-
-(** [make_perform inst m] builds the action's procedure; at simulation
-    time the action runs and the [pc] advances. *)
-let make_perform inst m =
-  match inst with
-  | Perform (name, inputs) ->
-    make_operation_exp name inputs m
-    >>= fun action ->
-    Ok (fun () -> action () >>= apply_action_op name >>= fun () -> advance_pc m)
-  | _ -> Error (Bad_instruction "not a perform")
-;;
-
-(** [make_execution_procedure inst m] dispatches on the instruction's
-    constructor -- the typed edition's reading of the book's [cond]
-    over instruction types, exhaustive by construction. *)
-let make_execution_procedure inst m =
-  match inst with
-  | Assign _ | Assign_op _ -> make_assign inst m
-  | Test _ -> make_test inst m
-  | Branch _ -> make_branch inst m
-  | Goto_label _ | Goto_reg _ -> make_goto inst m
-  | Save _ -> make_save inst m
-  | Restore _ -> make_restore inst m
-  | Perform _ -> make_perform inst m
-;;
-
-(** [update_insts texts m] modifies the instruction list, which
-    initially contains only the text of the instructions, to include
-    the corresponding execution procedures. *)
-let update_insts texts m =
-  let insts = Array.map make_inst texts in
-  let rec fill i =
-    if i = Array.length insts
-    then Ok insts
-    else
-      make_execution_procedure insts.(i).text m
-      >>= fun exec ->
-      insts.(i).exec <- exec;
-      fill (i + 1)
-  in
-  fill 0
-;;
-
-(** [assemble controller m] transforms the controller text into the
-    machine's instruction sequence. The label scan is the shared
-    reader's [parse_program]: each label names the index of the
-    instruction that follows it, a label at the end names the stop
-    index one past the last instruction, and a label used twice is
-    rejected there. [update_insts] then fills each instruction
-    object's execution procedure, resolving branch and goto targets to
-    indices as it goes -- an unknown register, operation, or label
-    fails the assembly before the machine can start. *)
-let install_program (m : machine) (program : program) =
-  check_registers m program
-  >>= fun () ->
-  let entries =
-    List.map (fun (label, index) -> make_label_entry label index) program.labels
-  in
-  List.iter (fun (label, index) -> Hashtbl.replace m.labels label index) entries;
-  update_insts program.code m
-  >>= fun insts ->
-  m.insts <- insts;
-  Ok ()
-;;
-
-let assemble controller m = parse_program controller >>= install_program m
-
-(** [make_machine_from_program ~registers ~operations program] is the
-    assembler's full path from a parsed controller -- the entry the
-    exercises that build programs by other syntaxes reuse. *)
-let make_machine_from_program ~registers ~operations program =
-  let m = make_new_machine () in
-  seq (allocate_register m) registers
-  >>= fun () ->
-  m.ops := !(m.ops) @ operations;
-  install_program m program >>= fun () -> Ok m
-;;
-
-(** [make_machine ~registers ~operations ~controller] is the book's
-    constructor: allocate the registers, install the operations, and
-    assemble the controller into the machine. *)
 let make_machine ~registers ~operations ~controller =
-  let m = make_new_machine () in
-  seq (allocate_register m) registers
-  >>= fun () ->
-  m.ops := !(m.ops) @ operations;
-  assemble controller m >>= fun () -> Ok m
-;;
-
-(** {1:driver The driver loop} *)
-
-(** [start m] runs the machine from the beginning of the controller
-    sequence: the [pc] seeds at [0] and each instruction's execution
-    procedure runs in turn until the sequence ends -- the book's stop
-    condition -- or an instruction fails. *)
-let start m =
-  m.pc := 0;
-  let rec execute () =
-    if !(m.pc) >= Array.length m.insts
-    then Ok ()
-    else m.insts.(!(m.pc)).exec () >>= execute
+  let lines = ref [] in
+  let write line = lines := line :: !lines in
+  let knot = ref None in
+  let with_machine f =
+    match !knot with
+    | Some m -> Ok (f m)
+    | None -> Error (Eval_error.Invalid_form "the machine is not assembled")
   in
-  execute ()
+  let section =
+    [ ( "initialize-stack"
+      , M.Action_op (fun _ -> with_machine (fun m -> M.initialize_stack m.simulator)) )
+    ; ( "print-stack-statistics"
+      , M.Action_op (fun _ -> with_machine (fun m -> write (print_stack_statistics m))) )
+    ; ( "print"
+      , M.Action_op
+          (function
+            | [ v ] ->
+              write (M.value_to_string v);
+              Ok ()
+            | args ->
+              Error (Eval_error.Arity_mismatch { expected = 1; given = List.length args }))
+      )
+    ]
+  in
+  let* simulator =
+    M.make_machine ~registers ~operations:(operations @ section) ~controller
+  in
+  let m = { simulator; lines } in
+  knot := Some m;
+  Ok m
 ;;
 
-(** [print_stack_statistics m] renders the monitored stack's counters. *)
-let print_stack_statistics m = m.stack.statistics ()
+let set_register m = M.set_register m.simulator
+let get_register m = M.get_register m.simulator
+let start m = M.start m.simulator
+let transcript m = List.rev !(m.lines)
 
-(** [transcript m] is what the [print-stack-statistics] action has
-    printed, in order. *)
-let transcript m = !(m.output)
+type op_type =
+  | Int_type
+  | Float_type
+  | Bool_type
+  | Unit_type
+
+type fixture =
+  { registers : string list
+  ; operations : (string * op_type list * op_type) list
+  ; inputs : (string * value) list
+  ; controller : value Sec_5_1.instruction list
+  }
+
+(* {1 The fixture decoder} *)
+
+let wanted what d = Error (Printf.sprintf "expected %s, found %s" what (Data.describe d))
+
+let decode_list f = function
+  | Data.List items ->
+    List.fold_right
+      (fun item acc ->
+         let* acc = acc in
+         let* v = f item in
+         Ok (v :: acc))
+      items
+      (Ok [])
+  | d -> wanted "a list" d
+;;
+
+let decode_string = function
+  | Data.String s -> Ok s
+  | d -> wanted "a string" d
+;;
+
+let decode_value = function
+  | Data.Ctor ("Int", [ Data.Int n ]) -> Ok (Int n)
+  | Data.Ctor ("Float", [ Data.Float f ]) -> Ok (Float f)
+  | Data.Ctor ("Bool", [ Data.Ctor ("true", []) ]) -> Ok (Bool true)
+  | Data.Ctor ("Bool", [ Data.Ctor ("false", []) ]) -> Ok (Bool false)
+  | Data.Ctor ("Str", [ Data.String s ]) -> Ok (Str s)
+  | d -> wanted "a machine word (Int, Float, Bool, Str)" d
+;;
+
+let decode_type = function
+  | Data.Ctor ("Int_type", []) -> Ok Int_type
+  | Data.Ctor ("Float_type", []) -> Ok Float_type
+  | Data.Ctor ("Bool_type", []) -> Ok Bool_type
+  | Data.Ctor ("Unit_type", []) -> Ok Unit_type
+  | d -> wanted "an operation type" d
+;;
+
+let decode_source = function
+  | Data.Ctor ("Const", [ v ]) -> Result.map (fun v -> M.Const v) (decode_value v)
+  | Data.Ctor ("Reg", [ Data.String r ]) -> Ok (M.Reg r)
+  | Data.Ctor ("Label_ref", [ Data.String l ]) -> Ok (M.Label_ref l)
+  | d -> wanted "an operand (Const, Reg, Label_ref)" d
+;;
+
+let decode_instruction = function
+  | Data.Ctor ("Label", [ Data.String l ]) -> Ok (M.Label l)
+  | Data.Ctor ("Assign", [ Data.String t; s ]) ->
+    Result.map (fun s -> M.Assign (t, s)) (decode_source s)
+  | Data.Ctor ("Assign_op", [ Data.String t; Data.String op; ss ]) ->
+    Result.map (fun ss -> M.Assign_op (t, op, ss)) (decode_list decode_source ss)
+  | Data.Ctor ("Test", [ Data.String op; ss ]) ->
+    Result.map (fun ss -> M.Test (op, ss)) (decode_list decode_source ss)
+  | Data.Ctor ("Branch", [ Data.String l ]) -> Ok (M.Branch l)
+  | Data.Ctor ("Goto", [ Data.String l ]) -> Ok (M.Goto l)
+  | Data.Ctor ("Goto_reg", [ Data.String r ]) -> Ok (M.Goto_reg r)
+  | Data.Ctor ("Save", [ Data.String r ]) -> Ok (M.Save r)
+  | Data.Ctor ("Restore", [ Data.String r ]) -> Ok (M.Restore r)
+  | Data.Ctor ("Perform", [ Data.String op; ss ]) ->
+    Result.map (fun ss -> M.Perform (op, ss)) (decode_list decode_source ss)
+  | d -> wanted "an instruction" d
+;;
+
+let decode_operation = function
+  | Data.Tuple [ Data.String name; args; result ] ->
+    let* args = decode_list decode_type args in
+    let* result = decode_type result in
+    Ok (name, args, result)
+  | d -> wanted "an operation declaration (name, operand types, result type)" d
+;;
+
+let decode_input = function
+  | Data.Tuple [ Data.String name; v ] -> Result.map (fun v -> name, v) (decode_value v)
+  | d -> wanted "an input (register, word)" d
+;;
+
+let field fields name =
+  match List.assoc_opt name fields with
+  | Some d -> Ok d
+  | None -> Error ("the machine fixture has no field " ^ name)
+;;
+
+let read_fixture ~filename text =
+  let* d = Data.read ~filename text in
+  match d with
+  | Data.Ctor ("Machine", [ Data.Record fields ]) ->
+    let known = [ "registers"; "operations"; "inputs"; "controller" ] in
+    (match List.find_opt (fun (name, _) -> not (List.mem name known)) fields with
+     | Some (name, _) -> Error ("the machine fixture has an unknown field " ^ name)
+     | None ->
+       let* registers =
+         Result.bind (field fields "registers") (decode_list decode_string)
+       in
+       let* operations =
+         Result.bind (field fields "operations") (decode_list decode_operation)
+       in
+       let* inputs = Result.bind (field fields "inputs") (decode_list decode_input) in
+       let* controller =
+         Result.bind (field fields "controller") (decode_list decode_instruction)
+       in
+       Ok { registers; operations; inputs; controller })
+  | d -> wanted "Machine { registers; operations; inputs; controller }" d
+;;
+
+(* {1 Running a fixture} *)
+
+let has_type ty v =
+  match ty, v with
+  | Int_type, Int _ | Float_type, Float _ | Bool_type, Bool _ -> true
+  | _ -> false
+;;
+
+let check_operands name types args =
+  if List.length types <> List.length args
+  then
+    Error
+      (Eval_error.Arity_mismatch
+         { expected = List.length types; given = List.length args })
+  else if List.for_all2 has_type types args
+  then Ok ()
+  else
+    Error
+      (Eval_error.Type_error
+         (name
+          ^ " was declared over other operand types than "
+          ^ String.concat ", " (List.map M.value_to_string args)))
+;;
+
+let declared_operation emit (name, types, result) =
+  let guard f args =
+    let* () = check_operands name types args in
+    f args
+  in
+  match name, result with
+  | "print", Unit_type ->
+    Ok
+      ( name
+      , M.Action_op
+          (guard (function
+             | [ v ] ->
+               emit (M.value_to_string v ^ "\n");
+               Ok ()
+             | args ->
+               Error
+                 (Eval_error.Arity_mismatch { expected = 1; given = List.length args })))
+      )
+  | _ ->
+    (match List.assoc_opt name M.arith_operations, result with
+     | Some (M.Test_op f), Bool_type -> Ok (name, M.Test_op (guard f))
+     | Some (M.Value_op f), (Int_type | Float_type) ->
+       Ok
+         ( name
+         , M.Value_op
+             (guard (fun args ->
+                let* v = f args in
+                if has_type result v
+                then Ok v
+                else
+                  Error
+                    (Eval_error.Type_error (name ^ " answered another type than declared"))))
+         )
+     | Some _, _ ->
+       Error
+         (Eval_error.Bad_instruction (name ^ " is declared with the wrong result type"))
+     | None, _ -> Error (Eval_error.Unknown_operation name))
+;;
+
+let run_fixture ~emit fixture =
+  let* operations =
+    List.fold_right
+      (fun declaration acc ->
+         let* acc = acc in
+         let* op = declared_operation emit declaration in
+         Ok (op :: acc))
+      fixture.operations
+      (Ok [])
+  in
+  let* m =
+    M.make_machine ~registers:fixture.registers ~operations ~controller:fixture.controller
+  in
+  let* () =
+    List.fold_left
+      (fun acc (name, v) ->
+         let* () = acc in
+         M.set_register m name v)
+      (Ok ())
+      fixture.inputs
+  in
+  let* () = M.start m in
+  List.fold_left
+    (fun acc name ->
+       let* () = acc in
+       let* v = M.get_register m name in
+       emit (name ^ ": " ^ M.value_to_string v ^ "\n");
+       Ok ())
+    (Ok ())
+    fixture.registers
+;;

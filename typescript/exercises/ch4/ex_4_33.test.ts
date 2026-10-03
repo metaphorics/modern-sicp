@@ -3,4 +3,4 @@
 
 import { test } from "vitest";
 
-test.todo("Exercise 4.33: quote produces lazy lists");
+test.todo("Exercise 4.33: literal construction produces lazy lists");

@@ -55,7 +55,7 @@ const miss84 = (op: string, tags: ReadonlyArray<string>): Result<ArithDatum, Gen
   error: { _tag: "NoMethod", op, tags },
 });
 
-/** The apply-generic of this exercise: same types dispatch directly;
+/** The generic dispatch of this exercise: same types dispatch directly;
  * otherwise the lower argument is raised toward the higher until the
  * types agree. */
 export const applyGenericRaising = (

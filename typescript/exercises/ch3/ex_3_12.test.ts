@@ -3,4 +3,4 @@
 
 import { test } from "vitest";
 
-test.todo("Exercise 3.12: append copies, append! splices");
+test.todo("Exercise 3.12: append copies, appendBang splices");

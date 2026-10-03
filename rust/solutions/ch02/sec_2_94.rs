@@ -9,18 +9,18 @@ use ch02::sec_2_5::{
     contents, install_generic_arithmetic, install_polynomial_package, make_polynomial, make_term,
     poly_term_list,
 };
-use sicp_runtime::{OpTable, SchemeError, Value};
+use sicp_runtime::{OpTable, SicpError, Value};
 
 mod term_lists {
     //! The `div_terms` division of exercise 2.91, restated here for
     //! exercise 2.94's `remainder_terms` and `gcd_terms` to build on.
     use ch02::sec_2_5::{Term, coeff, make_term, order};
-    use sicp_runtime::{SchemeError, Value};
+    use sicp_runtime::{SicpError, Value};
 
-    fn coeff_int(t: &Term) -> Result<i128, SchemeError> {
+    fn coeff_int(t: &Term) -> Result<i128, SicpError> {
         match coeff(t) {
             Value::Int(n) => Ok(*n),
-            other => Err(SchemeError::TypeMismatch(format!(
+            other => Err(SicpError::TypeMismatch(format!(
                 "only integer coefficients are supported here: {other}"
             ))),
         }
@@ -36,7 +36,7 @@ mod term_lists {
         out
     }
 
-    pub fn add_terms(l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    pub fn add_terms(l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SicpError> {
         match (l1.first(), l2.first()) {
             (None, _) => Ok(l2.to_vec()),
             (_, None) => Ok(l1.to_vec()),
@@ -51,18 +51,18 @@ mod term_lists {
         }
     }
 
-    fn negate(terms: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    fn negate(terms: &[Term]) -> Result<Vec<Term>, SicpError> {
         terms
             .iter()
             .map(|t| Ok(make_term(order(t), Value::Int(-coeff_int(t)?))))
             .collect()
     }
 
-    fn sub_terms(l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    fn sub_terms(l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SicpError> {
         add_terms(l1, &negate(l2)?)
     }
 
-    fn mul_term_by_all_terms(t: &Term, terms: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    fn mul_term_by_all_terms(t: &Term, terms: &[Term]) -> Result<Vec<Term>, SicpError> {
         terms
             .iter()
             .map(|u| {
@@ -77,18 +77,18 @@ mod term_lists {
     /// Long division on term lists: exercise 2.91.
     ///
     /// # Errors
-    /// [`SchemeError::TypeMismatch`] when the leading coefficient does
-    /// not divide evenly; [`SchemeError::DivisionByZero`] for an empty
+    /// [`SicpError::TypeMismatch`] when the leading coefficient does
+    /// not divide evenly; [`SicpError::DivisionByZero`] for an empty
     /// divisor.
     pub fn div_terms(
         dividend: &[Term],
         divisor: &[Term],
-    ) -> Result<(Vec<Term>, Vec<Term>), SchemeError> {
+    ) -> Result<(Vec<Term>, Vec<Term>), SicpError> {
         if dividend.is_empty() {
             return Ok((Vec::new(), Vec::new()));
         }
         let Some(dvsr) = divisor.first() else {
-            return Err(SchemeError::DivisionByZero);
+            return Err(SicpError::DivisionByZero);
         };
         let dend = &dividend[0];
         if order(dend) < order(dvsr) {
@@ -96,10 +96,10 @@ mod term_lists {
         }
         let (nc, dc) = (coeff_int(dend)?, coeff_int(dvsr)?);
         if dc == 0 {
-            return Err(SchemeError::DivisionByZero);
+            return Err(SicpError::DivisionByZero);
         }
         if nc % dc != 0 {
-            return Err(SchemeError::TypeMismatch(format!(
+            return Err(SicpError::TypeMismatch(format!(
                 "div_terms: {nc} does not divide evenly by {dc}"
             )));
         }
@@ -116,7 +116,7 @@ mod term_lists {
     ///
     /// # Errors
     /// Whatever [`div_terms`] raises along the way.
-    pub fn gcd_terms(a: &[Term], b: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    pub fn gcd_terms(a: &[Term], b: &[Term]) -> Result<Vec<Term>, SicpError> {
         if b.is_empty() {
             return Ok(a.to_vec());
         }
@@ -124,7 +124,7 @@ mod term_lists {
         gcd_terms(b, &remainder)
     }
 
-    pub fn as_pairs(terms: &[Term]) -> Result<Vec<(u32, i128)>, SchemeError> {
+    pub fn as_pairs(terms: &[Term]) -> Result<Vec<(u32, i128)>, SicpError> {
         terms
             .iter()
             .map(|t| Ok((order(t), coeff_int(t)?)))
@@ -140,7 +140,7 @@ mod generic {
     //! for integers.
     use super::term_lists::gcd_terms;
     use ch02::sec_2_5::{apply_generic, make_polynomial, poly_term_list, poly_variable};
-    use sicp_runtime::{Key, OpTable, SchemeError, Value};
+    use sicp_runtime::{Key, OpTable, SicpError, Value};
     use std::rc::Rc;
 
     /// Folds a slice of keys into the list-shaped key the table stores
@@ -167,13 +167,13 @@ mod generic {
     /// share a variable, then runs [`gcd_terms`] on their term lists.
     ///
     /// # Errors
-    /// [`SchemeError::UserRaised`] when the polys are not in the same
+    /// [`SicpError::UserRaised`] when the polys are not in the same
     /// variable; whatever [`gcd_terms`] raises.
-    fn gcd_poly(table: &OpTable, p1: &Value, p2: &Value) -> Result<Value, SchemeError> {
+    fn gcd_poly(table: &OpTable, p1: &Value, p2: &Value) -> Result<Value, SicpError> {
         let v1 = poly_variable(p1)?;
         let v2 = poly_variable(p2)?;
         if v1 != v2 {
-            return Err(SchemeError::UserRaised {
+            return Err(SicpError::UserRaised {
                 message: "Polys not in same var: GCD-POLY".to_string(),
                 irritants: vec![p1.clone(), p2.clone()],
             });
@@ -183,15 +183,15 @@ mod generic {
     }
 
     /// Installs the generic operation under the tags it dispatches on:
-    /// `(scheme-number scheme-number)` and `(polynomial polynomial)`.
+    /// `(integer, integer)` and `(polynomial, polynomial)`.
     pub fn install_greatest_common_divisor(table: &Rc<OpTable>) {
-        let int_key = key_list(&[Key::sym("scheme-number"), Key::sym("scheme-number")]);
+        let int_key = key_list(&[Key::sym("integer"), Key::sym("integer")]);
         table.put(
             Key::sym("greatest_common_divisor"),
             int_key,
             Rc::new(|args: &[Value]| match (&args[0], &args[1]) {
                 (Value::Int(a), Value::Int(b)) => Ok(Value::Int(gcd_i128(*a, *b))),
-                _ => Err(SchemeError::TypeMismatch(
+                _ => Err(SicpError::TypeMismatch(
                     "greatest_common_divisor: operands are not integers".into(),
                 )),
             }),
@@ -205,8 +205,8 @@ mod generic {
         );
     }
 
-    /// The generic entry point the texi's listing calls: the book's
-    /// `(greatest-common-divisor p1 p2)` through [`apply_generic`].
+    /// The generic entry point the texi's listing calls:
+    /// one [`apply_generic`] dispatch over the installed entries.
     ///
     /// # Errors
     /// Whatever [`apply_generic`] raises when no entry matches the two
@@ -215,7 +215,7 @@ mod generic {
         table: &OpTable,
         x: &Value,
         y: &Value,
-    ) -> Result<Value, SchemeError> {
+    ) -> Result<Value, SicpError> {
         apply_generic(table, "greatest_common_divisor", &[x.clone(), y.clone()])
     }
 }
@@ -223,11 +223,11 @@ mod generic {
 mod ex_2_94 {
     use super::term_lists::{as_pairs, gcd_terms};
     use ch02::sec_2_5::make_term;
-    use sicp_runtime::{SchemeError, Value};
+    use sicp_runtime::{SicpError, Value};
 
     /// `gcd(x^2 - 1, x - 1)`: `x^2 - 1` divides evenly by `x - 1`, giving
     /// remainder 0 on the first step, so the GCD is `x - 1` itself.
-    pub fn ex_2_94() -> Result<Vec<(u32, i128)>, SchemeError> {
+    pub fn ex_2_94() -> Result<Vec<(u32, i128)>, SicpError> {
         let p1 = vec![make_term(2, Value::Int(1)), make_term(0, Value::Int(-1))];
         let p2 = vec![make_term(1, Value::Int(1)), make_term(0, Value::Int(-1))];
         let gcd = gcd_terms(&p1, &p2)?;
@@ -248,7 +248,7 @@ type BookExample = (String, Vec<(u32, i128)>, Vec<(u32, i128)>);
 
 /// The texi's test listing: the book's p1 and p2 through the installed
 /// generic operation.
-fn book_example() -> Result<BookExample, SchemeError> {
+fn book_example() -> Result<BookExample, SicpError> {
     let table = Rc::new(OpTable::new());
     install_generic_arithmetic(&table)?;
     install_polynomial_package(&table);

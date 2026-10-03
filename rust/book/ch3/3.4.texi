@@ -180,18 +180,18 @@ access.}
 @strong{Figure 3.29:} Timing diagram showing how interleaving the order of events 
 in two banking withdrawals can lead to an incorrect final balance.
 
-@example
+@smallexample
  |           Peter              Bank              Paul
  |                              ____
  |                             /    \
  |             .--------------| $100 |-------------.
  |             |               \____/              |
  |             V                                   V
- |  .----------------------.            .----------------------.           
+ |  .----------------------.            .----------------------.
  |  | Access balance: $100 |            | Access balance: $100 |
  |  `----------+-----------'            `----------+-----------'
  |             V                                   V
- |  .----------------------.            .----------------------.           
+ |  .----------------------.            .----------------------.
  |  | new value: 100-10=90 |            | new value: 100-25=75 |
  |  `----------+-----------'            `----------+-----------'
  |             V                                   |
@@ -207,13 +207,13 @@ in two banking withdrawals can lead to an incorrect final balance.
  |                            | $ 90 |<------------'
  V                             \____/
 time
-@end example
+@end smallexample
 @end ifinfo
 @ifhtml
 @image{../../text/original/figures/chap3/Fig3.29b,,147mm,Figure 3.29: Timing diagram showing how interleaving the order of events in two banking withdrawals can lead to an incorrect final balance.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.29b.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.29b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.29:} Timing diagram showing how interleaving the order of events in two banking withdrawals can lead to an incorrect final balance.}
@@ -295,7 +295,7 @@ time
 @image{../../text/original/figures/chap3/Fig3.30c,,147mm,Figure 3.30: Concurrent deposits and withdrawals from a joint account in Bank1 and a private account in Bank2.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.30c.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.30c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.30:} Concurrent deposits and withdrawals from a joint account in Bank1 and a private account in Bank2.}
@@ -438,11 +438,11 @@ parallel_execute(⟨@var{p₁}⟩,
 
 @noindent
 Each @code{⟨}@var{p}@code{⟩} must be a callable that receives the run's
-handle.  @code{Parallel_execute} creates a separate thread for each
+handle.  @code{parallel_execute} creates a separate thread for each
 @code{⟨}@var{p}@code{⟩} with @code{thread::scope}, applies it to the handle,
 and returns only when every thread has finished, together with the results and
 the handle itself.  These processes all run
-concurrently.@footnote{@code{Parallel_execute} is not part of the language; it
+concurrently.@footnote{@code{parallel_execute} is not part of the language; it
 is a thin layer over @code{std::thread::scope}, which joins the threads it
 spawns before returning.  The book's footnote gives the primitive a control
 object that can halt the newly created processes.  Ownership is the compiler's
@@ -478,7 +478,8 @@ values, depending on the interleaving of the events of @math{P_1} and
 110: @math{P_2} changes @code{x} from 10 to 11 between the 
      two times that @math{P_1} accesses the value of 
      @code{x} during the evaluation of @code{x * x}.
- 11: @math{P_2} accesses @code{x}, then @math{P_1} sets @code{x} to 100, 
+ 11: @math{P_2} accesses @code{x}, then @math{P_1} sets
+     @code{x} to 100,
      then @math{P_2} sets @code{x}.
 100: @math{P_1} accesses @code{x} (twice), then @math{P_2} sets
      @code{x} to 11, then @math{P_1} sets @code{x}.
@@ -526,12 +527,15 @@ struct Account @{
 impl Account @{
     fn withdraw(&self, amount: i128) -> Reply @{
         self.protected
-            .protect(|| shared_withdraw(&self.balance, amount))
+            .protect(|| @{
+                shared_withdraw(&self.balance, amount)
+            @})
     @}
 
     fn deposit(&self, amount: i128) -> Reply @{
         self.protected.protect(|| @{
-            let new_balance = read_shared(&self.balance) + amount;
+            let new_balance =
+                read_shared(&self.balance) + amount;
             write_shared(&self.balance, new_balance);
             Reply::Balance(new_balance)
         @})
@@ -564,7 +568,9 @@ let s = Serializer::new();
 let s2 = s.clone();
 parallel_execute(
     |_run| @{
-        let squared = s.protect(|| read_shared(&x) * read_shared(&x));
+        let squared = s.protect(|| @{
+            read_shared(&x) * read_shared(&x)
+        @});
         write_shared(&x, squared);
     @},
     |_run| s2.protect(|| increment_x(&x2)),
@@ -605,12 +611,15 @@ method has been changed):
 impl Account @{
     fn withdraw(&self, amount: i128) -> Reply @{
         self.protected
-            .protect(|| shared_withdraw(&self.balance, amount))
+            .protect(|| @{
+                shared_withdraw(&self.balance, amount)
+            @})
     @}
 
     fn deposit(&self, amount: i128) -> Reply @{
         self.protected.protect(|| @{
-            let new_balance = read_shared(&self.balance) + amount;
+            let new_balance =
+                read_shared(&self.balance) + amount;
             write_shared(&self.balance, new_balance);
             Reply::Balance(new_balance)
         @})
@@ -618,7 +627,9 @@ impl Account @{
 
     fn balance(&self) -> i128 @{
         self.protected
-            .protect(|| read_shared(&self.balance)) // serialized
+            .protect(|| @{
+                read_shared(&self.balance)
+            @}) // serialized
     @}
 @}
 @end example
@@ -641,8 +652,10 @@ a withdrawal or deposit.
 @example rust
 struct BenAccount @{
     balance: SharedInt,
-    protected_withdraw: Box<dyn Fn(i128) -> Reply + Send + Sync>,
-    protected_deposit: Box<dyn Fn(i128) -> Reply + Send + Sync>,
+    protected_withdraw:
+        Box<dyn Fn(i128) -> Reply + Send + Sync>,
+    protected_deposit:
+        Box<dyn Fn(i128) -> Reply + Send + Sync>,
 @}
 
 fn ben_make_account(initial: i128) -> BenAccount @{
@@ -652,7 +665,9 @@ fn ben_make_account(initial: i128) -> BenAccount @{
         let balance = Arc::clone(&balance);
         let protected = protected.clone();
         Box::new(move |amount: i128| @{
-            protected.protect(|| shared_withdraw(&balance, amount))
+            protected.protect(|| @{
+                shared_withdraw(&balance, amount)
+            @})
         @})
     @};
     let protected_deposit = @{
@@ -660,7 +675,8 @@ fn ben_make_account(initial: i128) -> BenAccount @{
         let protected = protected.clone();
         Box::new(move |amount: i128| @{
             protected.protect(|| @{
-                let new_balance = read_shared(&balance) + amount;
+                let new_balance =
+                    read_shared(&balance) + amount;
                 write_shared(&balance, new_balance);
                 Reply::Balance(new_balance)
             @})
@@ -771,7 +787,9 @@ fn deposit(account: &AccountAndSerializer, amount: i128) -> i128 @{
     let serializer = account.serializer();
     serializer.protect(|| match account.deposit(amount) @{
         Reply::Balance(n) => n,
-        Reply::Message(m) => panic!("deposit always answers a balance: @{m@}"),
+        Reply::Message(m) => @{
+            panic!("deposit always answers a balance: @{m@}")
+        @}
     @})
 @}
 @end example
@@ -846,12 +864,15 @@ struct LouisAccount @{
 impl LouisAccount @{
     fn withdraw(&self, amount: i128) -> Reply @{
         self.serializer
-            .protect(|| shared_withdraw(&self.balance, amount))
+            .protect(|| @{
+                shared_withdraw(&self.balance, amount)
+            @})
     @}
 
     fn deposit(&self, amount: i128) -> Reply @{
         self.serializer.protect(|| @{
-            let new_balance = read_shared(&self.balance) + amount;
+            let new_balance =
+                read_shared(&self.balance) + amount;
             write_shared(&self.balance, new_balance);
             Reply::Balance(new_balance)
         @})
@@ -906,7 +927,9 @@ property that we need to guarantee.
 
 @example rust
 impl BookSerializer @{
-    fn protect<T>(&self, run: &RunHandle, p: impl FnOnce() -> T) -> Option<T> @{
+    fn protect<T>(
+        &self, run: &RunHandle, p: impl FnOnce() -> T,
+    ) -> Option<T> @{
         if !self.mutex.acquire(run) @{
             return None; // the run was halted while waiting
         @}
@@ -958,7 +981,7 @@ impl BookMutex @{
 @end example
 
 @noindent
-@code{Test_and_set} tests the cell and returns the result of the test.  In
+@code{test_and_set} tests the cell and returns the result of the test.  In
 addition, if the test was false, @code{test_and_set} sets the cell contents to
 true before returning false.  We can express this behavior as the following
 procedure over a plain boolean cell:
@@ -999,7 +1022,10 @@ and the cell becomes an @code{AtomicBool} holding the mutex's state:
 impl TestAndSetCell @{
     fn test_and_set(&self) -> bool @{
         self.0
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .compare_exchange(
+                false, true, Ordering::AcqRel,
+                Ordering::Acquire,
+            )
             .is_err()
     @}
 @}

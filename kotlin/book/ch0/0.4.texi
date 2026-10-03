@@ -137,11 +137,12 @@ Frac(1L, 2L) === Frac(1L, 2L)
 @end example
 
 @noindent
-The book's @code{equal?} maps to @code{==} on the data types, and its
-@code{eq?} maps to @code{===} where identity is the question. Chapter 3
+The original book distinguishes two equalities: structural equality maps
+to @code{==} on the data types, and pointer identity maps to @code{===}
+where identity is the question. Chapter 3
 makes identity observable on purpose: the runtime's mutable pairs compare
-by identity, so @code{eq?} on pairs and @code{===} agree by construction
-(@ref{0.5}).
+by identity, so identity comparison on pairs and @code{===} agree by
+construction (@ref{0.5}).
 
 @strong{@anchor{Exercise 0.3}Exercise 0.3:} Model a small binary tree as a
 sealed hierarchy with a @code{Leaf} holding a value and a @code{Node}

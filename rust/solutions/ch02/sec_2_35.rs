@@ -8,7 +8,7 @@ mod ex_2_35 {
 
     /// Exercise 2.35: `count-leaves` as an accumulation
     ///
-    /// The book's fill for `(accumulate ⟨??⟩ ⟨??⟩ (map ⟨??⟩ ⟨??⟩))`:
+    /// The book's fill for the accumulate-over-a-map shape:
     /// enumerate the leaves of the tree (2.28's `fringe`, this
     /// edition's `enumerate_tree`), map a constant one over every
     /// leaf, and accumulate with `+` from 0. The tree recursion of

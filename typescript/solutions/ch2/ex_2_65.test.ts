@@ -23,8 +23,8 @@ describe("exercise 2.65", () => {
   it("unions and intersects tree sets, results ordered and balanced-ish", () => {
     const evens = build([2, 4, 6, 8]);
     const odds = build([1, 3, 5, 7, 8]);
-    expect(showList(treeElements(unionSetTree(evens, odds)))).toBe("(1 2 3 4 5 6 7 8)");
-    expect(showList(treeElements(intersectionSetTree(evens, odds)))).toBe("(8)");
+    expect(showList(treeElements(unionSetTree(evens, odds)))).toBe("[1, 2, 3, 4, 5, 6, 7, 8]");
+    expect(showList(treeElements(intersectionSetTree(evens, odds)))).toBe("[8]");
     expect(elementOfSetTree(6, unionSetTree(evens, odds))).toBe(true);
     expect(elementOfSetTree(5, intersectionSetTree(evens, odds))).toBe(false);
     expect(treeElements(unionSetTree(emptyTreeSet, odds))).toEqual(treeElements(odds));

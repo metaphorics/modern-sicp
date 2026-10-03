@@ -1,85 +1,67 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Adapted from the Scheme program of SICP section 5.1 *)
 
-(** Exercise 5.4: the recursive and the iterative exponentiation
-    machines. *)
+let ( let* ) = Result.bind
 
-let ( >>= ) = Result.bind
+module M = Sicp_ch5.Sec_5_1
 
-module Machine = Sicp_ch5.Sec_5_1
-
-let rec all f = function
-  | [] -> Ok []
-  | x :: xs -> f x >>= fun y -> all f xs >>= fun ys -> Ok (y :: ys)
-;;
-
-(** The recursive controller: each level saves [continue] -- the one
-    register the subproblem clobbers -- sets [n] to [n - 1], and
-    returns to [after-expt] to multiply [b] into the answer. [b] needs
-    no save: the subproblem never changes it. *)
+(* Each level saves [continue], the one register the subproblem
+   clobbers. [b] needs no save: the subproblem never changes it. *)
 let expt_recursive_controller =
-  {|(controller
-   (assign continue (label expt-done))
- expt-loop
-   (test (op =) (reg n) (const 0))
-   (branch (label base-case))
-   (save continue)
-   (assign n (op -) (reg n) (const 1))
-   (assign continue (label after-expt))
-   (goto (label expt-loop))
- after-expt
-   (restore continue)
-   (assign val (op *) (reg b) (reg val))
-   (goto (reg continue))
- base-case
-   (assign val (const 1))
-   (goto (reg continue))
- expt-done)|}
+  M.
+    [ Assign ("continue", Label_ref "expt-done")
+    ; Label "expt-loop"
+    ; Test ("=", [ Reg "n"; Const (Int 0) ])
+    ; Branch "base-case"
+    ; Save "continue"
+    ; Assign_op ("n", "-", [ Reg "n"; Const (Int 1) ])
+    ; Assign ("continue", Label_ref "after-expt")
+    ; Goto "expt-loop"
+    ; Label "after-expt"
+    ; Restore "continue"
+    ; Assign_op ("val", "*", [ Reg "b"; Reg "val" ])
+    ; Goto_reg "continue"
+    ; Label "base-case"
+    ; Assign ("val", Const (Int 1))
+    ; Goto_reg "continue"
+    ; Label "expt-done"
+    ]
 ;;
 
-(** The iterative controller: three registers, no stack, no [continue]. *)
 let expt_iterative_controller =
-  {|(controller
- expt-iter
-   (test (op =) (reg counter) (const 0))
-   (branch (label expt-done))
-   (assign counter (op -) (reg counter) (const 1))
-   (assign product (op *) (reg b) (reg product))
-   (goto (label expt-iter))
- expt-done)|}
+  M.
+    [ Label "expt-iter"
+    ; Test ("=", [ Reg "counter"; Const (Int 0) ])
+    ; Branch "expt-done"
+    ; Assign_op ("counter", "-", [ Reg "counter"; Const (Int 1) ])
+    ; Assign_op ("product", "*", [ Reg "b"; Reg "product" ])
+    ; Goto "expt-iter"
+    ; Label "expt-done"
+    ]
 ;;
 
-(** [ex_5_04 ()] runs the recursive machine on (2, 10) and (3, 5), then
-    the iterative machine on the same inputs. *)
+let recursive_expt b n =
+  M.run
+    ~registers:[ "b"; "n"; "val"; "continue" ]
+    ~operations:M.arith_operations
+    ~inputs:[ "b", M.Int b; "n", M.Int n ]
+    ~controller:expt_recursive_controller
+    "val"
+;;
+
+let iterative_expt b n =
+  M.run
+    ~registers:[ "b"; "counter"; "product" ]
+    ~operations:M.arith_operations
+    ~inputs:[ "b", M.Int b; "product", M.Int 1; "counter", M.Int n ]
+    ~controller:expt_iterative_controller
+    "product"
+;;
+
 let ex_5_04 () =
-  let run controller ~registers ~inputs ~result =
-    Machine.make_machine ~registers ~operations:Machine.arith_operations ~controller
-    >>= fun m ->
-    all (fun (name, v) -> Machine.set_register m name v) inputs
-    >>= fun _ -> Machine.start m >>= fun () -> Machine.get_register m result
-  in
-  run
-    expt_recursive_controller
-    ~registers:[ "b"; "n"; "val"; "continue" ]
-    ~inputs:[ "b", Machine.Int 2; "n", Machine.Int 10 ]
-    ~result:"val"
-  >>= fun r1 ->
-  run
-    expt_recursive_controller
-    ~registers:[ "b"; "n"; "val"; "continue" ]
-    ~inputs:[ "b", Machine.Int 3; "n", Machine.Int 5 ]
-    ~result:"val"
-  >>= fun r2 ->
-  run
-    expt_iterative_controller
-    ~registers:[ "b"; "counter"; "product" ]
-    ~inputs:[ "b", Machine.Int 2; "product", Machine.Int 1; "counter", Machine.Int 10 ]
-    ~result:"product"
-  >>= fun i1 ->
-  run
-    expt_iterative_controller
-    ~registers:[ "b"; "counter"; "product" ]
-    ~inputs:[ "b", Machine.Int 3; "product", Machine.Int 1; "counter", Machine.Int 5 ]
-    ~result:"product"
-  >>= fun i2 -> Ok (List.map Machine.value_to_string [ r1; r2; i1; i2 ])
+  let* r1 = recursive_expt 2 10 in
+  let* r2 = recursive_expt 3 5 in
+  let* i1 = iterative_expt 2 10 in
+  let* i2 = iterative_expt 3 5 in
+  Ok (List.map M.value_to_string [ r1; r2; i1; i2 ])
 ;;

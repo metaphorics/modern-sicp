@@ -37,7 +37,7 @@ pub fn solve_2nd(a: f64, b: f64, dt: f64, y0: f64, dy0: f64) -> Stream<f64> {
             };
             integral_delayed(ddy, dy0, dt)
         });
-        // The book's `(delay dy)`: `dy` handed over as a thunk.
+        // The delayed `dy`: handed over as a thunk.
         integral_delayed(move || dy, y0, dt)
     })
 }

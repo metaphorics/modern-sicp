@@ -125,7 +125,7 @@ describe("section 2.4: multiple representations for abstract data", () => {
     expect(missed._tag).toBe("Error");
     if (missed._tag === "Error") {
       expect(showApplyGenericError(missed.error)).toBe(
-        "No method for these types: APPLY-GENERIC (real-part (oblique))",
+        'No method for these types: applyGeneric("real-part", ["oblique"])',
       );
     }
   });

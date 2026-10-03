@@ -12,6 +12,6 @@ public class E5_33Test :
         test("Exercise 5.33: both compilations are shown with their save/restore pairs and both answers").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            altFactorialComparison() shouldBe emptyList()
+            altFactorialComparison().last() shouldBe "the two runs answer alike: true"
         }
     })

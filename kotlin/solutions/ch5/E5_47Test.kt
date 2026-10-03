@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, exercise 5.47
+// Chapter 5, exercise 5_47
 
 package sicp.ch5.solutions
 
@@ -8,7 +8,12 @@ import io.kotest.matchers.shouldBe
 
 public class E5_47Test :
     FunSpec({
-        test("compiled caller invokes a procedure defined later by the evaluator") {
-            compoundCallRuns() shouldBe listOf("ok", "ok", "42")
+        test("Exercise 5.47: compiled caller invokes an interpreted closure") {
+            mixedCallsRun() shouldBe
+                listOf(
+                    "the compiled declaration answers: 141",
+                    "the interpreted binding answers: 42",
+                    "the mixed call reached the interpreted closure: true",
+                )
         }
     })

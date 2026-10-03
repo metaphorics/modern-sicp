@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The pending scaffold of exercise 4.26: unless as special form debate.
+//! The pending scaffold of exercise 4.26: `unless` eagerly expanded versus delayed.
 
 /// The typed pending report of an unsolved scaffold: the body returns
 /// this instead of panicking, so the failure names its origin.
@@ -12,11 +12,11 @@ pub struct Pending {
 }
 
 mod ex_4_26 {
-    //! Exercise 4.26: unless as special form debate.
+    //! Exercise 4.26: `unless` eagerly expanded versus delayed.
 
     use super::Pending;
 
-    /// Answers Ben's special-form `unless` value and Alyssa's lazy-procedure `unless` value over the same armed call.
+    /// Answers Ben's eagerly-expanded `unless` value and Alyssa's delayed-operand `unless` value over the same armed call.
     pub fn ex_4_26() -> Result<(String, String), Pending> {
         Err(Pending { exercise: "4.26" })
     }

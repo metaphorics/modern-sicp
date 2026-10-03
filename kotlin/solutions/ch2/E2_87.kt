@@ -7,13 +7,8 @@ import arrow.core.raise.Raise
 import kotlinx.collections.immutable.persistentListOf
 
 /**
- * Exercise 2.87: install `=zero?` for polynomials in the generic
- * arithmetic package, so `adjoin-term` can drop zero terms whose
- * coefficients are themselves polynomials. A polynomial is zero exactly
- * when every term's coefficient is zero, tested by the same generic
- * `=zero?` -- which recurses through the table for nested polys.
- *
- * The `=zero?` install for type `polynomial`.
+ * Extend the tower's zero predicate to polynomials, recursively testing every
+ * coefficient, including coefficients that are themselves polynomials.
  */
 public fun installPolyIsZero(table: NumTable) {
     table.put("=zero?", listOf("polynomial")) { args ->

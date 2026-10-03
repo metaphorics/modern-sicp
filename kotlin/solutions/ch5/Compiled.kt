@@ -1,147 +1,184 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, section 5.5: the measurement and compilation harness the
+// Original exercise
+//
+// Chapter 5, section 5.5: the measurement and analysis harness the
 // compiler exercises share (5.31 to 5.50). Every run compiles with the
-// section's own compiler, installs the block on the 5.5.7 machine, and
-// reads the transcript, the step counter, or the monitored stack, so
-// every number the exercises pin is machine-run output.
+// section's own compiler, installs the block on the compiled-code
+// machine, and reads the transcript, the instruction counter, or the
+// monitored stack, so every number the exercises pin is machine-run
+// output. The register analysis over emitted statements answers the
+// needs/modifies questions: which registers a statement reads and
+// writes, and which `save`/`restore` pairs are superfluous because the
+// saved register survives the pair intact.
 
 package sicp.ch5.solutions
 
 import arrow.core.raise.either
-import sicp.ch4.readProgram
-import sicp.ch5.CompilerConfig
-import sicp.ch5.CompilerState
-import sicp.ch5.Linkage
-import sicp.ch5.ObjectPrimitive
-import sicp.ch5.compileAndGo
-import sicp.ch5.compileBlock
-import sicp.ch5.compileProgram
-import sicp.ch5.ecevalController
-import sicp.ch5.renderStmt
-import sicp.runtime.SchemeError
+import sicp.ch5.Compiler
+import sicp.ch5.CompilerOptions
+import sicp.guest.Admission
+import sicp.guest.CheckedProgram
+import sicp.guest.GuestError
+import sicp.guest.Mode
+import sicp.guest.RunResult
+import sicp.runtime.Assign
+import sicp.runtime.Branch
+import sicp.runtime.Goto
+import sicp.runtime.GotoTarget
+import sicp.runtime.Label
+import sicp.runtime.Machine
+import sicp.runtime.OpAct
+import sicp.runtime.OpCond
+import sicp.runtime.Perform
+import sicp.runtime.Restore
+import sicp.runtime.Save
+import sicp.runtime.Source
 import sicp.runtime.Stmt
-import sicp.runtime.Value
+import sicp.runtime.Test
 
-/** Reads the forms of [source]; a parse failure is a measurement bug. */
-internal fun readForms(source: String): List<Value> {
-    val parsed = either<SchemeError, List<Value>> { readProgram(source) }
-    return parsed.fold(
-        { e -> error("the driver source did not parse: $e") },
-        { it },
-    )
-}
+/** Admits [source]; a parse or check failure is a harness bug. */
+internal fun admitProgram(source: String): CheckedProgram =
+    Admission.admit(source, Mode.CORE).fold({ error -> error("the source did not admit: $error") }, { it })
 
-/** Compiles [source] (one form) under [cfg] and answers its statements
- *  as the book's controller lines. [linkage] is the top-level linkage:
- *  bare top-level combinations run through the book's `compile-and-go`,
- *  which compiles the expression with target `val` and linkage `return`,
- *  so 5.31 passes [Linkage.Return]; every definition comparison keeps
- *  the default [Linkage.Next]. */
+/** Compiles [source] and answers its instruction sequence; the compile
+ *  failure is a harness bug with its category. */
 internal fun compiledStatements(
-    cfg: CompilerConfig = CompilerConfig(),
     source: String,
-    linkage: Linkage = Linkage.Next,
-): List<String> =
-    either {
-        val state = CompilerState()
-        val forms = readForms(source)
-        val seq = compileProgram(cfg, state, forms, linkage)
-        seq.stmts.map { renderStmt(it) }
-    }.fold(
-        { e -> error("the compilation failed: $e") },
+    options: CompilerOptions = CompilerOptions(),
+): List<Stmt> =
+    Compiler.compile(admitProgram(source), options).fold(
+        { error -> error("the compilation failed: $error") },
         { it },
     )
 
-/** Compiles [source] under [cfg] and answers the statement count and
- *  the save/restore count. */
-internal fun compileCounts(
-    cfg: CompilerConfig = CompilerConfig(),
-    source: String,
-): Pair<Int, Int> {
-    val stmts = compiledStatements(cfg, source)
-    val saves = stmts.count { it.startsWith("(save ") || it.startsWith("(restore ") }
-    return stmts.size to saves
-}
+/** The registers a source operand reads. */
+internal fun sourceReads(src: Source): Set<String> =
+    when (src) {
+        is Source.RegSrc -> setOf(src.reg)
+        is Source.ConstSrc -> emptySet()
+        is Source.LabelSrc -> emptySet()
+        is Source.OpSrc -> src.args.fold(emptySet()) { names, argument -> names + sourceReads(argument) }
+    }
 
-/** Compiles [compiled] under [cfg], runs it by compile-and-go on
- *  [controller], and answers the transcript. */
-internal fun runCompiled(
-    cfg: CompilerConfig = CompilerConfig(),
-    compiled: String,
-    driver: String,
-    controller: List<Stmt> = ecevalController,
-    extraPrimitives: Map<String, ObjectPrimitive> = emptyMap(),
-    runtimeSupport: Boolean = false,
-): List<String> =
-    either {
-        val state = CompilerState()
-        val forms = readForms(compiled)
-        val (entry, block) = compileBlock(cfg, state, forms)
-        val evaluator =
-            compileAndGo(
-                entry,
-                block,
-                driver,
-                controller,
-                extraPrimitives = extraPrimitives,
-                runtimeSupport = runtimeSupport,
-            )
-        evaluator.drive()
-        evaluator.transcript
-    }.fold(
-        { e -> error("the compiled run failed: $e") },
-        { it },
-    )
+/** The registers an operation call reads. */
+private fun opReads(args: List<Source>): Set<String> = args.fold(emptySet()) { names, argument -> names + sourceReads(argument) }
 
-/** [runCompiled] with the monitored 5.5.7 driver. */
-internal fun runCompiledMonitored(
-    cfg: CompilerConfig = CompilerConfig(),
-    compiled: String,
-    driver: String,
-): List<String> = runCompiled(cfg, compiled, driver, sicp.ch5.monitoredEcevalController)
+/** The registers one instruction reads. */
+internal fun readsOf(instruction: Stmt): Set<String> =
+    when (instruction) {
+        is Label -> {
+            emptySet()
+        }
 
-/** The step count of the compile-and-go run of [compiled] on [driver]. */
-internal fun runCompiledSteps(
-    cfg: CompilerConfig = CompilerConfig(),
-    compiled: String,
-    driver: String,
-    runtimeSupport: Boolean = false,
-): Long =
-    either {
-        val state = CompilerState()
-        val forms = readForms(compiled)
-        val (entry, block) = compileBlock(cfg, state, forms)
-        val evaluator = compileAndGo(entry, block, driver, runtimeSupport = runtimeSupport)
-        evaluator.drive()
-        evaluator.steps
-    }.fold(
-        { e -> error("the compiled run failed: $e") },
-        { it },
-    )
+        is Assign -> {
+            sourceReads(instruction.src)
+        }
 
-/** The printed values of a driver transcript: every line that follows a
- *  value announcement. */
-internal fun valuesOf(transcript: List<String>): List<String> {
-    val out = ArrayList<String>()
-    var announce = false
-    for (line in transcript) {
-        when {
-            line == ";;; EC-Eval value:" -> {
-                announce = true
+        is Test -> {
+            when (val condition = instruction.cond) {
+                is OpCond -> opReads(condition.args)
             }
+        }
 
-            announce -> {
-                out.add(line)
-                announce = false
+        is Branch -> {
+            emptySet()
+        }
+
+        is Goto -> {
+            if (instruction.to is GotoTarget.ByReg) setOf((instruction.to as GotoTarget.ByReg).reg) else emptySet()
+        }
+
+        is Save -> {
+            setOf(instruction.reg)
+        }
+
+        is Restore -> {
+            emptySet()
+        }
+
+        is Perform -> {
+            when (val action = instruction.act) {
+                is OpAct -> opReads(action.args)
             }
         }
     }
-    return out
+
+/** The registers one instruction writes. */
+internal fun writesOf(instruction: Stmt): Set<String> =
+    when (instruction) {
+        is Assign -> setOf(instruction.reg)
+        is Restore -> setOf(instruction.reg)
+        else -> emptySet()
+    }
+
+/** One `save`/`restore` pair: where it sits and whether the saved
+ *  register is modified between the two instructions. */
+internal data class SavePair(
+    val saveIndex: Int,
+    val restoreIndex: Int,
+    val register: String,
+    val clobbered: Boolean,
+)
+
+/** Pairs every `save` with the matching `restore` (the stack discipline
+ *  of the compiled sequences) and records whether anything writes the
+ *  saved register in between: a pair whose register survives intact is
+ *  the superfluous save of the exercise. */
+internal fun savePairs(stmts: List<Stmt>): List<SavePair> {
+    val pairs = mutableListOf<SavePair>()
+    val open = ArrayDeque<Pair<Int, String>>()
+    for ((index, instruction) in stmts.withIndex()) {
+        when (instruction) {
+            is Save -> {
+                open.addLast(index to instruction.reg)
+            }
+
+            is Restore -> {
+                val saved = open.removeLastOrNull() ?: continue
+                val clobbered = (saved.first + 1 until index).any { between -> saved.second in writesOf(stmts[between]) }
+                pairs.add(SavePair(saved.first, index, saved.second, clobbered))
+            }
+
+            else -> {}
+        }
+    }
+    return pairs
 }
 
-/** The last statistics line's counters of a monitored transcript. */
-internal fun lastStats(transcript: List<String>): Stats =
-    statsOf(transcript).lastOrNull() ?: error("the session printed no stack statistics")
+/** The compiled-code machine of one checked program, wired to the
+ *  compiler's operation table: the monitored run the stack exercises
+ *  read. */
+internal fun compiledMachine(
+    source: String,
+    options: CompilerOptions = CompilerOptions(),
+): Machine = Compiler.machine(admitProgram(source), options)
 
-/** The lines of [transcript] that are stack statistics. */
-internal fun statLines(transcript: List<String>): List<String> = transcript.filter { it.startsWith("(total-pushes") }
+/** Runs the compiled-code machine of [source] to its halt and answers
+ *  the result; a fault is a harness bug with its category. */
+internal fun runCompiled(source: String): RunResult = Compiler.compileAndRun(admitProgram(source))
+
+/** The printed values of one run: its output lines in program order. */
+internal fun outputLines(result: RunResult): List<String> = result.output.split("\n").filter { it.isNotEmpty() }
+
+/** The monitored run's counters the measuring exercises print. */
+internal fun compiledStatistics(source: String): String {
+    val machine = compiledMachine(source)
+    val outcome = either<GuestError, Unit> { machine.run() }
+    outcome.fold({ error -> error("the compiled run faulted: ${error.category}") }, { })
+    return statisticsLine(machine)
+}
+
+/** The compiled run's instruction count, the 5.34 annotation's input. */
+internal fun compiledInstructions(source: String): Long {
+    val machine = compiledMachine(source)
+    val outcome = either<GuestError, Unit> { machine.run() }
+    outcome.fold({ error -> error("the compiled run faulted: ${error.category}") }, { })
+    return machine.instructions
+}
+
+/** The registers one instruction list modifies and needs, the 5.31
+ *  analysis's summary over a whole compilation. */
+internal fun registersOf(stmts: List<Stmt>): Pair<Set<String>, Set<String>> =
+    stmts.fold(emptySet<String>() to emptySet<String>()) { (writes, reads), instruction ->
+        (writes + writesOf(instruction)) to (reads + readsOf(instruction))
+    }

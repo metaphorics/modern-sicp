@@ -4,8 +4,8 @@
 package sicp.ch3.exercises
 
 import arrow.core.Either
+import sicp.runtime.Datum
 import sicp.runtime.PendingSolution
-import sicp.runtime.Value
 
 public sealed interface DequeError {
     public data object EmptyDeque : DequeError
@@ -21,7 +21,7 @@ public sealed interface DequeError {
  * front-delete-deque!, and rear-delete-deque!.
  */
 public class DPair(
-    public var item: Value,
+    public var item: Datum,
     public var prev: DPair?,
     public var next: DPair?,
 )
@@ -29,17 +29,17 @@ public class DPair(
 public class Deque {
     public fun emptyDeque(): Boolean = throw PendingSolution()
 
-    public fun frontDeque(): Value? = throw PendingSolution()
+    public fun frontDeque(): Datum? = throw PendingSolution()
 
-    public fun rearDeque(): Value? = throw PendingSolution()
+    public fun rearDeque(): Datum? = throw PendingSolution()
 
-    public fun frontInsert(item: Value): Unit = throw PendingSolution()
+    public fun frontInsert(item: Datum): Unit = throw PendingSolution()
 
-    public fun rearInsert(item: Value): Unit = throw PendingSolution()
+    public fun rearInsert(item: Datum): Unit = throw PendingSolution()
 
-    public fun frontDelete(): Either<DequeError, Value> = throw PendingSolution()
+    public fun frontDelete(): Either<DequeError, Datum> = throw PendingSolution()
 
-    public fun rearDelete(): Either<DequeError, Value> = throw PendingSolution()
+    public fun rearDelete(): Either<DequeError, Datum> = throw PendingSolution()
 }
 
 public fun makeDeque(): Deque = throw PendingSolution()

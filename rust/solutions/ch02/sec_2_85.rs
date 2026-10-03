@@ -8,10 +8,10 @@ mod ex_2_85 {
     use ch02::sec_2_5::{
         contents, install_generic_arithmetic, is_equ, make_complex_from_real_imag, type_tag,
     };
-    use sicp_runtime::{Key, OpTable, SchemeError, Value};
+    use sicp_runtime::{Key, OpTable, SicpError, Value};
     use std::rc::Rc;
 
-    fn tag_list_key(args: &[Value]) -> Result<Key, SchemeError> {
+    fn tag_list_key(args: &[Value]) -> Result<Key, SicpError> {
         let mut key = Key::Nil;
         for a in args.iter().rev() {
             key = Key::pair(Key::Sym(type_tag(a)?), key);
@@ -27,11 +27,11 @@ mod ex_2_85 {
         clippy::cast_precision_loss,
         reason = "the exact-to-inexact promotion `raise` performs; i128 magnitudes here stay far under f64's mantissa"
     )]
-    fn as_f64(v: &Value) -> Result<f64, SchemeError> {
+    fn as_f64(v: &Value) -> Result<f64, SicpError> {
         match v {
             Value::Int(n) => Ok(*n as f64),
             Value::Real(x) => Ok(*x),
-            other => Err(SchemeError::TypeMismatch(format!("{other}"))),
+            other => Err(SicpError::TypeMismatch(format!("{other}"))),
         }
     }
 
@@ -42,14 +42,13 @@ mod ex_2_85 {
     pub fn install_raise_and_project(table: &OpTable) {
         table.put(
             Key::sym("raise"),
-            one_tag("scheme-number"),
+            one_tag("integer"),
             Rc::new(|args: &[Value]| match &args[0] {
                 Value::Int(n) => Ok(Value::tagged(
                     "rational",
                     Value::Pair(sicp_runtime::cons_cell(Value::Int(*n), Value::Int(1))),
                 )),
-                Value::Real(_) => Ok(Value::tagged("real", args[0].clone())),
-                other => Err(SchemeError::TypeMismatch(format!("{other}"))),
+                other => Err(SicpError::TypeMismatch(format!("{other}"))),
             }),
         );
         table.put(
@@ -57,15 +56,15 @@ mod ex_2_85 {
             one_tag("rational"),
             Rc::new(|args: &[Value]| {
                 let Value::Pair(cell) = &args[0] else {
-                    return Err(SchemeError::TypeMismatch("rational".into()));
+                    return Err(SicpError::TypeMismatch("rational".into()));
                 };
                 let (Value::Int(n), Value::Int(d)) =
                     (cell.car.borrow().clone(), cell.cdr.borrow().clone())
                 else {
-                    return Err(SchemeError::TypeMismatch("rational".into()));
+                    return Err(SicpError::TypeMismatch("rational".into()));
                 };
                 if d == 0 {
-                    return Err(SchemeError::DivisionByZero);
+                    return Err(SicpError::DivisionByZero);
                 }
                 #[expect(
                     clippy::cast_precision_loss,
@@ -101,7 +100,7 @@ mod ex_2_85 {
                 // round: the footnote's projection; NaN saturates to 0
                 // and the equ? check below rejects any such guess.
                 let Value::Real(x) = &args[0] else {
-                    return Err(SchemeError::TypeMismatch("project: real".into()));
+                    return Err(SicpError::TypeMismatch("project: real".into()));
                 };
                 #[expect(
                     clippy::cast_possible_truncation,
@@ -116,15 +115,15 @@ mod ex_2_85 {
             one_tag("rational"),
             Rc::new(|args: &[Value]| {
                 let Value::Pair(cell) = &args[0] else {
-                    return Err(SchemeError::TypeMismatch("rational".into()));
+                    return Err(SicpError::TypeMismatch("rational".into()));
                 };
                 let (Value::Int(n), Value::Int(d)) =
                     (cell.car.borrow().clone(), cell.cdr.borrow().clone())
                 else {
-                    return Err(SchemeError::TypeMismatch("rational".into()));
+                    return Err(SicpError::TypeMismatch("rational".into()));
                 };
                 if d != 1 {
-                    return Err(SchemeError::TypeMismatch(
+                    return Err(SicpError::TypeMismatch(
                         "a fraction does not project to an integer".into(),
                     ));
                 }
@@ -142,7 +141,7 @@ mod ex_2_85 {
 
     /// The exercise's `drop`: project, raise back, and keep the lower
     /// form only when the round trip answers something equal.
-    pub fn drop_value(table: &OpTable, v: &Value) -> Result<Value, SchemeError> {
+    pub fn drop_value(table: &OpTable, v: &Value) -> Result<Value, SicpError> {
         let mut current = v.clone();
         for _ in 0..8 {
             let Some(projected) = generic(table, "project", &current) else {
@@ -171,16 +170,16 @@ mod ex_2_85 {
 
     /// The rewritten `apply_generic`: dispatch as before, then simplify
     /// arithmetic answers by dropping.
-    fn apply_generic_drop(table: &OpTable, op: &str, args: &[Value]) -> Result<Value, SchemeError> {
+    fn apply_generic_drop(table: &OpTable, op: &str, args: &[Value]) -> Result<Value, SicpError> {
         if let Some(proc) = table.get(&Key::sym(op), &tag_list_key(args)?) {
-            let bare: Result<Vec<Value>, SchemeError> = args.iter().map(contents).collect();
+            let bare: Result<Vec<Value>, SicpError> = args.iter().map(contents).collect();
             let result = proc(&bare?)?;
             return match op {
                 "add" | "sub" | "mul" | "div" => drop_value(table, &result),
                 _ => Ok(result),
             };
         }
-        Err(SchemeError::UserRaised {
+        Err(SicpError::UserRaised {
             message: "No method for these types".into(),
             irritants: vec![Value::sym(op)],
         })
@@ -189,7 +188,7 @@ mod ex_2_85 {
     /// The book's examples: (2 + 3i) + (4 - 3i) lands as the integer 6,
     /// 1.5 + 0i lowers only as far as the real 1.5, 1 + 0i reaches the
     /// integer 1, and 2 + 3i cannot be lowered at all.
-    pub fn ex_2_85() -> Result<(String, String, String, String), SchemeError> {
+    pub fn ex_2_85() -> Result<(String, String, String, String), SicpError> {
         let table = OpTable::new();
         install_generic_arithmetic(&table)?;
         install_raise_and_project(&table);

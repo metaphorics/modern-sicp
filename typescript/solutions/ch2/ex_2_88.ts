@@ -16,8 +16,8 @@ import {
   makeComplexFromRealImag,
   makePolynomial,
   makeRational,
-  makeSchemeNumber,
   makeTerm,
+  makeTsNumber,
   op,
   orderOf,
   put,
@@ -105,10 +105,10 @@ const complexImag = (c: ArithContents): number | undefined => {
 export const installNegation = (): void => {
   put(
     "negate",
-    ["scheme-number"],
+    ["ts-number"],
     op((args) => {
       const x = args[0];
-      return typeof x === "bigint" ? ok(makeSchemeNumber(-x)) : errNoNeg("scheme-number");
+      return typeof x === "bigint" ? ok(makeTsNumber(-x)) : errNoNeg("ts-number");
     }),
   );
   put(
@@ -166,7 +166,7 @@ export const subPoly = (p1: Poly, p2: Poly): Result<ArithDatum, GenError> => {
   if (!sameVariableQ(variableOf(p1), variableOf(p2))) {
     const left = showArithDatum(attachTag("polynomial", p1));
     const right = showArithDatum(attachTag("polynomial", p2));
-    return err({ _tag: "NotSameVar", proc: "SUB-POLY", left, right });
+    return err({ _tag: "NotSameVar", proc: "subPoly", left, right });
   }
   const negated = negatePoly(p2);
   if (negated._tag === "Error") {
@@ -189,5 +189,5 @@ export const negate = (x: ArithDatum): Result<ArithDatum, GenError> => applyGene
 export const poly88 = (v: string, terms: ReadonlyArray<readonly [bigint, bigint]>): ArithDatum =>
   makePolynomial(
     v,
-    terms.map(([o, c]) => [o, makeSchemeNumber(c)] as const),
+    terms.map(([o, c]) => [o, makeTsNumber(c)] as const),
   );

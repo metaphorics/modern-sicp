@@ -3,98 +3,102 @@
 
 package sicp.ch4.solutions
 
-import arrow.core.raise.Raise
-import kotlinx.collections.immutable.persistentListOf
-import sicp.ch4.EvalStep
-import sicp.ch4.LazyEvaluator
-import sicp.ch4.lazyTranscriptOn
-import sicp.runtime.AppE
-import sicp.runtime.Env
-import sicp.runtime.Expr
-import sicp.runtime.LambdaE
-import sicp.runtime.LitE
-import sicp.runtime.QuoteE
-import sicp.runtime.SchemeError
-import sicp.runtime.VPair
-import sicp.runtime.Value
-import sicp.runtime.VarE
+import sicp.ch4.LazyModule
 
-// Exercise 4.33: quotes under the lazy regime. With the procedural pairs
-// installed, `(car '(a b c))` fails: the quote is an ordinary pair of
-// data, and `car` applies its `z` to it -- data is not applicable. The
-// fix lifts the quote: [WithLazyQuote] rewrites every quoted pair into the
-// expression `(lambda (m) (m <car> <cdr>))`, the same shape the
-// object-language `cons` builds, with nested pairs lifted recursively and
-// atoms left as data. Quoted lists then ARE lazy lists, and the list
-// operations of the section run on them.
+// Exercise 4.33: quotes under the lazy regime. The ordinary data
+// literal evaluates every slot at construction, so an armed slot dies
+// there; the lifted quote builds the same list from explicit lazy
+// cells, so each tail waits behind its thunk and list operations run
+// one demand at a time. Quoted lists are lazy lists because their quote
+// recursively builds the section's `LazyCell` spine.
 
-/** The evaluator whose quotes build lazy pairs. */
-public class WithLazyQuote(
-    global: Env,
-) : LazyEvaluator(global) {
-    context(r: Raise<SchemeError>)
-    override fun step(
-        expr: Expr,
-        env: Env,
-    ): EvalStep {
-        val lifted = if (expr is QuoteE) liftQuoteExpr(expr.datum) else null
-        return if (lifted == null) super.step(expr, env) else EvalStep.Continue(lifted, env)
+/** The lifted quote and list operations, over the explicit lazy spine. */
+internal val QUOTED_SOURCE: String =
+    LAZY_DATA_SOURCE + "\n" +
+        """
+fun tailE(): LazyData = LazyEnd
+
+fun tailD(): LazyData = LazyCell(LazyAtom("d"), thunk { tailE() })
+
+fun tailC(): LazyData = LazyCell(LazyAtom("c"), thunk { tailD() })
+
+fun tailB(): LazyData = LazyCell(LazyAtom("b"), thunk { tailC() })
+
+fun quoted(): LazyData =
+    LazyCell(LazyAtom("a"), thunk { tailB() })
+
+fun car(node: LazyData): String = if (node is LazyCell) renderAtom(node.head) else "error"
+
+fun listRef(node: LazyData, index: Int): String {
+    var current = node
+    var at = 0
+    while (at < index) {
+        if (current !is LazyCell) {
+            return "error"
+        }
+        current = force(current.tail)
+        at = at + 1
     }
+    if (current is LazyCell) {
+        return renderAtom(current.head)
+    }
+    return "error"
 }
+        """.trimIndent()
 
-/** The procedural-pair expression for one quoted pair, or null for data
- * that stays ordinary. */
-internal fun liftQuoteExpr(datum: Value): Expr? {
-    if (datum !is VPair) return null
-    val body =
-        AppE(
-            VarE("m"),
-            persistentListOf(quotedPart(datum.car), quotedPart(datum.cdr)),
-        )
-    return LambdaE(persistentListOf("m"), null, persistentListOf(body))
+/** An ordinary strict literal is rejected where a lazy-spine value is required. */
+public fun plainArmedQuoteTranscript(): String =
+    outcomeText(
+        LazyModule
+            .run(
+                """
+fun main() {
+    val literal = listOf(1L, 1L / 0L)
+    println(literal.get(0))
 }
-
-/** A nested pair lifts recursively; an atom stays self-evaluating data. */
-private fun quotedPart(v: Value): Expr = liftQuoteExpr(v) ?: LitE(v)
-
-/** The statement's probe with data quotes: the procedural `car` receives
- * an ordinary pair. => "Error: not a procedure: (a b c)\n" */
-public fun plainQuoteCarTranscript(): String =
-    lazyTranscriptOn(
-        ::LazyEvaluator,
-        """
-        ${PROCEDURAL_LISTS}
-        (car '(a b c))
-        """.trimIndent(),
+                """.trimIndent(),
+            ).map { it.result },
     )
 
-/** Lifted quotes: the quoted list is a lazy pair, `car` answers.
- * => "a\n" */
+/** The lifted quote answers its head without forcing a tail. */
 public fun lazyQuoteCarTranscript(): String =
-    lazyTranscriptOn(
-        ::WithLazyQuote,
-        """
-        ${PROCEDURAL_LISTS}
-        (car '(a b c))
-        """.trimIndent(),
+    outcomeText(
+        LazyModule
+            .run(
+                QUOTED_SOURCE + "\n" +
+                    """
+fun main() {
+    println(car(quoted()))
+}
+                    """.trimIndent(),
+            ).map { it.result },
     )
 
-/** The section's list operations run on quoted lists. => "d\n" */
+/** The list operation reaches `d` by forcing exactly three tails. */
 public fun lazyQuoteListRefTranscript(): String =
-    lazyTranscriptOn(
-        ::WithLazyQuote,
-        """
-        ${PROCEDURAL_LISTS}
-        (define (list-ref items n)
-          (if (= n 0)
-              (car items)
-              (list-ref (cdr items) (- n 1))))
-        (list-ref '(a b c d) 3)
-        """.trimIndent(),
+    outcomeText(
+        LazyModule
+            .run(
+                QUOTED_SOURCE + "\n" +
+                    """
+fun main() {
+    println(listRef(quoted(), 3))
+}
+                    """.trimIndent(),
+            ).map { it.result },
     )
 
-/** The section's procedural pairs, as object-language definitions. */
-private const val PROCEDURAL_LISTS: String =
-    """(define (cons x y) (lambda (m) (m x y)))
-(define (car z) (z (lambda (p q) p)))
-(define (cdr z) (z (lambda (p q) q)))"""
+/** An armed lazy tail survives construction and answers its head. */
+public fun lazyArmedQuoteTranscript(): String =
+    outcomeText(
+        LazyModule
+            .run(
+                LAZY_DATA_SOURCE + "\n" +
+                    """
+fun main() {
+    val armed = LazyCell(LazyAtom("1"), thunk { explode() })
+    println(renderAtom(armed.head))
+}
+                    """.trimIndent(),
+            ).map { it.result },
+    )

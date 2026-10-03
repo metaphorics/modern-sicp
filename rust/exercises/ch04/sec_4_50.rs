@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The pending scaffold of exercise 4.50: ramble random choice.
+//! The pending scaffold of exercise 4.50: seeded rambling choice.
 
 /// The typed pending report of an unsolved scaffold: the body returns
 /// this instead of panicking, so the failure names its origin.
@@ -12,7 +12,7 @@ pub struct Pending {
 }
 
 mod ex_4_50 {
-    //! Exercise 4.50: ramble random choice.
+    //! Exercise 4.50: seeded rambling choice.
 
     use super::Pending;
 
@@ -30,7 +30,7 @@ fn ex_4_50() {
 }
 
 mod ex_4_50a {
-    //! Exercise 4.50a (tailored): seed the host RNG for reproducible ramb.
+    //! Exercise 4.50a (tailored): seed the engine for reproducible rambling.
 
     use super::Pending;
 

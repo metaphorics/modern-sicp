@@ -6,7 +6,7 @@ import { makeVect as moduleVect, showVect } from "../../packages/ch2/src/02-pict
 import { addVect2, makeVect, scaleVect2, subVect2, xCorVect, yCorVect } from "./ex_2_46.js";
 
 describe("exercise 2.46", () => {
-  it("make-vect builds a pair and the selectors read its coordinates", () => {
+  it("makeVect builds a pair and the selectors read its coordinates", () => {
     const v = makeVect(3, 4);
     expect(v).toStrictEqual([3, 4]);
     expect(xCorVect(v)).toBe(3);

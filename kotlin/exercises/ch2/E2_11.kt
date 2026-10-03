@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.11: in passing, Ben also cryptically comments: "by testing the
  * signs of the endpoints of the intervals, it is possible to break
@@ -18,4 +16,4 @@ import sicp.runtime.PendingSolution
  * The scaffold returns `mulIntervalCases` of two intervals that both span
  * zero, the one case that needs all four products.
  */
-public fun ex_2_11(): Interval = throw PendingSolution()
+public fun ex_2_11(): Interval = throw PendingExercise()

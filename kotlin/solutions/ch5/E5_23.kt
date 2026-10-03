@@ -1,171 +1,323 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, exercise 5.23: derived expressions -- `cond` and `let` enter
-// the evaluator through transformer machine operations, the exercise's
-// own suggestion. The dispatch grows two tests, one per derived form,
-// ahead of the application test; each new entry transforms `exp` and
-// re-enters `eval-dispatch`, so the rest of the controller never knows
-// the forms existed. `cond->if` builds the book's chain of `if`s: a
-// bodyless clause's consequent is its own test, an `else` clause becomes
-// its sequence, and a missing `else` ends the chain in the false literal,
-// which is why `(cond ((= 1 2)))` answers `#f`. `let->combination` builds
-// the lambda over the binding names and applies it to the binding
-// initializers in one expression.
+// Original exercise
+//
+// Chapter 5, exercise 5.23: derived expressions via transformer
+// operations. The exercise's suggestion -- the syntax transformers
+// available as machine operations -- is realized as pure passes over the
+// checked syntax: the guard form of `when` becomes the book's chain of
+// `if`s, and `?:` becomes an explicit null test. The engine's
+// `ev-structural` evaluates the derived forms directly, so the exercise's
+// observable is the agreement of transform-then-run with the direct run
+// of the same session.
 
 package sicp.ch5.solutions
 
-import arrow.core.raise.Raise
-import arrow.core.raise.either
-import sicp.ch5.EvaluatorFault
-import sicp.ch5.MachineError
-import sicp.ch5.Op
-import sicp.ch5.applicationDispatchTest
-import sicp.ch5.evalDispatchTests
-import sicp.ch5.evaluatorControllerFragments
-import sicp.ch5.listItems
-import sicp.ch5.makeEvaluator
-import sicp.ch5.opCond
-import sicp.ch5.opSrc
-import sicp.ch5.reg
-import sicp.ch5.unknownExpressionTypeGoto
-import sicp.runtime.Assign
-import sicp.runtime.Branch
-import sicp.runtime.Goto
-import sicp.runtime.GotoTarget
-import sicp.runtime.Label
-import sicp.runtime.Stmt
-import sicp.runtime.Test
-import sicp.runtime.VBool
-import sicp.runtime.VPair
-import sicp.runtime.VSym
-import sicp.runtime.Value
-import sicp.runtime.cons
-import sicp.runtime.vlist
+import sicp.ch4.Direct
+import sicp.ch5.ExplicitControl
+import sicp.guest.Admission
+import sicp.guest.Assignment
+import sicp.guest.Binary
+import sicp.guest.Block
+import sicp.guest.Break
+import sicp.guest.Call
+import sicp.guest.CallableReference
+import sicp.guest.CheckedProgram
+import sicp.guest.Continue
+import sicp.guest.Destructure
+import sicp.guest.Elvis
+import sicp.guest.Expression
+import sicp.guest.ExpressionStatement
+import sicp.guest.For
+import sicp.guest.FunctionDecl
+import sicp.guest.If
+import sicp.guest.Index
+import sicp.guest.Is
+import sicp.guest.Lambda
+import sicp.guest.Literal
+import sicp.guest.LiteralKind
+import sicp.guest.LocalProperty
+import sicp.guest.Member
+import sicp.guest.Mode
+import sicp.guest.Name
+import sicp.guest.Return
+import sicp.guest.StringTemplate
+import sicp.guest.This
+import sicp.guest.Unary
+import sicp.guest.When
+import sicp.guest.While
 
-private val derivedDispatchTests: List<Stmt> =
-    listOf(
-        Test(opCond("cond?", reg("exp"))),
-        Branch("ev-cond"),
-        Test(opCond("let?", reg("exp"))),
-        Branch("ev-let"),
+/** `?:` becomes an explicit null test: `left ?: right` is `if (left ==
+ *  null) right else left`. The session's left operands are pure, so this
+ *  simple form is observationally the block binding the general form
+ *  uses. */
+public fun elvisToTest(elvis: Elvis): Expression =
+    If(
+        Binary(elvis.left, "==", Literal("null", LiteralKind.NULL, elvis.span), elvis.span),
+        elvis.right,
+        elvis.left,
+        elvis.span,
     )
 
-private val derivedEntries: List<Stmt> =
-    listOf(
-        Label("ev-cond"),
-        Assign("exp", opSrc("cond->if", reg("exp"))),
-        Goto(GotoTarget.Lbl("eval-dispatch")),
-        Label("ev-let"),
-        Assign("exp", opSrc("let->combination", reg("exp"))),
-        Goto(GotoTarget.Lbl("eval-dispatch")),
+/** The guard form of `when` becomes the book's chain of `if`s: each
+ *  Boolean branch's body sits in the consequent, the next branch in the
+ *  alternative, and a missing `else` ends the chain in `false`. */
+public fun whenToIf(expression: When): Expression {
+    if (expression.subject != null) {
+        error("this exercise's transformer covers the guard form of when")
+    }
+    return guardChain(expression, expression.branches.map { it.pattern to it.body }, expression.otherwise)
+}
+
+private fun guardChain(
+    at: When,
+    branches: List<Pair<Expression?, Expression>>,
+    otherwise: Expression?,
+): Expression {
+    val head = branches.firstOrNull() ?: return otherwise ?: Literal("false", LiteralKind.BOOLEAN, at.span)
+    val (pattern, body) = head
+    val test = pattern ?: error("a guard branch needs its Boolean test")
+    return If(
+        derivedToCore(test),
+        derivedToCore(body),
+        guardChain(at, branches.drop(1), otherwise),
+        at.span,
     )
+}
 
-/** The exercise's controller: the base fragments with the dispatch
- *  replaced and the transformer entries appended ahead of the errors. */
-private val derivedController: List<Stmt> =
-    evaluatorControllerFragments.flatMap { (name, stmts) ->
-        when (name) {
-            "eval-dispatch" -> {
-                listOf(Label("eval-dispatch")) + evalDispatchTests + derivedDispatchTests +
-                    applicationDispatchTest + unknownExpressionTypeGoto
-            }
+/** The derived expressions rewritten to core forms throughout
+ *  [expression]: the two transformers applied bottom-up through the
+ *  expression forms the section's programs use. */
+public fun derivedToCore(expression: Expression): Expression =
+    when (expression) {
+        is When -> {
+            whenToIf(expression)
+        }
 
-            "errors" -> {
-                derivedEntries + stmts
-            }
+        is Elvis -> {
+            derivedToCore(elvisToTest(expression))
+        }
 
-            else -> {
-                stmts
-            }
+        is If -> {
+            If(
+                derivedToCore(expression.condition),
+                derivedToCore(expression.yes),
+                expression.no?.let { derivedToCore(it) },
+                expression.span,
+            )
+        }
+
+        is Binary -> {
+            Binary(derivedToCore(expression.left), expression.operator, derivedToCore(expression.right), expression.span)
+        }
+
+        is Unary -> {
+            Unary(expression.operator, derivedToCore(expression.operand), expression.span)
+        }
+
+        is Block -> {
+            Block(expression.statements.map { statementToCore(it) }, expression.span)
+        }
+
+        is Return -> {
+            Return(expression.value?.let { derivedToCore(it) }, expression.span)
+        }
+
+        else -> {
+            expression
         }
     }
 
-private fun isHead(
-    w: Value,
-    name: String,
-): Boolean = w is VPair && w.car is VSym && (w.car as VSym).name == name
+private fun statementToCore(statement: sicp.guest.Statement): sicp.guest.Statement =
+    when (statement) {
+        is Return -> {
+            statement.copy(value = statement.value?.let { derivedToCore(it) })
+        }
 
-/** [sequenceOf]: one expression is itself, several are a `begin`. */
-private fun sequenceOf(body: List<Value>): Value = if (body.size == 1) body[0] else cons(VSym("begin"), vlist(body))
+        is ExpressionStatement -> {
+            statement.copy(expression = derivedToCore(statement.expression))
+        }
 
-/** The book's `cond->if` over the raw clause list. */
-private fun Raise<MachineError>.condToIf(clauses: List<Value>): Value {
-    if (clauses.isEmpty()) return VBool(false)
-    val clause = clauses.first()
-    if (isHead(clause, "else")) return sequenceOf(listItems("cond->if", clause).drop(1))
-    val parts = listItems("cond->if", clause)
-    val rest = condToIf(clauses.drop(1))
-    val consequent =
-        if (parts.size == 1) parts[0] else sequenceOf(parts.drop(1))
-    return cons(VSym("if"), vlist(listOf(parts[0], consequent, rest)))
-}
+        is LocalProperty -> {
+            statement.copy(initializer = derivedToCore(statement.initializer))
+        }
 
-/** The book's `let->combination`: the body as a lambda over the binding
- *  names, applied to the binding initializers. */
-private fun Raise<MachineError>.letToCombination(w: Value): Value {
-    val parts = listItems("let->combination", w)
-    val bindings = listItems("let->combination", parts[1]).map { listItems("let->combination", it) }
-    val names = bindings.map { it[0] }
-    val inits = bindings.map { it[1] }
-    val lambda = cons(VSym("lambda"), cons(vlist(names), vlist(parts.drop(2))))
-    return cons(lambda, vlist(inits))
-}
+        is Destructure -> {
+            statement.copy(initializer = derivedToCore(statement.initializer))
+        }
 
-private fun oneWord(
-    name: String,
-    f: Raise<MachineError>.(Value) -> Value,
-): Op =
-    { args ->
-        if (args.size != 1) raise(EvaluatorFault("$name needs one argument"))
-        f(args[0])
+        is Assignment -> {
+            statement.copy(target = derivedToCore(statement.target), value = derivedToCore(statement.value))
+        }
+
+        is While -> {
+            statement.copy(condition = derivedToCore(statement.condition), body = derivedToCore(statement.body) as Block)
+        }
+
+        is For -> {
+            statement.copy(
+                iterable = derivedToCore(statement.iterable),
+                end = statement.end?.let { derivedToCore(it) },
+                body = derivedToCore(statement.body) as Block,
+            )
+        }
+
+        is FunctionDecl -> {
+            statement.copy(body = derivedToCore(statement.body))
+        }
+
+        is Break, is Continue -> {
+            statement
+        }
     }
 
-/** The exercise's operations: the two syntax tests and the two
- *  transformers. */
-private val derivedOperations: Map<String, Op> =
-    mapOf(
-        "cond?" to oneWord("cond?") { w -> VBool(isHead(w, "cond")) },
-        "let?" to oneWord("let?") { w -> VBool(isHead(w, "let")) },
-        "cond->if" to
-            oneWord("cond->if") { w ->
-                requireForm(w, "cond")
-                condToIf(listItems("cond->if", (w as VPair).cdr))
-            },
-        "let->combination" to
-            oneWord("let->combination") { w ->
-                requireForm(w, "let")
-                letToCombination(w)
-            },
-    )
+/** The shape of an expression, spans ignored: the transform's structural
+ *  contract reads this way. */
+public fun expressionShape(expression: Expression): String =
+    when (expression) {
+        is If -> "(if ${expressionShape(
+            expression.condition,
+        )} ${expressionShape(expression.yes)} ${expression.no?.let { expressionShape(it) } ?: "-"})"
 
-private fun Raise<MachineError>.requireForm(
-    w: Value,
-    name: String,
-) {
-    if (!isHead(w, name)) raise(EvaluatorFault("$name->combination needs a $name"))
-}
+        is Binary -> "(${expression.operator} ${expressionShape(expression.left)} ${expressionShape(expression.right)})"
 
-private val classifySource: String =
+        is Unary -> "(${expression.operator} ${expressionShape(expression.operand)})"
+
+        is Literal -> expression.text
+
+        is Name -> expression.text
+
+        is Block -> expression.statements.joinToString(" ", prefix = "(block ", postfix = ")") { statementShape(it) }
+
+        is Return -> "(return ${expression.value?.let { expressionShape(it) } ?: "-"})"
+
+        is When -> "(when ${expression.branches.joinToString(
+            " ",
+        ) { branch ->
+            "${branch.pattern?.let {
+                expressionShape(
+                    it,
+                )
+            } ?: "*"} ${expressionShape(branch.body)}"
+        }} ${expression.otherwise?.let { expressionShape(it) } ?: "-"})"
+
+        is Elvis -> "(?: ${expressionShape(expression.left)} ${expressionShape(expression.right)})"
+
+        is Is -> "(is ${expressionShape(expression.value)})"
+
+        is Call -> "(call)"
+
+        is Lambda -> "(lambda)"
+
+        is Member -> "(member ${expressionShape(expression.receiver)})"
+
+        is Index -> "(index ${expressionShape(expression.receiver)})"
+
+        is StringTemplate -> "(template)"
+
+        is CallableReference -> "(&${expression.name})"
+
+        is This -> "this"
+    }
+
+private fun statementShape(statement: sicp.guest.Statement): String =
+    when (statement) {
+        is Return -> expressionShape(statement)
+        is ExpressionStatement -> expressionShape(statement.expression)
+        is LocalProperty -> "(local ${statement.name} ${expressionShape(statement.initializer)})"
+        is Destructure -> "(destructure ${statement.names.joinToString(" ")} ${expressionShape(statement.initializer)})"
+        is Assignment -> "(assign ${expressionShape(statement.target)} ${expressionShape(statement.value)})"
+        is While -> "(while ${expressionShape(statement.condition)} ${expressionShape(statement.body)})"
+        is For -> "(for ${statement.name} ${expressionShape(statement.iterable)} ${expressionShape(statement.body)})"
+        is FunctionDecl -> "(fun ${statement.name} ${expressionShape(statement.body)})"
+        is Break -> "break"
+        is Continue -> "continue"
+    }
+
+/** The session in derived forms: a guard `when` and a `?:`. */
+private val derivedSessionSource: String =
     """
-    (define (classify n)
-      (cond ((= n 0) 'zero)
-            ((= n 1) 'one)
-            (else 'many)))
-    (classify 0)
-    (classify 1)
-    (classify 7)
-    (cond ((= 1 2)))
-    (let ((a 2) (b 3)) (* a b))
+    fun classify(n: Long): String {
+        return when {
+            n == 0L -> "zero"
+            n == 1L -> "one"
+            else -> "many"
+        }
+    }
+
+    fun label(value: String?): String {
+        return value ?: "missing"
+    }
+
+    fun main() {
+        println(classify(0L))
+        println(classify(1L))
+        println(classify(7L))
+        println(label(null))
+        println(label("six"))
+    }
     """.trimIndent()
 
-/** Runs the cond and let sessions through the extended evaluator: a
- *  three-clause classify with an `else`, a bodyless clause, and a `let`
- *  whose body multiplies `a` by `b`. */
+/** The same session in core forms only: the transform's expected output,
+ *  written out. */
+private val coreSessionSource: String =
+    """
+    fun classify(n: Long): String {
+        return if (n == 0L) "zero" else if (n == 1L) "one" else "many"
+    }
+
+    fun label(value: String?): String {
+        return if (value == null) "missing" else value
+    }
+
+    fun main() {
+        println(classify(0L))
+        println(classify(1L))
+        println(classify(7L))
+        println(label(null))
+        println(label("six"))
+    }
+    """.trimIndent()
+
+private fun admit(source: String): CheckedProgram =
+    Admission.admit(source, Mode.CORE).fold({ error -> error("the session did not admit: $error") }, { it })
+
+private fun bodyOf(
+    checked: CheckedProgram,
+    name: String,
+): Expression =
+    checked.syntax.declarations
+        .filterIsInstance<FunctionDecl>()
+        .firstOrNull { it.name == name }
+        ?.body
+        ?: error("the session has no $name")
+
+private fun outputOf(source: String): List<String> =
+    Direct
+        .run(source, Mode.CORE)
+        .fold({ error -> error("the session failed to run: $error") }, { it })
+        .output
+        .split("\n")
+        .filter { it.isNotEmpty() }
+
+/** The session through both engines beside the transformed core form:
+ *  the printed answers of the derived session, the structural verdict of
+ *  the transform against the written-out core program, and the
+ *  agreement verdict of the two engines on the same checked source. */
 public fun derivedExpressionRuns(): List<String> {
-    val evaluator =
-        either { makeEvaluator(classifySource, derivedController, derivedOperations) }.fold(
-            { e -> error("the derived-expression evaluator failed to build: $e") },
-            { it },
+    val derived = admit(derivedSessionSource)
+    val core = admit(coreSessionSource)
+    val structural = expressionShape(derivedToCore(bodyOf(derived, "classify"))) == expressionShape(bodyOf(core, "classify"))
+    val direct = outputOf(derivedSessionSource)
+    val machine =
+        ExplicitControl
+            .run(derived)
+            .output
+            .split("\n")
+            .filter { it.isNotEmpty() }
+    val coreOut = outputOf(coreSessionSource)
+    return direct +
+        listOf(
+            "transformed syntax matches the core program: $structural",
+            "direct and explicit-control runs agree: ${direct == machine && direct == coreOut}",
         )
-    evaluator.drive()
-    return evaluator.transcript
 }

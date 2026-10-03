@@ -45,9 +45,9 @@ export const appendBang = <A>(x: MList<A>, y: MList<A>): MList<A> => {
   return x;
 };
 
-/** The four printed shapes of the book's interaction, plus the
- * identity pin: what `z`, `(cdr x)`, `w`, and `(cdr x)` show after
- * each append, and whether the final pair of `x` now tails onto `y`
+/** The four printed shapes of the statement's interaction, plus the
+ * identity pin: what `z`, `cdr(x)`, `w`, and `cdr(x)` show after each
+ * append, and whether the final pair of `x` now tails onto `y`
  * itself. */
 export interface AppendDemo {
   readonly zAfterAppend: string;
@@ -57,9 +57,9 @@ export interface AppendDemo {
   readonly xTailIsY: boolean;
 }
 
-/** Runs the book's interaction over x = (a b), y = (c d): `z =
- * (append x y)`, inspect `(cdr x)`, then `w = (append! x y)` and
- * inspect again. */
+/** Runs the statement's interaction over x = `[a, b]`, y = `[c, d]`:
+ * `z = append(x, y)`, inspect `cdr(x)`, then `w = appendBang(x, y)`
+ * and inspect again. */
 export const appendDemo = (): AppendDemo => {
   const x = mlist("a", "b");
   const y = mlist("c", "d");

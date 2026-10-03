@@ -7,7 +7,7 @@ import { leafCount, listLength, printedForm } from "./ex_2_24.js";
 
 describe("exercise 2.24", () => {
   it("the printed form nests the inner lists", () => {
-    expect(printedForm()).toBe("(1 (2 (3 4)))");
+    expect(printedForm()).toBe("[1, [2, [3, 4]]]");
   });
 
   it("the outer list has two elements", () => {

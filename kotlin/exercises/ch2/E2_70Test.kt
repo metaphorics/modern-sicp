@@ -12,6 +12,6 @@ public class E2_70Test :
         test("Exercise 2.70: the rock-song lyrics need 84 Huffman bits against 108 fixed-length bits").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            ex_2_70() shouldBe (84 to 108)
+            ex_2_70() shouldBe Pair(84, 108)
         }
     })

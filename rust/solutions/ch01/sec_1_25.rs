@@ -6,20 +6,20 @@
 //! name.
 
 mod ex_1_25 {
-    use sicp_runtime::SchemeError;
+    use sicp_runtime::SicpError;
 
     /// `fast-expt`, checked: every multiplication can overflow `i128`,
     /// and the caller finds out instead of silently wrapping.
-    fn fast_expt_checked(b: i128, n: u64) -> Result<i128, SchemeError> {
+    fn fast_expt_checked(b: i128, n: u64) -> Result<i128, SicpError> {
         if n == 0 {
             return Ok(1);
         }
         if n.is_multiple_of(2) {
             let half = fast_expt_checked(b, n / 2)?;
-            half.checked_mul(half).ok_or(SchemeError::Overflow)
+            half.checked_mul(half).ok_or(SicpError::Overflow)
         } else {
             let rest = fast_expt_checked(b, n - 1)?;
-            b.checked_mul(rest).ok_or(SchemeError::Overflow)
+            b.checked_mul(rest).ok_or(SicpError::Overflow)
         }
     }
 

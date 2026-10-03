@@ -6,8 +6,8 @@ package sicp.ch3.exercises
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.core.test.Enabled
 import io.kotest.matchers.shouldBe
-import sicp.runtime.VInt
-import sicp.runtime.VSym
+import sicp.runtime.Symbol
+import sicp.runtime.Whole
 
 public class E3_25Test :
     FunSpec({
@@ -15,11 +15,11 @@ public class E3_25Test :
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
             val t = KeyListTable()
-            t.insert(listOf(VSym("a")), VInt(1))
-            t.insert(listOf(VSym("letters"), VSym("b")), VInt(98))
-            t.insert(listOf(VSym("math"), VSym("+"), VSym("int")), VInt(43))
-            t.lookup(listOf(VSym("letters"), VSym("b"))) shouldBe VInt(98)
-            t.lookup(listOf(VSym("math"), VSym("+"), VSym("int"))) shouldBe VInt(43)
-            t.lookup(listOf(VSym("a"))) shouldBe VInt(1)
+            t.insert(listOf(Symbol("a")), Whole(1))
+            t.insert(listOf(Symbol("letters"), Symbol("b")), Whole(98))
+            t.insert(listOf(Symbol("math"), Symbol("+"), Symbol("int")), Whole(43))
+            t.lookup(listOf(Symbol("letters"), Symbol("b"))) shouldBe Whole(98)
+            t.lookup(listOf(Symbol("math"), Symbol("+"), Symbol("int"))) shouldBe Whole(43)
+            t.lookup(listOf(Symbol("a"))) shouldBe Whole(1)
         }
     })

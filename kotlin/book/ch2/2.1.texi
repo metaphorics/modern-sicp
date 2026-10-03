@@ -109,10 +109,12 @@ We can express these rules as procedures:
 
 @example kotlin
 fun addRat(x: Rational, y: Rational): Rational =
-    makeRat(x.numer * y.denom + y.numer * x.denom, x.denom * y.denom)
+    makeRat(x.numer * y.denom + y.numer * x.denom,
+        x.denom * y.denom)
 
 fun subRat(x: Rational, y: Rational): Rational =
-    makeRat(x.numer * y.denom - y.numer * x.denom, x.denom * y.denom)
+    makeRat(x.numer * y.denom - y.numer * x.denom,
+        x.denom * y.denom)
 
 fun mulRat(x: Rational, y: Rational): Rational =
     makeRat(x.numer * y.numer, x.denom * y.denom)
@@ -136,8 +138,8 @@ To enable us to implement the concrete level of our data abstraction, Kotlin's
 standard library provides a compound structure called a @newterm{pair}, the
 type @code{Pair}, which can be constructed with @code{Pair(a, b)} or the infix
 form @code{a to b}.  Given a pair, we can extract the parts using the
-properties @code{first} and @code{second}, which play the role of Scheme's
-@code{car} and @code{cdr}.@footnote{Scheme's own names come from the original
+properties @code{first} and @code{second}, which play the roles the
+original book gives its own pair selectors.@footnote{Scheme's own names come from the original
 implementation of Lisp on the IBM 704, which had an addressing scheme that let
 one reference the ``address'' and ``decrement'' parts of a memory location:
 @code{car} stood for ``Contents of Address part of Register'' and @code{cdr}
@@ -205,8 +207,8 @@ fun makeRat(n: Long, d: Long): Rational = Rational(n, d)
 
 @noindent
 A data class's constructor arguments are already its named properties, so
-@code{numer} and @code{denom} need no separate selector bodies the way
-Scheme's @code{car} and @code{cdr} would; @code{x.numer} and @code{x.denom}
+@code{numer} and @code{denom} need no separate selector bodies the way the
+original book's selector procedures would; @code{x.numer} and @code{x.denom}
 are the selectors.
 
 @noindent
@@ -253,7 +255,7 @@ rational numbers to lowest terms.  We can remedy this by changing
 @ref{1.2.5} that produces the greatest common divisor of two integers, we can
 use @code{gcd} to reduce the numerator and the denominator to lowest terms
 before constructing the pair.  Kotlin cannot rebind the top-level name
-@code{makeRat} the way a second Scheme @code{define} would, so this edition
+@code{makeRat} the way a second definition in the original book would, so this edition
 names the reducing version @code{makeRatReduced}; every section and exercise
 from here on that says ``@code{makeRat}'' means this one:
 
@@ -347,7 +349,7 @@ barriers and connect the different levels.
 @image{../../text/original/figures/chap2/Fig2.1d,,125mm,Figure 2.1: Data-abstraction barriers in the rational-number package.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.1d.std,,125mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.1d.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.1:} Data-abstraction barriers in the rational-number package.}
@@ -376,9 +378,11 @@ typealias RationalPair = Pair<Long, Long>
 
 fun makeRatLazy(n: Long, d: Long): RationalPair = n to d
 
-fun numerLazy(x: RationalPair): Long = x.first / gcd(x.first, x.second)
+fun numerLazy(x: RationalPair): Long = x.first / gcd(x.first,
+    x.second)
 
-fun denomLazy(x: RationalPair): Long = x.second / gcd(x.first, x.second)
+fun denomLazy(x: RationalPair): Long = x.second / gcd(x.first,
+    x.second)
 @end example
 
 @noindent
@@ -537,7 +541,7 @@ valid implementation, and if we access pairs using only @code{cons},
 that uses ``real'' data structures.
 
 The point of exhibiting the procedural representation of pairs is not that our
-language works this way (Kotlin's own @code{Pair}, like Scheme's built-in
+language works this way (Kotlin's own @code{Pair}, like the original book's built-in
 pairs, is implemented directly, for efficiency reasons) but that it could work
 this way.  The procedural representation, although obscure, is a perfectly
 adequate way to represent pairs, since it fulfills the only conditions that
@@ -556,9 +560,14 @@ representation of pairs.  For this representation, verify that
 @code{y}.
 
 @example kotlin
-fun <T> consFn(x: T, y: T): ((T, T) -> T) -> T = @{ m -> m(x, y) @}
+fun <T> consFn(
+    x: T,
+    y: T,
+): ((T, T) -> T) -> T = @{ m -> m(x, y) @}
 
-fun <T> carFn(z: ((T, T) -> T) -> T): T = z @{ p, _ -> p @}
+fun <T> carFn(z: ((T,
+    T) -> T) -> T): T = z @{ p,
+    _ -> p @}
 @end example
 
 What is the corresponding definition of @code{cdrFn}? (Hint: To verify that this
@@ -596,7 +605,8 @@ typealias Church<T> = ((T) -> T) -> (T) -> T
 
 fun <T> churchZero(): Church<T> = @{ _ -> @{ x -> x @} @}
 
-fun <T> churchAddOne(n: Church<T>): Church<T> = @{ f -> @{ x -> f(n(f)(x)) @} @}
+fun <T> churchAddOne(n: Church<T>): Church<T> =
+    @{ f -> @{ x -> f(n(f)(x)) @} @}
 @end example
 
 This representation is known as @newterm{Church numerals}, after its inventor,
@@ -659,7 +669,10 @@ the two upper bounds:
 
 @example kotlin
 fun addInterval(x: Interval, y: Interval): Interval =
-    makeInterval(x.lowerBound + y.lowerBound, x.upperBound + y.upperBound)
+    makeInterval(
+        x.lowerBound + y.lowerBound,
+        x.upperBound + y.upperBound,
+    )
 @end example
 
 @noindent
@@ -674,7 +687,14 @@ fun mulInterval(x: Interval, y: Interval): Interval @{
     val p2 = x.lowerBound * y.upperBound
     val p3 = x.upperBound * y.lowerBound
     val p4 = x.upperBound * y.upperBound
-    return makeInterval(minOf(p1, p2, p3, p4), maxOf(p1, p2, p3, p4))
+    return makeInterval(minOf(p1,
+            p2,
+            p3,
+        p4),
+            maxOf(p1,
+            p2,
+            p3,
+        p4))
 @}
 @end example
 
@@ -685,7 +705,9 @@ the upper bound and the reciprocal of the lower bound, in that order.
 
 @example kotlin
 fun divInterval(x: Interval, y: Interval): Interval =
-    mulInterval(x, makeInterval(1.0 / y.upperBound, 1.0 / y.lowerBound))
+    mulInterval(x,
+            makeInterval(1.0 / y.upperBound,
+        1.0 / y.lowerBound))
 @end example
 
 @quotation
@@ -694,7 +716,10 @@ because she has not specified the implementation of the interval abstraction.
 Here is a definition of the interval constructor:
 
 @example kotlin
-fun makeInterval(a: Double, b: Double): Interval = Interval(a, b)
+fun makeInterval(
+    a: Double,
+    b: Double,
+): Interval = Interval(a, b)
 @end example
 
 Define selectors @code{lowerBound} and @code{upperBound} to complete the
@@ -745,11 +770,14 @@ example, he wants to work with intervals such as 3.5 @math{\pm} 0.15 rather than
 an alternate constructor and alternate selectors:
 
 @example kotlin
-fun makeCenterWidth(c: Double, w: Double): Interval = makeInterval(c - w, c + w)
+fun makeCenterWidth(c: Double, w: Double): Interval =
+    makeInterval(c - w, c + w)
 
-fun center(i: Interval): Double = (i.lowerBound + i.upperBound) / 2.0
+fun center(i: Interval): Double =
+    (i.lowerBound + i.upperBound) / 2.0
 
-fun width(i: Interval): Double = (i.upperBound - i.lowerBound) / 2.0
+fun width(i: Interval): Double =
+    (i.upperBound - i.lowerBound) / 2.0
 @end example
 
 @example kotlin
@@ -815,11 +843,20 @@ parallel-resistors formula differently:
 
 @example kotlin
 fun par1(r1: Interval, r2: Interval): Interval =
-    divInterval(mulInterval(r1, r2), addInterval(r1, r2))
+    divInterval(mulInterval(r1,
+        r2),
+            addInterval(r1,
+        r2))
 
 fun par2(r1: Interval, r2: Interval): Interval @{
     val one = makeInterval(1.0, 1.0)
-    return divInterval(one, addInterval(divInterval(one, r1), divInterval(one, r2)))
+    return divInterval(
+        one,
+        addInterval(
+            divInterval(one, r1),
+            divInterval(one, r2),
+        ),
+    )
 @}
 @end example
 

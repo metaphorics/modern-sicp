@@ -6,7 +6,7 @@ package sicp.ch0.examples
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 
-/** The tour listing of section 0.1: one definition, the book's `square`. */
+/** The section 0.1 tour: `square`. */
 public fun tourSquare(x: Long): Long = x * x
 
 /**

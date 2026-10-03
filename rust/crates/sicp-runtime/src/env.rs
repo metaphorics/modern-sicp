@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::error::SchemeError;
+use crate::error::SicpError;
 use crate::value::Value;
 
 /// One frame plus the frame it extends. Names bind `Value`s; the frame
@@ -54,9 +54,9 @@ impl Env {
     /// The book's `lookup-variable-value`: walks the chain outwards.
     ///
     /// # Errors
-    /// [`SchemeError::UnboundVariable`] when no frame on the chain binds
+    /// [`SicpError::UnboundVariable`] when no frame on the chain binds
     /// `name`.
-    pub fn lookup(&self, name: &str) -> Result<Value, SchemeError> {
+    pub fn lookup(&self, name: &str) -> Result<Value, SicpError> {
         let mut cursor = Some(self);
         while let Some(env) = cursor {
             if let Some(v) = env.frame.borrow().get(name) {
@@ -64,16 +64,16 @@ impl Env {
             }
             cursor = env.outer.as_deref();
         }
-        Err(SchemeError::UnboundVariable(name.to_owned()))
+        Err(SicpError::UnboundVariable(name.to_owned()))
     }
 
     /// The book's `set-variable-value!`: rebinds the nearest existing
     /// binding of `name` on the chain, without creating one.
     ///
     /// # Errors
-    /// [`SchemeError::UnboundVariable`] when no frame on the chain binds
+    /// [`SicpError::UnboundVariable`] when no frame on the chain binds
     /// `name` (the book's "Unbound variable -- SET!").
-    pub fn set(&self, name: &str, value: Value) -> Result<(), SchemeError> {
+    pub fn set(&self, name: &str, value: Value) -> Result<(), SicpError> {
         let mut cursor = Some(self);
         while let Some(env) = cursor {
             let mut frame = env.frame.borrow_mut();
@@ -83,14 +83,14 @@ impl Env {
             }
             cursor = env.outer.as_deref();
         }
-        Err(SchemeError::UnboundVariable(name.to_owned()))
+        Err(SicpError::UnboundVariable(name.to_owned()))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::Env;
-    use crate::error::SchemeError;
+    use crate::error::SicpError;
     use crate::value::Value;
 
     #[test]
@@ -135,10 +135,10 @@ mod tests {
         let global = Env::global();
         let frame = Env::child(&global);
         let e = frame.set("nope", Value::int(1)).expect_err("unbound");
-        assert!(matches!(e, SchemeError::UnboundVariable(_)));
+        assert!(matches!(e, SicpError::UnboundVariable(_)));
         assert!(matches!(
             frame.lookup("nope"),
-            Err(SchemeError::UnboundVariable(_))
+            Err(SicpError::UnboundVariable(_))
         ));
     }
 

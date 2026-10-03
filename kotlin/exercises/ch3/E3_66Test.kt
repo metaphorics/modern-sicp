@@ -44,7 +44,7 @@ public class E3_66Test :
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
             for (k in 1..16) {
-                positionOf(k.toLong() to k.toLong()) shouldBe (1L shl k) - 2
+                positionOf(k.toLong() to k.toLong()) shouldBe ((1L shl k) - 2)
             }
         }
 

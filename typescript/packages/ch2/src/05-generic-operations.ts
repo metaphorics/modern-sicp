@@ -6,6 +6,7 @@ import { none, type Option, some } from "./02-picture-language.js";
 import {
   attachTag,
   type ComplexPair,
+  formatNoMethodError,
   get as getIn,
   makeOpTable,
   type OpTable,
@@ -21,7 +22,7 @@ import {
  * An ordinary number: after exercise 2.78 the tower's base case is the
  * bare `bigint` itself, not a pair whose car is the tag.
  */
-export type SchemeNumber = bigint;
+export type TsNumber = bigint;
 
 /** The numerator-denominator pair behind a `rational` tag. */
 export type RatContents = readonly [bigint, bigint];
@@ -71,7 +72,7 @@ export type RationalFunction = Tagged<"rational", RatFnContents>;
 
 /** Every datum the system's packages produce. */
 export type ArithDatum =
-  | SchemeNumber
+  | TsNumber
   | Rational
   | Real
   | ComplexNumber
@@ -112,20 +113,19 @@ const noMethod = (op: string, tags: ReadonlyArray<string>): GenError => ({
 
 /** The book's error line for a table miss, rendered. */
 export const showNoMethod = (e: Extract<GenError, { _tag: "NoMethod" }>): string =>
-  `No method for these types: APPLY-GENERIC (${e.op} (${e.tags.join(" ")}))`;
+  formatNoMethodError(e.op, e.tags);
 
 /** The book's error line for a variable mismatch, rendered. */
 export const showNotSameVar = (e: Extract<GenError, { _tag: "NotSameVar" }>): string =>
-  `Polys not in same var: ${e.proc} (${e.left} ${e.right})`;
+  `Polys not in same var: ${e.proc}(${e.left}, ${e.right})`;
 
 /** Any system error, rendered the way the book prints it. */
 export const showError = (e: GenError): string =>
   e._tag === "NoMethod" ? showNoMethod(e) : showNotSameVar(e);
 
 /** The book's type-tag after 2.78: a bare number names itself
- * `scheme-number`; everything else carries its tag. */
-export const typeTagOf = (d: ArithDatum): string =>
-  typeof d === "bigint" ? "scheme-number" : d._tag;
+ * `ts-number`; everything else carries its tag. */
+export const typeTagOf = (d: ArithDatum): string => (typeof d === "bigint" ? "ts-number" : d._tag);
 
 /** The book's contents after 2.78: a bare number is its own contents. */
 export const contentsOf = (d: ArithDatum): ArithContents =>
@@ -152,8 +152,8 @@ export type ArithHandler =
   | { readonly _tag: "RepSelector"; readonly fn: (z: ComplexPair) => number }
   /** The complex-level selector of exercise 2.77: one tag down. */
   | { readonly _tag: "Selector"; readonly fn: (z: Rectangular | Polar) => Result<number, GenError> }
-  /** The scheme-number constructor. */
-  | { readonly _tag: "MakeNumber"; readonly fn: (n: bigint) => SchemeNumber }
+  /** The TypeScript-number constructor. */
+  | { readonly _tag: "MakeNumber"; readonly fn: (n: bigint) => TsNumber }
   /** The rational constructor. */
   | { readonly _tag: "MakeRational"; readonly fn: (n: bigint, d: bigint) => Rational }
   /** The representation-level complex constructor from real and
@@ -255,88 +255,92 @@ export const magnitude = (z: ArithDatum): Result<number, GenError> => selectorAt
 /** The generic angle. */
 export const angle = (z: ArithDatum): Result<number, GenError> => selectorAt("angle", z);
 
-/** Lifts a primitive bigint operation into a scheme-number entry. The
- * division truncates toward zero: the exactness boundary the edition's
- * number statements recall. */
+/** Exercise 2.78's ordinary number has no runtime wrapper. */
+export const attachTagTsNumber = (value: bigint): TsNumber => value;
+
+/** Exercise 2.79's ordinary-number equality. */
+export const equTsNumber = (left: TsNumber, right: TsNumber): boolean => left === right;
+
+/** Exercise 2.80's ordinary-number zero test. */
+export const isZeroTsNumber = (value: TsNumber): boolean => value === 0n;
+
+/** Lifts a primitive bigint operation into a TypeScript-number entry. The
+ * division truncates toward zero: the exactness boundary remains explicit. */
 const bigintOp = (name: string, f: (x: bigint, y: bigint) => bigint): ArithHandler =>
   op((args) => {
     const x = args[0];
     const y = args[1];
     if (typeof x !== "bigint" || typeof y !== "bigint") {
-      return err(noMethod(name, ["scheme-number", "scheme-number"]));
+      return err(noMethod(name, ["ts-number", "ts-number"]));
     }
     return ok(f(x, y));
   });
 
 /** Installs the ordinary-number package: the language's own arithmetic
- * under the `scheme-number` tag, exponentiation as in the 2.81
+ * under the `ts-number` tag, exponentiation as in the 2.81
  * discussion, and the constructor. */
-export const installSchemeNumberPackage = (): void => {
+export const installTsNumberPackage = (): void => {
   put(
     "add",
-    ["scheme-number", "scheme-number"],
+    ["ts-number", "ts-number"],
     bigintOp("add", (x, y) => x + y),
   );
   put(
     "sub",
-    ["scheme-number", "scheme-number"],
+    ["ts-number", "ts-number"],
     bigintOp("sub", (x, y) => x - y),
   );
   put(
     "mul",
-    ["scheme-number", "scheme-number"],
+    ["ts-number", "ts-number"],
     bigintOp("mul", (x, y) => x * y),
   );
   put(
     "div",
-    ["scheme-number", "scheme-number"],
+    ["ts-number", "ts-number"],
     bigintOp("div", (x, y) => x / y),
   );
   put(
     "exp",
-    ["scheme-number", "scheme-number"],
+    ["ts-number", "ts-number"],
     bigintOp("exp", (x, y) => x ** y),
   );
-  put(
-    "equ?",
-    ["scheme-number", "scheme-number"],
-    bigintPred("equ?", (x, y) => x === y),
-  );
-  put("=zero?", ["scheme-number"], zeroBigintPred());
-  put("make", ["scheme-number"], { _tag: "MakeNumber", fn: (n) => n });
+  put("equ?", ["ts-number", "ts-number"], bigintPred("equ?", equTsNumber));
+  put("=zero?", ["ts-number"], zeroBigintPred());
+  put("make", ["ts-number"], { _tag: "MakeNumber", fn: attachTagTsNumber });
 };
 
-/** Lifts a bigint predicate into a two-argument scheme-number entry. */
+/** Lifts a bigint predicate into a two-argument ts-number entry. */
 const bigintPred = (name: string, f: (x: bigint, y: bigint) => boolean): ArithHandler =>
   pred((args) => {
     const x = args[0];
     const y = args[1];
     if (typeof x !== "bigint" || typeof y !== "bigint") {
-      return err(noMethod(name, ["scheme-number", "scheme-number"]));
+      return err(noMethod(name, ["ts-number", "ts-number"]));
     }
     return ok(f(x, y));
   });
 
-/** The scheme-number =zero? entry. */
+/** The ts-number =zero? entry. */
 const zeroBigintPred = (): ArithHandler =>
   pred((args) => {
     const x = args[0];
     if (typeof x !== "bigint") {
-      return err(noMethod("=zero?", ["scheme-number"]));
+      return err(noMethod("=zero?", ["ts-number"]));
     }
-    return ok(x === 0n);
+    return ok(isZeroTsNumber(x));
   });
 
-/** The book's make-scheme-number: the (untagged, after 2.78) ordinary
+/** The book's make-ts-number: the (untagged, after 2.78) ordinary
  * number through the table's constructor. The entry is present because
  * the package is installed with the system; a missing entry is a
  * system inconsistency, the book's error on a get it cannot survive. */
-export const makeSchemeNumber = (n: bigint): SchemeNumber => {
-  const e = getIn(arithTable, "make", ["scheme-number"]);
+export const makeTsNumber = (n: bigint): TsNumber => {
+  const e = getIn(arithTable, "make", ["ts-number"]);
   if (e._tag === "Some" && e.value._tag === "MakeNumber") {
     return e.value.fn(n);
   }
-  throw new Error(showError(noMethod("make", ["scheme-number"])));
+  throw new Error("make: no constructor for ts-number");
 };
 
 /** Euclid's gcd over exact integers, on absolute values: the 1.2.5
@@ -678,7 +682,7 @@ export const makeComplexFromMagAng = (r: number, a: number): ComplexNumber => {
 /** Installs every 2.5.1 package, in dependency order: the system the
  * section's prose assumes whenever it evaluates an interaction. */
 export const installGenericArithmetic = (): void => {
-  installSchemeNumberPackage();
+  installTsNumberPackage();
   installRationalPackage();
   installRectangularPackage();
   installPolarPackage();
@@ -704,22 +708,26 @@ export const putCoercion = (from: string, to: string, fn: CoercionFn): void => {
 export const getCoercion = (from: string, to: string): Option<CoercionFn> =>
   getIn(coercionTable, from, [to]);
 
+/** The identity coercion for the ordinary-number representation. */
+export const tsNumberToTsNumber: CoercionFn = (value) =>
+  typeof value === "bigint"
+    ? ok(attachTagTsNumber(value))
+    : err(noMethod("ts-number->ts-number", [typeTagOf(value)]));
+
 /** The book's coercion from an ordinary number to a complex number with
  * that real part and zero imaginary part. */
-export const schemeNumberToComplex: CoercionFn = (n) => {
+export const tsNumberToComplex: CoercionFn = (n) => {
   const c = contentsOf(n);
   if (typeof c !== "bigint") {
-    return err(noMethod("scheme-number->complex", [typeTagOf(n)]));
+    return err(noMethod("ts-number->complex", [typeTagOf(n)]));
   }
   return ok(makeComplexFromRealImag(Number(c), 0));
 };
 
-// The book's put-coercion call: the coercion is in the table as the
-// section's interactions assume, like every constructor entry.
-putCoercion("scheme-number", "complex", schemeNumberToComplex);
-
+putCoercion("ts-number", "ts-number", tsNumberToTsNumber);
+putCoercion("ts-number", "complex", tsNumberToComplex);
 /** The book's explicit cross-type operation: complex plus ordinary. */
-export const addComplexToSchemenum = (
+export const addComplexToTsNumber = (
   z: ComplexNumber,
   x: bigint,
 ): Result<ComplexNumber, GenError> => {
@@ -751,7 +759,7 @@ export const applyGeneric = (
     const a2 = args[1];
     const type1 = tags[0] ?? "";
     const type2 = tags[1] ?? "";
-    if (a1 !== undefined && a2 !== undefined) {
+    if (a1 !== undefined && a2 !== undefined && type1 !== type2) {
       const t1toT2 = getCoercion(type1, type2);
       if (t1toT2._tag === "Some") {
         return bindGen(t1toT2.value(a1), (coerced) => applyGeneric(opName, coerced, a2));
@@ -902,7 +910,7 @@ const negateTerms = (l: TermList): Result<TermList, GenError> => {
     return ok(theEmptyTermList());
   }
   const t = firstTerm(l);
-  return bindGen(applyGeneric("mul", coeffOf(t), makeSchemeNumber(-1n)), (c) =>
+  return bindGen(applyGeneric("mul", coeffOf(t), makeTsNumber(-1n)), (c) =>
     mapGen(negateTerms(restTerms(l)), (rest) => adjoinTerm(makeTerm(orderOf(t), c), rest)),
   );
 };
@@ -950,13 +958,13 @@ const notSameVar = (proc: string, p1: Poly, p2: Poly): GenError => {
 export const addPoly = (p1: Poly, p2: Poly): Result<Poly, GenError> =>
   sameVariableQ(variableOf(p1), variableOf(p2))
     ? mapGen(addTerms(termListOf(p1), termListOf(p2)), (terms) => makePoly(variableOf(p1), terms))
-    : err(notSameVar("ADD-POLY", p1, p2));
+    : err(notSameVar("add", p1, p2));
 
 /** The book's mul-poly. */
 export const mulPoly = (p1: Poly, p2: Poly): Result<Poly, GenError> =>
   sameVariableQ(variableOf(p1), variableOf(p2))
     ? mapGen(mulTerms(termListOf(p1), termListOf(p2)), (terms) => makePoly(variableOf(p1), terms))
-    : err(notSameVar("MUL-POLY", p1, p2));
+    : err(notSameVar("mul", p1, p2));
 
 /** The book's div-terms, the 2.91 exercise's blank filled in: long
  * division on term lists, answering the quotient and the remainder. */
@@ -994,7 +1002,7 @@ export const divTerms = (
  * polys, in that order. */
 export const divPoly = (p1: Poly, p2: Poly): Result<readonly [Poly, Poly], GenError> => {
   if (!sameVariableQ(variableOf(p1), variableOf(p2))) {
-    return err(notSameVar("DIV-POLY", p1, p2));
+    return err(notSameVar("div", p1, p2));
   }
   return bindGen(divTerms(termListOf(p1), termListOf(p2)), (qr) => {
     const pair: readonly [Poly, Poly] = [
@@ -1082,7 +1090,7 @@ export const installPolynomialPackage = (): void => {
   );
   put(
     "greatest-common-divisor",
-    ["scheme-number", "scheme-number"],
+    ["ts-number", "ts-number"],
     bigintOp("greatest-common-divisor", gcdInteger),
   );
   put(
@@ -1120,12 +1128,11 @@ export const greatestCommonDivisor = (x: ArithDatum, y: ArithDatum): Result<Arit
 // The printed form: the book's list notation, one renderer for pins
 // ---------------------------------------------------------------------
 
-/** Renders a polynomial the way the book prints it. */
+/** Renders a polynomial in bracket-comma datum notation. */
 export const showPoly = (p: Poly): string =>
-  `(polynomial ${p.variable} ${p.terms.map((t) => `(${t[0]} ${showArithDatum(t[1])})`).join(" ")})`;
+  `[${["polynomial", p.variable, ...p.terms.map((term) => `[${term[0]}, ${showArithDatum(term[1])}]`)].join(", ")}]`;
 
-/** Renders any datum or inner tagged representation, plus the booleans
- * and coordinates some operations answer. */
+/** Renders any datum or inner tagged representation in bracket-comma notation. */
 export const showArithDatum = (v: ArithDatum | Rectangular | Polar | boolean | number): string => {
   if (typeof v === "bigint") {
     return v.toString();
@@ -1135,27 +1142,27 @@ export const showArithDatum = (v: ArithDatum | Rectangular | Polar | boolean | n
   }
   switch (v._tag) {
     case "rational": {
-      const c = v.contents;
-      return isRatContents(c)
-        ? `(rational ${c[0]} ${c[1]})`
-        : `(rational ${showArithDatum(c.numer)} ${showArithDatum(c.denom)})`;
+      const contents = v.contents;
+      return isRatContents(contents)
+        ? `[rational, ${contents[0]}, ${contents[1]}]`
+        : `[rational, ${showArithDatum(contents.numer)}, ${showArithDatum(contents.denom)}]`;
     }
     case "real":
-      return `(real ${v.contents})`;
+      return `[real, ${v.contents}]`;
     case "rectangular":
-      return `(rectangular ${v.contents[0]} ${v.contents[1]})`;
+      return `[rectangular, ${v.contents[0]}, ${v.contents[1]}]`;
     case "polar":
-      return `(polar ${v.contents[0]} ${v.contents[1]})`;
+      return `[polar, ${v.contents[0]}, ${v.contents[1]}]`;
     case "complex": {
       const inner = v.contents;
       return inner._tag === "rectangular"
-        ? `(complex rectangular ${inner.contents[0]} ${inner.contents[1]})`
-        : `(complex polar ${inner.contents[0]} ${inner.contents[1]})`;
+        ? `[complex, rectangular, ${inner.contents[0]}, ${inner.contents[1]}]`
+        : `[complex, polar, ${inner.contents[0]}, ${inner.contents[1]}]`;
     }
     case "polynomial":
       return showPoly(v.contents);
     case "quotient-remainder":
-      return `(quotient-remainder ${showPoly(v.contents[0])} ${showPoly(v.contents[1])})`;
+      return `[quotient-remainder, ${showPoly(v.contents[0])}, ${showPoly(v.contents[1])}]`;
   }
 };
 

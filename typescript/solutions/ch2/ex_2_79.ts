@@ -23,9 +23,9 @@ import {
  * the per-package predicates and the dispatch that ties them.
  */
 
-/** The scheme-number equ? entry: primitive equality on exact
+/** The ts-number equ? entry: primitive equality on exact
  * integers. */
-export const equSchemeNumber = (x: bigint, y: bigint): boolean => x === y;
+export const equTsNumber = (x: bigint, y: bigint): boolean => x === y;
 
 /** The rational equ? entry: the book's equal-rat?, cross-multiplied so
  * 1/2 equals 2/4. */
@@ -74,13 +74,8 @@ const isInnerRep = (c: ArithContents): c is Rectangular | Polar => {
 export const equ79 = (x: ArithDatum, y: ArithDatum): Result<boolean, GenError> => {
   const tx = typeTagOf(x);
   const ty = typeTagOf(y);
-  if (
-    tx === "scheme-number" &&
-    ty === "scheme-number" &&
-    typeof x === "bigint" &&
-    typeof y === "bigint"
-  ) {
-    return ok(equSchemeNumber(x, y));
+  if (tx === "ts-number" && ty === "ts-number" && typeof x === "bigint" && typeof y === "bigint") {
+    return ok(equTsNumber(x, y));
   }
   if (tx === "rational" && ty === "rational") {
     const cx = contentsOf(x);

@@ -1,249 +1,277 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-import type { Arg, Operation } from "../../packages/ch5/src/02-simulator.js";
+import type { Block, Expr, Stmt } from "../../packages/ch4/src/syntax/ast.ts";
+import type { Span } from "../../packages/ch4/src/syntax/diagnostics.ts";
 import {
   assign,
   branch,
-  type ControllerLine,
-  jump,
-  jumpReg,
-  lbl,
-  mark,
+  constant,
+  evaluatorController as evaluatorControllerOf525,
+  gotoLabel,
+  type MachineStatement,
+  makeEvaluator,
+  type Operation,
   op,
   perform,
-  reg,
+  register,
+  replaceSegment,
   restore,
   save,
   test,
-} from "../../packages/ch5/src/02-simulator.js";
-import {
-  evaluatorController,
-  isTaggedWord,
-  makeListWord,
-  makeTaggedWord,
-  makeVariantEvaluator,
-  nil,
-  type OperationsSpec,
-  replaceSegment,
-  type State,
   type Word,
-  wordItems,
-  wordOperation1,
-  wordOperation2,
-} from "../../packages/ch5/src/04-eceval.js";
+} from "../../packages/ch5/src/04-eceval.ts";
+import { mark } from "./ex_5_07.ts";
 
-interface ThunkPayload {
-  expression: Word;
-  environment: Word;
-  forced?: boolean;
-  value?: Word;
-}
+type EvaluatorStatement = MachineStatement<Word>;
 
-const thunkPayload = (w: Word): ThunkPayload => {
-  if (!isTaggedWord(w, "thunk")) throw new Error("expected a thunk word");
-  return w.payload as ThunkPayload;
-};
-const isUnforcedThunk = (w: Word): boolean =>
-  isTaggedWord(w, "thunk") && thunkPayload(w).forced !== true;
+const span: Span = { start: 0, end: 0, line: 1, column: 1 };
 
-// The lazy machine changes three regions of the base controller. The
-// argument loop thunks every operand without evaluating it, which is
-// the laziness and needs no register saves. The variable path forces a
-// thunked binding the first time the variable is read and memoizes by
-// storing the forced value over the binding with set-variable-value!.
-// primitive-apply forces any thunks left in argl before the primitive
-// sees them, one nested evaluation per pass, memoizing into the thunk
-// word in place.
-const lazyArgumentLoop: ControllerLine[] = [
-  save("continue"),
-  save("env"),
-  assign("unev", op("operands", reg("exp"))),
-  save("unev"),
-  assign("exp", op("operator", reg("exp"))),
-  assign("continue", lbl("ev-appl-did-operator")),
-  jump("eval-dispatch"),
-  mark("ev-appl-did-operator"),
-  restore("unev"),
-  restore("env"),
-  assign("argl", op("empty-arglist")),
-  assign("proc", reg("val")),
-  test("no-operands?", reg("unev")),
-  branch("apply-dispatch"),
-  save("proc"),
-  mark("ev-appl-operand-loop"),
-  test("no-operands?", reg("unev")),
-  branch("ev-appl-thunks-done"),
-  assign("exp", op("first-operand", reg("unev"))),
-  // The thunk construction rides inside adjoin-arg as a nested operation
-  // call; the assembler resolves nested sources, the Arg type cannot
-  // spell one.
-  assign("argl", op("adjoin-arg", op("make-thunk", reg("exp"), reg("env")) as Arg, reg("argl"))),
-  assign("unev", op("rest-operands", reg("unev"))),
-  jump("ev-appl-operand-loop"),
-  mark("ev-appl-thunks-done"),
-  restore("proc"),
-];
+const EXPRESSION_TAGS: ReadonlySet<string> = new Set([
+  "number",
+  "string",
+  "boolean",
+  "null",
+  "undefined",
+  "template",
+  "variable",
+  "array",
+  "object",
+  "unary",
+  "binary",
+  "logical",
+  "conditional",
+  "assign",
+  "arrow",
+  "call",
+  "member",
+  "index",
+  "new-error",
+  "new-map",
+  "new-set",
+]);
 
-const lazyVariable: ControllerLine[] = [
-  assign("val", op("lookup-variable-value", reg("exp"), reg("env"))),
-  test("thunk?", reg("val")),
-  branch("ev-variable-force"),
-  jumpReg("continue"),
-  mark("ev-variable-force"),
-  save("exp"),
-  save("env"),
-  save("continue"),
-  assign("exp", op("thunk-expression", reg("val"))),
-  assign("env", op("thunk-environment", reg("val"))),
-  assign("continue", lbl("ev-variable-after-force")),
-  jump("eval-dispatch"),
-  mark("ev-variable-after-force"),
-  restore("continue"),
-  restore("env"),
-  restore("exp"),
-  perform("set-variable-value!", reg("exp"), reg("val"), reg("env")),
-  jumpReg("continue"),
-];
+/** Narrow one machine word to the expression nodes of the shared AST. */
+const isExprWord = (word: Word): word is Expr =>
+  typeof word === "object" && word !== null && "tag" in word && EXPRESSION_TAGS.has(word.tag);
 
-const lazyPrimitiveApply: ControllerLine[] = [
-  test("thunked-args?", reg("argl")),
-  branch("primitive-apply-force"),
-  restore("continue"),
-  assign("val", op("apply-primitive-procedure", reg("proc"), reg("argl"))),
-  jumpReg("continue"),
-  mark("primitive-apply-force"),
-  save("proc"),
-  save("argl"),
-  save("unev"),
-  save("continue"),
-  assign("unev", op("first-unforced-thunk", reg("argl"))),
-  assign("exp", op("thunk-expression", reg("unev"))),
-  assign("env", op("thunk-environment", reg("unev"))),
-  assign("continue", lbl("primitive-apply-forced")),
-  jump("eval-dispatch"),
-  mark("primitive-apply-forced"),
-  restore("continue"),
-  restore("unev"),
-  restore("argl"),
-  restore("proc"),
-  perform("memoize-thunk-in-argl", reg("argl"), reg("val")),
-  jump("primitive-apply"),
-];
-
-export const lazyController: readonly ControllerLine[] = replaceSegment(
-  replaceSegment(
-    replaceSegment(evaluatorController, "ev-application", "apply-dispatch", lazyArgumentLoop),
-    "ev-variable",
-    "ev-quoted",
-    lazyVariable,
-  ),
-  "primitive-apply",
-  "compound-apply",
-  lazyPrimitiveApply,
-);
-
-export const makeLazyOperations = (
-  _state: State,
-  base: Record<string, Operation>,
-): Record<string, Operation> => {
-  const baseApply = (() => {
-    const entry = base["apply-primitive-procedure"];
-    if (!entry) throw new Error("the base table lacks apply-primitive-procedure");
-    return entry;
-  })();
+/** Exercise 5.25: the normal-order evaluator. The operand loop builds
+ * thunks instead of evaluating operands, and a variable read forces the
+ * thunk and remembers the value, so an argument is computed at most
+ * once however often it is used. The thunk is a marked zero-parameter
+ * procedure over the operand expression, so it travels the machine's
+ * own apply path; the marks and the memo live in the experiment's
+ * operations, never in the evaluator kernel. */
+export const makeNormalOrderOperations = (): {
+  operations: Readonly<Record<string, Operation<Word>>>;
+  forced: () => number;
+} => {
+  const thunks = new WeakSet<object>();
+  const memo = new WeakMap<object, Word>();
+  const pendingForces: Array<{ readonly thunk: object; readonly continuation: Word }> = [];
+  let forceCount = 0;
   return {
-    "make-thunk": wordOperation2("make-thunk", (expression, environment) =>
-      makeTaggedWord("thunk", { expression, environment }),
-    ),
-    "thunk?": wordOperation1("thunk?", isUnforcedThunk),
-    "thunk-expression": wordOperation1("thunk-expression", (w) => thunkPayload(w).expression),
-    "thunk-environment": wordOperation1("thunk-environment", (w) => thunkPayload(w).environment),
-    "thunked-args?": wordOperation1("thunked-args?", (w) => wordItems(w).some(isUnforcedThunk)),
-    "first-unforced-thunk": wordOperation1("first-unforced-thunk", (w) => {
-      const found = wordItems(w).find(isUnforcedThunk);
-      if (found === undefined) throw new Error("the argument list has no unforced thunk");
-      return found;
-    }),
-    "memoize-thunk-in-argl": wordOperation2("memoize-thunk-in-argl", (argl, value) => {
-      // val answers the first unforced thunk; when a previous pass or
-      // the variable path already cleaned argl, there is nothing to
-      // memoize.
-      const thunk = wordItems(argl).find(isUnforcedThunk);
-      if (thunk !== undefined) {
-        const payload = thunkPayload(thunk);
-        payload.forced = true;
-        payload.value = value;
-      }
-      return nil;
-    }),
-    // The primitive sees values, so each forced thunk unwraps before the
-    // base applicability checks run.
-    "apply-primitive-procedure": wordOperation2(
-      "apply-primitive-procedure",
-      (proc, args) =>
-        baseApply([
-          proc,
-          makeListWord(
-            wordItems(args).map((w) => {
-              const payload = thunkPayload(w);
-              return payload.forced === true ? (payload.value as Word) : w;
-            }),
-          ),
-        ]) as Word,
-    ),
+    forced: () => forceCount,
+    operations: {
+      thunkArrow: (args) => {
+        const expression = isExprWord(args[0]) ? args[0] : null;
+        const returnStmt: Stmt = { tag: "return", argument: expression, span };
+        const body: Block = { body: [returnStmt], span };
+        return { tag: "arrow", params: [], body, span };
+      },
+      markThunk: (args) => {
+        const value = args[0];
+        if (typeof value === "object" && value !== null) {
+          thunks.add(value);
+        }
+        return value;
+      },
+      isThunk: (args) => {
+        const value = args[0];
+        return typeof value === "object" && value !== null && thunks.has(value);
+      },
+      hasForced: (args) => {
+        const value = args[0];
+        return typeof value === "object" && value !== null && memo.has(value);
+      },
+      forcedValue: (args) => {
+        const value = args[0];
+        return typeof value === "object" && value !== null ? memo.get(value) : undefined;
+      },
+      beginForce: (args) => {
+        const thunk = args[0];
+        if (typeof thunk !== "object" || thunk === null) return undefined;
+        pendingForces.push({ thunk, continuation: args[1] });
+        forceCount += 1;
+        return undefined;
+      },
+      cachePending: (args) => {
+        const pending = pendingForces[pendingForces.length - 1];
+        if (pending === undefined) return undefined;
+        const value = args[0];
+        memo.set(pending.thunk, value);
+        return value;
+      },
+      restoreForceContinuation: () => {
+        const pending = pendingForces.pop();
+        if (pending === undefined)
+          throw new Error("normal-order force returned without a pending thunk");
+        return pending.continuation;
+      },
+    },
   };
 };
 
-export const lazyOperations: OperationsSpec = makeLazyOperations;
+/** The normal-order operand loop: each operand becomes a thunk over the
+ * operand expression and the current environment; nothing is evaluated
+ * before the call. */
+const thunkOperandLoop = (): readonly EvaluatorStatement[] => [
+  mark("ev-operand-loop"),
+  test("noOperands", register("unev")),
+  branch("continue-dispatch"),
+  assign("val", op("thunkArrow", op("firstOperand", register("unev")))),
+  assign(
+    "val",
+    op(
+      "makeProcedure",
+      op("lambdaParams", register("val")),
+      op("lambdaBody", register("val")),
+      register("env"),
+    ),
+  ),
+  perform("markThunk", register("val")),
+  assign("argl", op("adjoinArg", register("argl"), register("unev"), register("val"))),
+  assign("unev", op("restOperands", register("unev"))),
+  gotoLabel("ev-operand-loop"),
+];
 
-export const runLazy = (source: string): readonly string[] =>
-  makeVariantEvaluator(source, lazyController, lazyOperations).run();
+/** The force path spliced into variable lookup: a thunk is applied once
+ * and its value cached on the thunk itself. */
+const forceSegment = (): readonly EvaluatorStatement[] => [
+  mark("ef-force-thunk"),
+  test("hasForced", register("val")),
+  branch("ef-forced-cache"),
+  save("item"),
+  save("proc"),
+  save("argl"),
+  perform("beginForce", register("val"), register("continue")),
+  assign("proc", register("val")),
+  assign("argl", op("emptyArgList")),
+  assign("continue", constant({ tag: "symbol", name: "ef-forced" })),
+  save("continue"),
+  gotoLabel("apply-dispatch"),
+  mark("ef-forced-cache"),
+  assign("val", op("forcedValue", register("val"))),
+  gotoLabel("continue-dispatch"),
+  mark("ef-forced"),
+  perform("cachePending", register("val")),
+  assign("continue", op("restoreForceContinuation")),
+  gotoLabel("continue-dispatch"),
+];
 
-// The chapter 1.5 test: strict evaluation of (p) diverges; normal
-// order never touches it because the predicate selects x = 0.
-const testOrderProgram = `
-(define (p) (p))
-(define (test-order x y) (if (= x 0) 0 y))
-(test-order 0 (p))
-`;
+/** The normal-order controller: the operand loop is replaced by the
+ * thunking loop, and the variable path grows the force test. */
+const normalOrderStrictOutputLoop = (): readonly EvaluatorStatement[] => [
+  mark("normal-order-output-loop"),
+  test("noOperands", register("unev")),
+  branch("continue-dispatch"),
+  save("unev"),
+  save("continue"),
+  assign("expr", op("firstOperand", register("unev"))),
+  assign("continue", constant({ tag: "symbol", name: "normal-order-output-next" })),
+  gotoLabel("eval-form"),
+  mark("normal-order-output-next"),
+  restore("continue"),
+  restore("unev"),
+  test("isTransfer", register("transfer")),
+  branch("continue-dispatch"),
+  test("isErrorValue", register("val")),
+  branch("raise-error"),
+  assign("argl", op("adjoinArg", register("argl"), register("unev"), register("val"))),
+  assign("unev", op("restOperands", register("unev"))),
+  gotoLabel("normal-order-output-loop"),
+];
 
-// The unused argument: strict evaluation dies on (car (quote ()));
-// the lazy evaluator never forces it.
-const unusedArgumentProgram = `
-(define (always-42 x) 42)
-(always-42 (car (quote ())))
-`;
+const normalOrderBaseController: readonly EvaluatorStatement[] = replaceSegment(
+  replaceSegment(
+    replaceSegment(evaluatorControllerOf525, "ev-operand-loop", "ev-return", thunkOperandLoop()),
+    "ef-variable",
+    "ef-arrow",
+    [
+      mark("ef-variable"),
+      assign(
+        "val",
+        op("lookupVariableValue", op("variableName", register("expr")), register("env")),
+      ),
+      test("isErrorValue", register("val")),
+      branch("raise-error"),
+      test("isThunk", register("val")),
+      branch("ef-force-thunk"),
+      gotoLabel("continue-dispatch"),
+    ],
+  ),
+  "ev-output",
+  "ev-output-done",
+  [
+    mark("ev-output"),
+    save("item"),
+    save("argl"),
+    save("continue"),
+    assign("item", register("expr")),
+    assign("argl", op("emptyArgList")),
+    assign("unev", op("argExprs", register("item"))),
+    assign("continue", constant({ tag: "symbol", name: "ev-output-done" })),
+    gotoLabel("normal-order-output-loop"),
+  ],
+);
 
-// The memoization probe: the thunked (bump) must run once, so both
-// references of x see the same 1 and count stays 1.
-const memoizationProgram = `
-(define count 0)
-(define (bump) (set! count (+ count 1)) count)
-(define (use-twice x) (cons x x))
-(use-twice (bump))
-count
-`;
+export const normalOrderController: readonly EvaluatorStatement[] = replaceSegment(
+  normalOrderBaseController,
+  "done",
+  "done",
+  [...normalOrderStrictOutputLoop(), ...forceSegment()],
+);
 
-const factorialProgram = `
-(define (factorial n)
-  (if (= n 1) 1 (* (factorial (- n 1)) n)))
-(factorial 5)
-`;
-
-const valuesOf = (transcript: readonly string[]): string[] => {
-  const values: string[] = [];
-  for (let i = 0; i < transcript.length; i += 1) {
-    if (transcript[i] === ";;; EC-Eval value:") values.push(transcript[i + 1] as string);
-  }
-  return values;
+const runNormal = (program: string): readonly string[] => {
+  const { operations } = makeNormalOrderOperations();
+  const result = makeEvaluator(program, operations, normalOrderController).run();
+  return result.transcript;
 };
 
-export const lazyTestOrderValue = (): string =>
-  valuesOf(runLazy(testOrderProgram)).at(-1) as string;
-export const lazyUnusedArgumentValue = (): string =>
-  valuesOf(runLazy(unusedArgumentProgram)).at(-1) as string;
-export const lazyMemoizationValues = (): readonly string[] => valuesOf(runLazy(memoizationProgram));
-export const lazyFactorialValue = (): string =>
-  valuesOf(runLazy(factorialProgram)).at(-1) as string;
-export const ex_5_25 = lazyTestOrderValue;
+/** The chapter 1.5 test: strict evaluation of `p()` diverges; normal
+ * order never touches it because the predicate selects x = 0. */
+export const ex_5_25 = (): {
+  readonly normal: readonly string[];
+  readonly strictFault: string | null;
+} => {
+  const testOrder = [
+    "function p(): number { return p(); }",
+    "function testOrder(x: number, y: number) { return x === 0 ? 0 : y; }",
+    "console.log(testOrder(0, p()));",
+  ].join("\n");
+  const unused = [
+    "function always42(x: number) { return 42; }",
+    "console.log(always42(nope()));",
+  ].join("\n");
+  const memoization = [
+    "let count = 0;",
+    "function bump() { count = count + 1; return count; }",
+    "function useTwice(x: number) { return x + x; }",
+    "console.log(useTwice(bump()));",
+    "console.log(count);",
+  ].join("\n");
+  const factorial = [
+    "function factorial(n: number): number { return n === 1 ? 1 : factorial(n - 1) * n; }",
+    "console.log(factorial(5));",
+  ].join("\n");
+  const strict = makeEvaluator(testOrder).run();
+  return {
+    normal: [
+      ...runNormal(testOrder),
+      ...runNormal(unused),
+      ...runNormal(memoization),
+      ...runNormal(factorial),
+    ],
+    strictFault: strict.outcome.tag === "ok" ? null : JSON.stringify(strict.outcome.error),
+  };
+};

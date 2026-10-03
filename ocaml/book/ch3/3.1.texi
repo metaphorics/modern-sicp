@@ -129,11 +129,8 @@ result of subtracting @code{amount} from the cell's previous
 contents.@footnote{The value of @code{name := new_value} is always @code{()},
 the unit value, so @code{:=} is used only for its effect, never for a value.
 
-Scheme marks a mutating operation by a naming convention: a procedure that
-changes the value of a variable (or that changes a data structure, as we will
-see in @ref{3.3}) is given a name that ends with an exclamation point, matching
-the convention of designating predicates by names that end with a question
-mark.  OCaml carries no such naming convention; its type system marks the same
+OCaml needs no naming convention to mark mutation; its type system marks the
+same
 fact structurally instead, since only a @code{ref} cell's contents can be
 reassigned at all, and every @code{:=} expression has type @code{unit}.}
 
@@ -294,11 +291,12 @@ let make_account balance =
 Each call to @code{make_account} sets up a local scope with a ref cell
 @code{balance}.  Within this scope, @code{make_account} defines closures
 @code{deposit} and @code{withdraw} that access @code{balance}, and packages the
-two together in an @code{account} record instead of Scheme's
-message-dispatching @code{dispatch} procedure.  The record itself, rather than
+two together in an @code{account} record instead of the original's
+message-dispatching procedure.  The record itself, rather than
 a procedure that answers a quoted message, is returned as the value that
 represents the bank-account object; @code{acc.withdraw} and @code{acc.deposit}
-replace Scheme's @code{(acc 'withdraw)} and @code{(acc 'deposit)}, projecting a
+take the place of sending the messages @code{withdraw} and @code{deposit} to
+the account, projecting a
 field instead of dispatching on a symbol.  Both fields still close over the
 very same @code{balance} cell, so the @newterm{message-passing} lesson of
 @ref{2.4.3} survives in a new shape: two field projections reaching one
@@ -466,7 +464,8 @@ let rand =
   let generator =
     match Sicp_common.Random.create random_init with
     | Ok generator -> generator
-    | Error Sicp_common.Error.Zero_seed -> failwith "the fixed seed is nonzero"
+    | Error Sicp_common.Error.Zero_seed ->
+      failwith "the fixed seed is nonzero"
   in
   fun () -> Sicp_common.Random.random generator bound
 ;;
@@ -498,10 +497,8 @@ arguments the number of times to try an experiment, together with the
 experiment, represented as a no-argument procedure that will return either true
 or false each time it is run.  @code{Monte_carlo} runs the experiment for the
 designated number of trials and returns the fraction of the trials in which the
-experiment was found to be true.  Scheme's body can name @code{cesaro-test}
-inside @code{estimate-pi} before @code{cesaro-test} itself is defined, because
-nothing calls @code{estimate-pi} until every top-level @code{define} in the
-file has already run; OCaml resolves each name where it is written, so this
+experiment was found to be true.  OCaml resolves each name where it is written,
+so this
 edition states @code{cesaro_test} and @code{monte_carlo} before
 @code{estimate_pi}, the order they appear in below:
 
@@ -542,7 +539,8 @@ let random_gcd_test trials generator =
   iter trials 0
 ;;
 
-let estimate_pi trials generator = sqrt (6.0 /. random_gcd_test trials generator)
+let estimate_pi trials generator =
+  sqrt (6.0 /. random_gcd_test trials generator)
 @end example
 
 @noindent
@@ -609,21 +607,22 @@ measuring the area of a unit circle.
 
 You will find it useful to have a procedure that returns a number chosen at
 random from a given range.  Following @ref{1.2.6}'s explicit-generator
-convention, @code{random_in_range} takes the generator as an argument:
+convention, @code{random_in_range} takes the generator as an argument and
+scales the generator's nonnegative @code{int} draw down to a fraction in
+@code{[0, 1)}, stretched across @code{[low, high)} by hand:@footnote{@code{Sicp_common.Random.random} only
+draws a nonnegative @code{int} below a positive bound.}
 
 @example ocaml
 let random_in_range generator low high =
   let range = high -. low in
   let scale = 1_000_000 in
-  let fraction = float_of_int (Sicp_common.Random.random generator scale) /. float_of_int scale in
+  let fraction =
+    float_of_int (Sicp_common.Random.random generator scale)
+    /. float_of_int scale
+  in
   low +. (range *. fraction)
 ;;
 @end example
-@footnote{@abbr{MIT} Scheme provides a @code{random} procedure that returns a
-decimal value directly when given one.  @code{Sicp_common.Random.random} only
-draws a nonnegative @code{int} below a positive bound, so
-@code{random_in_range} above scales such a draw down to a fraction in
-@code{[0, 1)} and stretches it across @code{[low, high)} by hand.}
 @end quotation
 
 @quotation
@@ -906,7 +905,9 @@ programs.  For example, recall the iterative factorial program from
 @example ocaml
 let factorial n =
   let rec iter product counter =
-    if counter > n then product else iter (counter * product) (counter + 1)
+    if counter > n
+    then product
+    else iter (counter * product) (counter + 1)
   in
   iter 1 1
 ;;

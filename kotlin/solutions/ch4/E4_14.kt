@@ -3,104 +3,96 @@
 
 package sicp.ch4.solutions
 
-import arrow.core.raise.Raise
-import arrow.core.raise.either
-import sicp.ch4.EvalStep
-import sicp.ch4.Evaluator
-import sicp.ch4.OutputSink
-import sicp.ch4.parseProgram
-import sicp.ch4.printValue
-import sicp.ch4.readProgram
-import sicp.ch4.setupEnvironment
-import sicp.runtime.DefineE
-import sicp.runtime.Env
-import sicp.runtime.Op
-import sicp.runtime.SchemeError
-import sicp.runtime.VPrimitive
-import sicp.runtime.Value
-import sicp.runtime.callPrimitive
-import sicp.runtime.listItems
-import sicp.runtime.vlist
+import sicp.ch4.Direct
 
-// Exercise 4.14: Louis Reasoner installs the host `map` as a primitive,
-// and his evaluator applies primitives plainly -- [LouisMap] routes every
-// [VPrimitive] through [callPrimitive], dropping the base evaluator's
-// `map`/`apply` interception. The consequence: [louisMapOp]'s handler can
-// only [callPrimitive] its procedure argument, and the argument is a
-// compound procedure, a [sicp.runtime.VProc], so the first element dies
-// with the typed `NotApplicable` fault. Eva Lu Ator defines `map` in the
-// object language instead; her `map` is a [sicp.runtime.VProc], the
-// evaluator applies compound procedures normally, and the same call
-// answers the mapped list.
+// Exercise 4.14: Louis installs a fixed-operation map -- a little
+// primitive table that knows `square` and nothing else -- so handing it
+// the compound procedure has nowhere to go: a closure value is not a
+// table entry, and the call fails. Eva defines `map` over values
+// instead: her applier takes the closure itself and routes through the
+// kernel application, so the same lambda maps the same list.
 
-/** Louis's map: the host list walk, calling the procedure argument as a
- * primitive call -- the only application a plain primitive can perform. */
-private val louisMapOp: Op =
-    { args ->
-        if (args.size != 2) raise(SchemeError.WrongArity("map", "2", args.size))
-        vlist(listItems(args[1]).map { callPrimitive(args[0], listOf(it)) })
-    }
+// Exercise 4.14: a table map cannot take a procedure; a value map can.
 
-/** Louis's evaluator: no special cases, every primitive applies as a
- * primitive, compound procedures apply as the base evaluator applies them. */
-public class LouisMap(
-    global: Env,
-) : Evaluator(global) {
-    context(r: Raise<SchemeError>)
-    override fun applyProcedure(
-        procedure: Value,
-        arguments: List<Value>,
-    ): EvalStep =
-        if (procedure is VPrimitive) {
-            EvalStep.Done(callPrimitive(procedure, arguments))
-        } else {
-            super.applyProcedure(procedure, arguments)
+/** Louis's map: the procedure is a table name, never a value. */
+internal val LOUIS_MAP_SOURCE: String =
+    """
+fun louisApply(name: String, arg: GValue): GValue? {
+    if (name == "square") {
+        if (arg is GNumV) {
+            return GNumV(arg.n * arg.n)
         }
+        return null
+    }
+    return null
 }
 
-/** The call both Louis and Eva run. */
-private const val MAP_CALL: String = "(map (lambda (x) (* x x)) '(1 2 3))"
-
-/** Eva's object-language definition of map, ahead of the same call. */
-private val EVA_PROGRAM: String =
-    """
-    (define (map p lst)
-      (if (null? lst)
-          '()
-          (cons (p (car lst)) (map p (cdr lst)))))
-    $MAP_CALL
+fun louisMap(name: String, items: List<GValue>, env: GFrame): GValue? {
+    var out: List<GValue> = emptyList()
+    var index = 0
+    while (index < items.size) {
+        val one = louisApply(name, items.get(index)) ?: return null
+        val single: List<GValue> = listOf(one)
+        out = out + single
+        index = index + 1
+    }
+    return GListV(out)
+}
     """.trimIndent()
 
-/** Runs [text] under the printer contract, building the environment with
- * [install] after setup and evaluating on [evaluatorFactory]'s evaluator. */
-private fun runOn(
-    evaluatorFactory: (Env) -> Evaluator,
-    text: String,
-    install: (Env) -> Unit = { },
-): String {
-    val sink = OutputSink()
-    val env = setupEnvironment(sink)
-    install(env)
-    val evaluator = evaluatorFactory(env)
-    either {
-        for (expr in parseProgram(readProgram(text))) {
-            if (expr is DefineE) {
-                evaluator.eval(expr, env) // a define prints nothing
-                continue
-            }
-            sink.line(printValue(evaluator.eval(expr, env)))
-        }
-    }.fold(
-        { e -> sink.line("Error: ${sicp.ch4.formatError(e)}") },
-        { },
-    )
-    return sink.toString()
+/** Eva's map: the procedure is a closure value applied by the kernel. */
+internal val EVA_MAP_SOURCE: String =
+    """
+fun evaApply(proc: GValue?, arg: GValue?): GValue? {
+    if (proc is GClosV) {
+        return gApply(proc, arg)
+    }
+    return null
 }
 
-/** Louis: the lambda is a compound procedure, and his map primitive can
- * only call primitives. => "Error: not a procedure: #[compound-procedure]\n" */
-public fun louisTranscript(): String = runOn(::LouisMap, MAP_CALL) { env -> env.define("map", VPrimitive("map", louisMapOp)) }
+fun evaMap(proc: GValue?, items: List<GValue>): GValue? {
+    var out: List<GValue> = emptyList()
+    var index = 0
+    while (index < items.size) {
+        val one = evaApply(proc, items.get(index)) ?: return null
+        val single: List<GValue> = listOf(one)
+        out = out + single
+        index = index + 1
+    }
+    return GListV(out)
+}
+    """.trimIndent()
 
-/** Eva: map defined in the object language applies the lambda normally.
- * => "(1 4 9)\n" */
-public fun evaTranscript(): String = runOn(::Evaluator, EVA_PROGRAM)
+/** Louis: the known name maps; the compound procedure has no entry.
+ * => "[1, 4, 9]\nerror\n" */
+public fun louisTranscript(): String =
+    outcomeText(
+        Direct.run(
+            KERNEL_SOURCE + "\n" + LOUIS_MAP_SOURCE + "\n" +
+                """
+fun main() {
+    val env = GFrame(mutableMapOf<String, GValue>(), null)
+    val items = listOf(GNumV(1L), GNumV(2L), GNumV(3L))
+    println(renderValue(louisMap("square", items, env)))
+    println(renderValue(louisMap("lambda", items, env)))
+}
+                """.trimIndent(),
+        ),
+    )
+
+/** Eva: the closure value maps through the kernel application.
+ * => "[1, 4, 9]\n" */
+public fun evaTranscript(): String =
+    outcomeText(
+        Direct.run(
+            KERNEL_SOURCE + "\n" + EVA_MAP_SOURCE + "\n" +
+                """
+fun main() {
+    val env = GFrame(mutableMapOf<String, GValue>(), null)
+    val square = gEval(GLam("x", GMul(GVar("x"), GVar("x"))), env)
+    val items = listOf(GNumV(1L), GNumV(2L), GNumV(3L))
+    println(renderValue(evaMap(square, items)))
+}
+                """.trimIndent(),
+        ),
+    )

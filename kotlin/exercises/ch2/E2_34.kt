@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.34: Evaluating a polynomial in x at a given value of x can be formulated
  * as an accumulation with Horner's rule, with the coefficients arranged
@@ -15,4 +13,4 @@ import sicp.runtime.PendingSolution
  *
  * The scaffold returns `hornerEval(2, listOf(1, 3, 0, 5, 0, 1))`.
  */
-public fun ex_2_34(): Long = throw PendingSolution()
+public fun ex_2_34(): Long = throw PendingExercise()

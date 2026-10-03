@@ -3,21 +3,19 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-import sicp.runtime.Value
+import sicp.runtime.Datum
 
 /**
- * Exercise 2.54 (Class A): implement `equal?` recursively over this
- * edition's sealed `Value` hierarchy, adapted from the book's statement
- * in terms of `eq?`, `car`, and `cdr`: two values are `myEqual` if they
- * are both symbols and `==`, both the empty list, or both pairs whose
- * cars are recursively `myEqual` and whose cdrs are recursively
- * `myEqual`.
+ * Exercise 2.54: implement structural equality for finite datum trees.
+ * Atomic values compare by their native contents; two pair cells compare
+ * when both fields compare recursively, and two tagged values compare when
+ * both the tag and the payload compare recursively. Pair-cell identity alone
+ * is not sufficient, and different nesting shapes must remain unequal.
  */
 public fun myEqual(
-    a: Value,
-    b: Value,
-): Boolean = throw PendingSolution()
+    a: Datum,
+    b: Datum,
+): Boolean = throw PendingExercise()
 
-/** `myEqual` applied to the book's two worked examples, in order. */
-public fun ex_2_54(): List<Boolean> = throw PendingSolution()
+/** Apply structural comparison to two equal-shape and unequal-shape samples. */
+public fun ex_2_54(): List<Boolean> = throw PendingExercise()

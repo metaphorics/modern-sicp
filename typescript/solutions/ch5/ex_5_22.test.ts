@@ -2,7 +2,7 @@
 // Original exercise
 
 import { describe, expect, it } from "vitest";
-import { appendIdentity, appendRuns } from "./ex_5_22.js";
+import { appendIdentity, appendRuns } from "./ex_5_22.ts";
 
 describe("exercise 5.22 append machines", () => {
   it("copies with append and splices in place with append!", () => {

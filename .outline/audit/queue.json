@@ -2226,8 +2226,9 @@
       "suggestion": "Capture mark = trail.len() before reference_bind (or pop until var's own trail entry inclusive) so the reference mirrors rollback_binding.",
       "confidence": "high",
       "falsePositive": false,
-      "status": "open",
-      "locationWeak": false
+      "status": "fixed",
+      "locationWeak": false,
+      "fixedBy": "ed93efa0 (resolve/pr9-codex-rust): reference_rollback_binding restores the variable entry, ChooseRange + ChooseFrom"
     },
     {
       "pass": "architecture",
@@ -3812,8 +3813,8 @@
   ],
   "counts": {
     "total": 123,
-    "open": 95,
-    "fixed": 20,
+    "open": 94,
+    "fixed": 21,
     "falsePositive": 8,
     "blockedByNoVerifier": 0,
     "openCriticalHigh": 0,
@@ -3866,5 +3867,5 @@
       "decision": "Surface.kt:802 dismissed as false-positive with evidence (member gates already restrict to Mutable*)"
     }
   ],
-  "updatedAt": "2026-10-03T10:20:00Z"
+  "updatedAt": "2026-10-03T10:35:00Z"
 }

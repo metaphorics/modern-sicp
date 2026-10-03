@@ -12,11 +12,11 @@ public class Parser(
 ) {
     private var index: Int = 0
 
-    private fun peek(): Token = tokens[index]
+    private fun peek(): Token = tokens.getOrElse(index) { tokens[tokens.size - 1] }
 
     private fun peekAt(k: Int): Token = tokens.getOrElse(index + k) { tokens[tokens.size - 1] }
 
-    private fun next(): Token = tokens[index++]
+    private fun next(): Token = tokens.getOrElse(index++) { tokens[tokens.size - 1] }
 
     private fun here(): Place = peek().span.start
 

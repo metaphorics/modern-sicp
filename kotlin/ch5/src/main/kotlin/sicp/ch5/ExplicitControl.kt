@@ -1247,7 +1247,7 @@ internal class EceOps(
                     one[0] = item
                     if (Primitives.truth(applyValue(callback, one, at), at)) output.add(item)
                 }
-                GValue.VList(output, false, asSet = receiver.asSet)
+                GValue.VList(output, false)
             }
 
             "fold" -> {

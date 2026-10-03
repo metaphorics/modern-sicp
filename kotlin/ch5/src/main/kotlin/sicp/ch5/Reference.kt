@@ -33,6 +33,7 @@ import sicp.guest.Mode
 import sicp.guest.NO_POSITION
 import sicp.guest.Name
 import sicp.guest.OutputSink
+import sicp.guest.Primitives
 import sicp.guest.Return
 import sicp.guest.Span
 import sicp.guest.Statement
@@ -1101,7 +1102,9 @@ private class ReferenceEvaluator(
         ) {
             return receiver.items.getOrElse(index.value) { throw RefFault(GuestError.IndexOutOfBounds(span)) }
         }
-        if (receiver is GValue.VMap) return receiver.entries[index] ?: GValue.VNull
+        if (receiver is GValue.VMap) {
+            return either<GuestError, GValue> { Primitives.readIndex(receiver, index, span) }.fold({ throw RefFault(it) }, { it })
+        }
         throw RefFault(GuestError.UnassignedRead(span))
     }
 
@@ -1112,7 +1115,7 @@ private class ReferenceEvaluator(
         span: Span,
     ) {
         if (receiver is GValue.VMap) {
-            receiver.entries[index] = value
+            either<GuestError, Unit> { Primitives.writeIndex(receiver, index, value, span) }.fold({ throw RefFault(it) }, { it })
             return
         }
         throw RefFault(GuestError.UnassignedRead(span))

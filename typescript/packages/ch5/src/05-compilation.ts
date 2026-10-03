@@ -242,8 +242,23 @@ export const compiledOperations = (
       if (env === null || env === undefined) {
         return errorWord({ tag: "unbound-name", name });
       }
-      env.bindings.set(name, makeCell(args[1] as Value, true));
+      const existing = env.bindings.get(name);
+      if (existing !== undefined) {
+        existing.value = args[1] as Value;
+        existing.initialized = true;
+      } else {
+        env.bindings.set(name, makeCell(args[1] as Value, true));
+      }
       return args[1];
+    },
+    "predeclare-variable": (args) => {
+      const name = typeof args[0] === "string" ? args[0] : "";
+      const env = args[2] as Env | null;
+      if (env === null || env === undefined) {
+        return errorWord({ tag: "unbound-name", name });
+      }
+      env.bindings.set(name, makeCell(undefined, false, args[1] === true));
+      return undefined;
     },
     "extend-environment": (args) => {
       const rawParams = args[0];
@@ -255,15 +270,22 @@ export const compiledOperations = (
       for (const [index, param] of params.entries()) {
         frame.bindings.set(String(param), makeCell(values[index] as Value, true));
       }
+      if (typeof args[3] === "string" && args[3] !== "") {
+        frame.bindings.set(
+          args[3],
+          makeCell(new ArrayValue(values.slice(params.length) as Value[]), true),
+        );
+      }
       return frame;
     },
     "make-procedure": (args) => {
       const entry = typeof args[0] === "string" ? args[0] : "";
       const rawParams = args[1];
       const params = Array.isArray(rawParams) ? rawParams.map((param) => String(param)) : [];
+      const rest = typeof args[3] === "string" && args[3] !== "" ? args[3] : null;
       const closure = new Closure(
         params,
-        null,
+        rest,
         { body: [], span: { start: 0, end: 0, line: 1, column: 1 } },
         args[2] as Env,
       );
@@ -271,6 +293,7 @@ export const compiledOperations = (
       return closure;
     },
     "procedure-parameters": (args) => paramsOf(args[0]) as Word,
+    "procedure-rest": (args) => (args[0] instanceof Closure ? (args[0].rest ?? "") : ""),
     "procedure-environment": (args) => (args[0] instanceof Closure ? args[0].env : undefined),
     "procedure-entry": (args) => {
       const entry = args[0] instanceof Closure ? (procedureEntries.get(args[0]) ?? "") : "";
@@ -318,12 +341,34 @@ export const compiledOperations = (
       ...(Array.isArray(args[1]) ? (args[1] as Value[]) : []),
       args[0] as Value,
     ],
+    "adjoin-spread": (args) => {
+      const collected = Array.isArray(args[1]) ? [...(args[1] as Value[])] : [];
+      const value = args[0];
+      if (!(value instanceof ArrayValue)) {
+        return errorWord({
+          tag: "bad-operand",
+          operator: "spread",
+          detail: "spread argument is not an array",
+        });
+      }
+      return [...collected, ...value.items];
+    },
     "is-error-value": (args) => args[0] instanceof MachineErrorValue,
     "error-value-message": (args) => (args[0] instanceof ErrorValue ? args[0].message : undefined),
     "throw-box": (args) =>
       args[0] instanceof MachineErrorValue
         ? ({ kind: "error", error: args[0].error } as Transfer)
         : ({ kind: "throw", value: args[0] as Value } as Transfer),
+    "pending-mark": (args) => ({ kind: args[0], value: args[1] }) as unknown as Word,
+    "pending-is": (args) =>
+      typeof args[0] === "object" &&
+      args[0] !== null &&
+      "kind" in args[0] &&
+      args[0].kind === args[1],
+    "pending-value": (args) =>
+      typeof args[0] === "object" && args[0] !== null && "value" in args[0]
+        ? (args[0].value as Word)
+        : undefined,
     "throw-pending": (args) => typeof args[0] === "object" && args[0] !== null && "kind" in args[0],
     "throw-error-pending": (args) =>
       typeof args[0] === "object" &&
@@ -389,6 +434,10 @@ export const compiledOperations = (
       const index = args[1];
       if (object instanceof ArrayValue && typeof index === "number") {
         return index >= 0 && index < object.items.length ? object.items[index] : undefined;
+      }
+      if (typeof object === "string" && typeof index === "number") {
+        const characters = [...object];
+        return index >= 0 && index < characters.length ? characters[index] : undefined;
       }
       return errorWord({ tag: "bad-operand", operator: "index", detail: String(index) });
     },
@@ -525,6 +574,7 @@ interface CompileContext {
     throwTarget: string | null;
     breakTarget: string | null;
     continueTarget: string | null;
+    returnTarget: string | null;
   };
 }
 
@@ -569,21 +619,56 @@ const binaryOperationName = (operator: string): string => {
 
 const compileOperandList = (args: ReadonlyArray<Arg>, context: CompileContext): CompileResult => {
   let collected = makeSequence(["val"], ["argl"], [assign("argl", op("empty-argl"))]);
+  const raiseLabel = makeLabel("operand-raise");
+  const doneLabel = makeLabel("operand-done");
+  let usedSpread = false;
   for (const arg of args) {
     const piece = compileExpression(arg.expr, "val", nextLinkage, context);
     if (isCompileError(piece)) {
       return piece;
     }
-    const join = makeSequence(
-      ["val", "argl"],
-      ["argl"],
-      [restore("argl"), assign("argl", op("adjoin-arg", register("val"), register("argl")))],
-    );
+    const join =
+      arg.kind === "spread"
+        ? makeSequence(
+            ["val", "argl"],
+            ["argl"],
+            [
+              restore("argl"),
+              assign("argl", op("adjoin-spread", register("val"), register("argl"))),
+              test("is-error-value", register("argl")),
+              branch(raiseLabel),
+            ],
+          )
+        : makeSequence(
+            ["val", "argl"],
+            ["argl"],
+            [restore("argl"), assign("argl", op("adjoin-arg", register("val"), register("argl")))],
+          );
+    usedSpread ||= arg.kind === "spread";
     collected = appendInstructionSequences(
       collected,
       makeSequence([], ["argl"], [save("argl")]),
       piece,
       join,
+    );
+  }
+  if (usedSpread) {
+    collected = appendInstructionSequences(
+      collected,
+      makeSequence(
+        ["argl"],
+        ["val", "thrown"],
+        [
+          gotoLabel(doneLabel),
+          { tag: "label", name: raiseLabel },
+          assign("val", register("argl")),
+          assign("thrown", op("throw-box", register("val"))),
+          context.labels.throwTarget === null
+            ? gotoRegister("continue")
+            : gotoLabel(context.labels.throwTarget),
+          { tag: "label", name: doneLabel },
+        ],
+      ),
     );
   }
   return collected;
@@ -963,36 +1048,54 @@ const compileConditional = (
   );
 };
 
-const compileLambda = (
-  params: Block extends never ? never : ReadonlyArray<{ kind: string; name: string }>,
+const compileLambdaParts = (
+  params: ReadonlyArray<{ kind: string; name: string }>,
   body: Block,
-  linkage: Linkage,
   context: CompileContext,
-): CompileResult => {
+): { readonly build: InstructionSequence; readonly bodySeq: InstructionSequence } | GuestError => {
   const entry = makeLabel("entry");
   const after = makeLabel("after-lambda");
   const compiledBody = compileSequence(body.body, returnLinkage, context);
   if (isCompileError(compiledBody)) {
     return compiledBody;
   }
-  const names = params.map((param) => param.name);
+  const names = params.filter((param) => param.kind !== "rest").map((param) => param.name);
+  const restName = params.find((param) => param.kind === "rest")?.name ?? "";
   const build = makeSequence(
     ["env"],
     ["val"],
     [
       assign(
         "val",
-        op("make-procedure", constant(entry), constant(names as Word), register("env")),
+        op(
+          "make-procedure",
+          constant(entry),
+          constant(names as Word),
+          register("env"),
+          constant(restName),
+        ),
       ),
     ],
   );
-  return appendInstructionSequences(
+  const bodySeq = appendInstructionSequences(
     makeSequence([], [], [gotoLabel(after), { tag: "label", name: entry }]),
     compiledBody,
     makeSequence([], [], [{ tag: "label", name: after }]),
-    build,
-    emitLinkage(linkage),
   );
+  return { build, bodySeq };
+};
+
+const compileLambda = (
+  params: Block extends never ? never : ReadonlyArray<{ kind: string; name: string }>,
+  body: Block,
+  linkage: Linkage,
+  context: CompileContext,
+): CompileResult => {
+  const parts = compileLambdaParts(params, body, context);
+  if (!("build" in parts)) {
+    return parts;
+  }
+  return appendInstructionSequences(parts.bodySeq, parts.build, emitLinkage(linkage));
 };
 
 const compileApplication = (
@@ -1062,15 +1165,16 @@ const compileApplication = (
           op("procedure-parameters", register("proc")),
           register("argl"),
           op("procedure-environment", register("proc")),
+          op("procedure-rest", register("proc")),
         ),
       ),
       assign("item", op("procedure-entry", register("proc"))),
       gotoRegister("item"),
       { tag: "label", name: raised },
       assign("thrown", op("throw-box", register("val"))),
-      test("throw-error-pending", register("thrown")),
-      branch("uncaught-throw"),
-      gotoLabel(context.labels.throwTarget ?? "uncaught-throw"),
+      context.labels.throwTarget === null
+        ? gotoRegister("continue")
+        : gotoLabel(context.labels.throwTarget),
       { tag: "label", name: afterCompound },
       restore("env"),
       restore("item"),
@@ -1090,9 +1194,9 @@ const compileApplication = (
       branch(pending),
       gotoLabel(resume),
       { tag: "label", name: pending },
-      test("throw-error-pending", register("thrown")),
-      branch("uncaught-throw"),
-      gotoLabel(context.labels.throwTarget ?? "uncaught-throw"),
+      context.labels.throwTarget === null
+        ? gotoRegister("continue")
+        : gotoLabel(context.labels.throwTarget),
       { tag: "label", name: resume },
     ],
   );
@@ -1115,8 +1219,66 @@ export const compileStatement = (
   switch (stmt.tag) {
     case "expr-stmt":
       return compileExpression(stmt.expr, "val", linkage, context);
-    case "block":
-      return compileSequence(stmt.body, linkage, context);
+    case "block": {
+      const outerBreak = context.labels.breakTarget;
+      const outerContinue = context.labels.continueTarget;
+      const outerThrow = context.labels.throwTarget;
+      const breakLabel = outerBreak === null ? null : makeLabel("block-break");
+      const continueLabel = outerContinue === null ? null : makeLabel("block-continue");
+      const throwLabel = outerThrow === null ? null : makeLabel("block-throw");
+      const inner = compileSequence(stmt.body, nextLinkage, {
+        ...context,
+        labels: {
+          throwTarget: throwLabel ?? outerThrow,
+          breakTarget: breakLabel ?? outerBreak,
+          continueTarget: continueLabel ?? outerContinue,
+          returnTarget: context.labels.returnTarget,
+        },
+      });
+      if (isCompileError(inner)) {
+        return inner;
+      }
+      const afterLabel = makeLabel("block-after");
+      return appendInstructionSequences(
+        makeSequence(
+          ["env"],
+          ["env"],
+          [assign("env", op("extend-environment", constant([]), constant([]), register("env")))],
+        ),
+        inner,
+        makeSequence(
+          ["env"],
+          ["env"],
+          [
+            assign("env", op("parent-environment", register("env"))),
+            gotoLabel(afterLabel),
+            ...(breakLabel === null || outerBreak === null
+              ? []
+              : [
+                  { tag: "label", name: breakLabel } as MachineStatement,
+                  assign("env", op("parent-environment", register("env"))),
+                  gotoLabel(outerBreak),
+                ]),
+            ...(continueLabel === null || outerContinue === null
+              ? []
+              : [
+                  { tag: "label", name: continueLabel } as MachineStatement,
+                  assign("env", op("parent-environment", register("env"))),
+                  gotoLabel(outerContinue),
+                ]),
+            ...(throwLabel === null || outerThrow === null
+              ? []
+              : [
+                  { tag: "label", name: throwLabel } as MachineStatement,
+                  assign("env", op("parent-environment", register("env"))),
+                  gotoLabel(outerThrow),
+                ]),
+            { tag: "label", name: afterLabel },
+          ],
+        ),
+        emitLinkage(linkage),
+      );
+    }
     case "var-decl":
     case "function-decl":
       return compileDeclaration(stmt, linkage, context);
@@ -1158,13 +1320,15 @@ export const compileStatement = (
     case "for-of":
       return compileForOf(stmt, linkage, context);
     case "return": {
+      const target = context.labels.returnTarget;
+      const retLinkage: Linkage = target === null ? returnLinkage : gotoLinkage(target);
       if (stmt.argument === null) {
         return appendInstructionSequences(
           makeSequence([], ["val"], [assign("val", constant(undefined))]),
-          emitLinkage(returnLinkage),
+          emitLinkage(retLinkage),
         );
       }
-      return compileExpression(stmt.argument, "val", returnLinkage, context);
+      return compileExpression(stmt.argument, "val", retLinkage, context);
     }
     case "throw": {
       const value = compileExpression(stmt.argument, "val", nextLinkage, context);
@@ -1203,22 +1367,36 @@ export const compileStatement = (
   }
 };
 
+const compileFunctionDeclaration = (
+  decl: Extract<Decl, { tag: "function-decl" }>,
+  context: CompileContext,
+): { readonly hoist: InstructionSequence; readonly atDecl: InstructionSequence } | GuestError => {
+  const parts = compileLambdaParts(decl.params, decl.body, context);
+  if (!("build" in parts)) {
+    return parts;
+  }
+  const define = makeSequence(
+    ["val", "env"],
+    ["val"],
+    [assign("val", op("define-variable", constant(decl.name), register("val"), register("env")))],
+  );
+  return {
+    hoist: appendInstructionSequences(parts.build, define),
+    atDecl: appendInstructionSequences(parts.bodySeq, parts.build, define),
+  };
+};
+
 const compileDeclaration = (
   decl: Decl,
   linkage: Linkage,
   context: CompileContext,
 ): CompileResult => {
   if (decl.tag === "function-decl") {
-    const lambda = compileLambda(decl.params, decl.body, nextLinkage, context);
-    if (isCompileError(lambda)) {
-      return lambda;
+    const compiled = compileFunctionDeclaration(decl, context);
+    if (!("hoist" in compiled)) {
+      return compiled;
     }
-    const define = makeSequence(
-      ["val", "env"],
-      ["val"],
-      [assign("val", op("define-variable", constant(decl.name), register("val"), register("env")))],
-    );
-    return withLinkage(appendInstructionSequences(lambda, define), linkage);
+    return withLinkage(compiled.atDecl, linkage);
   }
   if (decl.tag === "var-decl") {
     const init =
@@ -1238,27 +1416,76 @@ const compileDeclaration = (
   return compileError(`compiled/declaration/${decl.tag}`);
 };
 
+const compileHoists = (
+  items: ReadonlyArray<Decl | Stmt>,
+  context: CompileContext,
+):
+  | {
+      readonly hoists: ReadonlyArray<InstructionSequence>;
+      readonly atDecl: ReadonlyMap<Decl | Stmt, InstructionSequence>;
+    }
+  | GuestError => {
+  const hoists: InstructionSequence[] = [];
+  const atDecl = new Map<Decl | Stmt, InstructionSequence>();
+  for (const item of items) {
+    if (item.tag === "var-decl") {
+      hoists.push(
+        makeSequence(
+          ["env"],
+          [],
+          [
+            perform(
+              "predeclare-variable",
+              constant(item.name),
+              constant(item.kind === "let"),
+              register("env"),
+            ),
+          ],
+        ),
+      );
+    }
+    if (item.tag === "function-decl") {
+      const compiled = compileFunctionDeclaration(item, context);
+      if (!("hoist" in compiled)) {
+        return compiled;
+      }
+      hoists.push(compiled.hoist);
+      atDecl.set(item, compiled.atDecl);
+    }
+  }
+  return { hoists, atDecl };
+};
+
 const compileSequence = (
   items: ReadonlyArray<Decl | Stmt>,
   linkage: Linkage,
   context: CompileContext,
+  shared?: {
+    readonly hoists: ReadonlyArray<InstructionSequence>;
+    readonly atDecl: ReadonlyMap<Decl | Stmt, InstructionSequence>;
+  },
 ): CompileResult => {
   if (items.length === 0) {
     return withLinkage(makeSequence([], ["val"], [assign("val", constant(undefined))]), linkage);
   }
+  const hoisted = shared ?? compileHoists(items, context);
+  if (!("hoists" in hoisted)) {
+    return hoisted;
+  }
   const compiled: InstructionSequence[] = [];
   for (const [index, item] of items.entries()) {
-    const piece = compileStatement(
-      item,
-      index === items.length - 1 ? linkage : nextLinkage,
-      context,
-    );
+    const link = index === items.length - 1 ? linkage : nextLinkage;
+    const atDecl = hoisted.atDecl.get(item);
+    const piece =
+      atDecl !== undefined
+        ? appendInstructionSequences(atDecl, emitLinkage(link))
+        : compileStatement(item, link, context);
     if (isCompileError(piece)) {
       return piece;
     }
     compiled.push(piece);
   }
-  return appendInstructionSequences(...compiled);
+  return appendInstructionSequences(...(shared === undefined ? hoisted.hoists : []), ...compiled);
 };
 
 const compileWhile = (
@@ -1400,63 +1627,208 @@ const compileTry = (
   linkage: Linkage,
   context: CompileContext,
 ): CompileResult => {
-  const catchLabel = makeLabel("catch");
+  const outerBreak = context.labels.breakTarget;
+  const outerContinue = context.labels.continueTarget;
+  const outerThrow = context.labels.throwTarget;
+  const returnCapture = makeLabel("try-return");
+  const breakCapture = outerBreak === null ? null : makeLabel("try-break");
+  const continueCapture = outerContinue === null ? null : makeLabel("try-continue");
+  const throwCapture = makeLabel("try-throw");
+  const catchLabel = stmt.handler === null ? throwCapture : makeLabel("catch");
   const finallyLabel = makeLabel("finally");
+  const dispatchReturn = makeLabel("try-dispatch-return");
+  const dispatchBreak = breakCapture === null ? null : makeLabel("try-dispatch-break");
+  const dispatchContinue = continueCapture === null ? null : makeLabel("try-dispatch-continue");
+  const dispatchThrow = makeLabel("try-dispatch-throw");
+  const finBreak = outerBreak === null ? null : makeLabel("finally-break");
+  const finContinue = outerContinue === null ? null : makeLabel("finally-continue");
+  const finReturn = makeLabel("finally-return");
+  const finThrow = makeLabel("finally-throw");
   const endLabel = makeLabel("try-end");
+  const captures: typeof context.labels = {
+    throwTarget: throwCapture,
+    breakTarget: breakCapture,
+    continueTarget: continueCapture,
+    returnTarget: returnCapture,
+  };
   const body = compileSequence(stmt.block.body, gotoLinkage(finallyLabel), {
     ...context,
-    labels: {
-      ...context.labels,
-      throwTarget: stmt.handler === null ? context.labels.throwTarget : catchLabel,
-    },
+    labels: { ...captures, throwTarget: catchLabel },
   });
   if (isCompileError(body)) {
     return body;
   }
-  let handler: InstructionSequence = makeSequence([], [], []);
+  let handler: InstructionSequence = emptySequence;
   if (stmt.handler !== null) {
-    const handlerBody = compileSequence(stmt.handler.body.body, gotoLinkage(finallyLabel), context);
+    const handlerBody = compileSequence(stmt.handler.body.body, gotoLinkage(finallyLabel), {
+      ...context,
+      labels: captures,
+    });
     if (isCompileError(handlerBody)) {
       return handlerBody;
     }
-    const bind = makeSequence(
-      ["thrown"],
-      ["thrown", "env"],
-      [
-        { tag: "label", name: catchLabel },
-        assign("val", op("throw-value", register("thrown"))),
-        assign("thrown", op("throw-clear")),
-        assign(
-          "env",
-          op(
-            "extend-environment",
-            constant(stmt.handler.param ?? "__thrown"),
-            register("val"),
-            register("env"),
+    handler = appendInstructionSequences(
+      makeSequence(
+        ["thrown", "env", "val"],
+        ["thrown", "env", "val"],
+        [
+          { tag: "label", name: catchLabel },
+          test("throw-error-pending", register("thrown")),
+          branch(throwCapture),
+          assign("val", op("throw-value", register("thrown"))),
+          assign("thrown", op("throw-clear")),
+          assign(
+            "env",
+            op(
+              "extend-environment",
+              constant(stmt.handler.param ?? "__thrown"),
+              register("val"),
+              op("parent-environment", register("env")),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
+      handlerBody,
     );
-    const unbind = makeSequence(
-      ["env"],
-      ["env"],
-      [assign("env", op("parent-environment", register("env")))],
-    );
-    handler = appendInstructionSequences(bind, handlerBody, unbind);
   }
   const finalizer =
     stmt.finalizer === null
       ? emptySequence
-      : compileSequence(stmt.finalizer.body, gotoLinkage(endLabel), context);
+      : compileSequence(stmt.finalizer.body, nextLinkage, {
+          ...context,
+          labels: {
+            throwTarget: finThrow,
+            breakTarget: finBreak,
+            continueTarget: finContinue,
+            returnTarget: finReturn,
+          },
+        });
   if (isCompileError(finalizer)) {
     return finalizer;
   }
   return appendInstructionSequences(
+    makeSequence(
+      ["env", "continue", "pending"],
+      ["env", "continue", "pending"],
+      [
+        save("pending"),
+        save("env"),
+        assign("env", op("extend-environment", constant([]), constant([]), register("env"))),
+        save("continue"),
+        assign("continue", constant({ tag: "symbol", name: returnCapture })),
+        assign("pending", constant(undefined)),
+      ],
+    ),
     body,
+    makeSequence(
+      ["val", "pending"],
+      ["pending"],
+      [
+        { tag: "label", name: returnCapture },
+        assign("pending", op("pending-mark", constant("return"), register("val"))),
+        gotoLabel(finallyLabel),
+        ...(breakCapture === null
+          ? []
+          : [
+              { tag: "label", name: breakCapture } as MachineStatement,
+              assign("pending", op("pending-mark", constant("break"), constant(undefined))),
+              gotoLabel(finallyLabel),
+            ]),
+        ...(continueCapture === null
+          ? []
+          : [
+              { tag: "label", name: continueCapture } as MachineStatement,
+              assign("pending", op("pending-mark", constant("continue"), constant(undefined))),
+              gotoLabel(finallyLabel),
+            ]),
+        { tag: "label", name: throwCapture },
+        assign("pending", op("pending-mark", constant("throw"), constant(undefined))),
+        gotoLabel(finallyLabel),
+      ],
+    ),
     handler,
-    makeSequence([], [], [{ tag: "label", name: finallyLabel }]),
+    makeSequence(
+      ["env", "continue"],
+      ["env", "continue"],
+      [
+        { tag: "label", name: finallyLabel },
+        restore("continue"),
+        restore("env"),
+        assign("env", op("extend-environment", constant([]), constant([]), register("env"))),
+      ],
+    ),
     finalizer,
-    makeSequence([], [], [{ tag: "label", name: endLabel }, assign("val", constant(undefined))]),
+    makeSequence(
+      ["env", "pending", "thrown", "val", "continue"],
+      ["val", "env", "pending", "thrown"],
+      [
+        assign("env", op("parent-environment", register("env"))),
+        test("pending-is", register("pending"), constant("return")),
+        branch(dispatchReturn),
+        ...(dispatchBreak === null
+          ? []
+          : [test("pending-is", register("pending"), constant("break")), branch(dispatchBreak)]),
+        ...(dispatchContinue === null
+          ? []
+          : [
+              test("pending-is", register("pending"), constant("continue")),
+              branch(dispatchContinue),
+            ]),
+        test("pending-is", register("pending"), constant("throw")),
+        branch(dispatchThrow),
+        gotoLabel(endLabel),
+        { tag: "label", name: dispatchReturn },
+        assign("val", op("pending-value", register("pending"))),
+        restore("pending"),
+        gotoRegister("continue"),
+        ...(dispatchBreak === null || outerBreak === null
+          ? []
+          : [
+              { tag: "label", name: dispatchBreak } as MachineStatement,
+              restore("pending"),
+              gotoLabel(outerBreak),
+            ]),
+        ...(dispatchContinue === null || outerContinue === null
+          ? []
+          : [
+              { tag: "label", name: dispatchContinue } as MachineStatement,
+              restore("pending"),
+              gotoLabel(outerContinue),
+            ]),
+        { tag: "label", name: dispatchThrow },
+        restore("pending"),
+        test("throw-error-pending", register("thrown")),
+        branch("uncaught-throw"),
+        outerThrow === null ? gotoRegister("continue") : gotoLabel(outerThrow),
+        ...(finBreak === null || outerBreak === null
+          ? []
+          : [
+              { tag: "label", name: finBreak } as MachineStatement,
+              assign("env", op("parent-environment", register("env"))),
+              restore("pending"),
+              gotoLabel(outerBreak),
+            ]),
+        ...(finContinue === null || outerContinue === null
+          ? []
+          : [
+              { tag: "label", name: finContinue } as MachineStatement,
+              assign("env", op("parent-environment", register("env"))),
+              restore("pending"),
+              gotoLabel(outerContinue),
+            ]),
+        { tag: "label", name: finReturn },
+        assign("env", op("parent-environment", register("env"))),
+        restore("pending"),
+        gotoRegister("continue"),
+        { tag: "label", name: finThrow },
+        assign("env", op("parent-environment", register("env"))),
+        restore("pending"),
+        outerThrow === null ? gotoRegister("continue") : gotoLabel(outerThrow),
+        { tag: "label", name: endLabel },
+        restore("pending"),
+        assign("val", constant(undefined)),
+      ],
+    ),
     emitLinkage(linkage),
   );
 };
@@ -1471,12 +1843,27 @@ const compileSwitch = (
     return discriminant;
   }
   const endLabel = makeLabel("switch-end");
+  const throwLabel = makeLabel("switch-throw");
   const caseLabels = stmt.cases.map(() => makeLabel("case"));
+  const bodyLabels = stmt.cases.map(() => makeLabel("case-body"));
   const defaultLabel = makeLabel("default");
+  const defaultBodyLabel = makeLabel("default-body");
+  const inner: CompileContext = {
+    ...context,
+    labels: { ...context.labels, breakTarget: endLabel, throwTarget: throwLabel },
+  };
+  const allItems: Array<Decl | Stmt> = [
+    ...stmt.cases.flatMap((clause) => [...clause.body]),
+    ...(stmt.defaultBody ?? []),
+  ];
+  const shared = compileHoists(allItems, context);
+  if (!("hoists" in shared)) {
+    return shared;
+  }
   const toDiscriminant = makeSequence(["val"], ["item"], [assign("item", register("val"))]);
   const scan: InstructionSequence[] = [];
   for (const [index, clause] of stmt.cases.entries()) {
-    const testCode = compileExpression(clause.test, "val", nextLinkage, context);
+    const testCode = compileExpression(clause.test, "val", nextLinkage, inner);
     if (isCompileError(testCode)) {
       return testCode;
     }
@@ -1496,35 +1883,63 @@ const compileSwitch = (
     );
   }
   scan.push(makeSequence([], [], [gotoLabel(defaultLabel)]));
+  const scopeEnter = makeSequence(
+    ["env"],
+    ["env"],
+    [assign("env", op("extend-environment", constant([]), constant([]), register("env")))],
+  );
   const bodies: InstructionSequence[] = [];
   for (const [index, clause] of stmt.cases.entries()) {
-    const nextLabel = caseLabels[index + 1] ?? defaultLabel;
-    const body = compileSequence(clause.body, gotoLinkage(nextLabel), {
-      ...context,
-      labels: { ...context.labels, breakTarget: endLabel },
-    });
+    const nextLabel = bodyLabels[index + 1] ?? defaultBodyLabel;
+    const body = compileSequence(clause.body, gotoLinkage(nextLabel), inner, shared);
     if (isCompileError(body)) {
       return body;
     }
     bodies.push(
       makeSequence([], [], [{ tag: "label", name: caseLabels[index] ?? defaultLabel }]),
+      ...shared.hoists,
+      makeSequence([], [], [gotoLabel(bodyLabels[index] ?? defaultBodyLabel)]),
+      makeSequence([], [], [{ tag: "label", name: bodyLabels[index] ?? defaultBodyLabel }]),
       body,
     );
   }
-  const defaultBody = compileSequence(stmt.defaultBody ?? [], gotoLinkage(endLabel), {
-    ...context,
-    labels: { ...context.labels, breakTarget: endLabel },
-  });
+  const defaultBody = compileSequence(stmt.defaultBody ?? [], gotoLinkage(endLabel), inner, shared);
   if (isCompileError(defaultBody)) {
     return defaultBody;
   }
-  bodies.push(makeSequence([], [], [{ tag: "label", name: defaultLabel }]), defaultBody);
+  bodies.push(
+    makeSequence([], [], [{ tag: "label", name: defaultLabel }]),
+    ...shared.hoists,
+    makeSequence([], [], [gotoLabel(defaultBodyLabel)]),
+    makeSequence([], [], [{ tag: "label", name: defaultBodyLabel }]),
+    defaultBody,
+  );
   return appendInstructionSequences(
     discriminant,
     toDiscriminant,
+    scopeEnter,
     ...scan,
     ...bodies,
-    makeSequence([], [], [{ tag: "label", name: endLabel }, assign("val", constant(undefined))]),
+    makeSequence(
+      ["env"],
+      ["env"],
+      [
+        { tag: "label", name: throwLabel },
+        assign("env", op("parent-environment", register("env"))),
+        context.labels.throwTarget === null
+          ? gotoRegister("continue")
+          : gotoLabel(context.labels.throwTarget),
+      ],
+    ),
+    makeSequence(
+      ["env"],
+      ["env", "val"],
+      [
+        { tag: "label", name: endLabel },
+        assign("env", op("parent-environment", register("env"))),
+        assign("val", constant(undefined)),
+      ],
+    ),
     emitLinkage(linkage),
   );
 };
@@ -1541,20 +1956,22 @@ export const compileProgram = (
 ): CompiledProgram | GuestError => {
   const context: CompileContext = {
     output: [],
-    labels: { throwTarget: null, breakTarget: null, continueTarget: null },
+    labels: {
+      throwTarget: null,
+      breakTarget: null,
+      continueTarget: null,
+      returnTarget: null,
+    },
   };
-  const sequences: InstructionSequence[] = [];
-  for (const item of program) {
-    const compiled = compileStatement(item, nextLinkage, context);
-    if (isCompileError(compiled)) {
-      return compiled;
-    }
-    sequences.push(compiled);
+  const body = compileSequence(program, nextLinkage, context);
+  if (isCompileError(body)) {
+    return body;
   }
-  sequences.push(
+  const sequences: InstructionSequence[] = [
+    body,
     makeSequence([], [], [{ tag: "label", name: "uncaught-throw" }, gotoLabel("program-end")]),
-  );
-  sequences.push(makeSequence([], [], [{ tag: "label", name: "program-end" }]));
+    makeSequence([], [], [{ tag: "label", name: "program-end" }]),
+  ];
   const instructions = sequences.flatMap((sequence) => [...sequence.statements]);
   return { sequences, instructions };
 };
@@ -1578,7 +1995,7 @@ export const compileAndRun = (source: string, modules: LinkedModules = {}): RunR
   }
   const output: string[] = [];
   const machine: Machine<Word> = makeMachine<Word>({
-    registers: ["val", "env", "argl", "proc", "continue", "entry", "thrown", "item"],
+    registers: ["val", "env", "argl", "proc", "continue", "entry", "thrown", "item", "pending"],
     operations: compiledOperations(output),
     controller: compiled.instructions,
   });

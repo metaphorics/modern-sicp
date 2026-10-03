@@ -58,9 +58,9 @@ let timings () =
 let ex_4_24 () =
   let* direct, analyzed, analysis = timings () in
   Ok
-    [ Printf.sprintf "direct: %.6f s" direct
-    ; Printf.sprintf "analyzed execution: %.6f s" analyzed
-    ; Printf.sprintf "analysis alone: %.6f s" analysis
-    ; Printf.sprintf "direct / analyzed: %.6f" (direct /. Float.max analyzed Float.epsilon)
+    [ Printf.sprintf "direct: %.9f s" direct
+    ; Printf.sprintf "analyzed execution: %.9f s" analyzed
+    ; Printf.sprintf "analysis alone: %.9f s" analysis
+    ; Printf.sprintf "direct / analyzed: %.9f" (direct /. Float.max analyzed Float.epsilon)
     ]
 ;;

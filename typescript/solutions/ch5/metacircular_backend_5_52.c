@@ -79,6 +79,7 @@ struct Val {
         struct {
             void *entry;
             Val *params;
+            const char *rest;
             Env *env;
         } compiled;
         struct {
@@ -496,26 +497,57 @@ static Val *defineVariableValue(Val *var, Val *value, Val *env) {
     return value;
 }
 
-static Val *extendEnvironment(Val *params, Val *values, Val *base) {
-    if (params->tag != T_ARRAY && params->tag != T_LIST) {
-        Val **pitems = checked_malloc(sizeof *pitems);
-        pitems[0] = params;
-        params = make_seq(T_ARRAY, pitems, 1);
-        Val **vitems = checked_malloc(sizeof *vitems);
-        vitems[0] = values;
-        values = make_seq(T_ARRAY, vitems, 1);
-    } else if (values->tag != T_ARRAY && values->tag != T_LIST) {
+static Val *extendEnvironment(Val *params, Val *values, Val *base, Val *rest) {
+    if (params->tag == T_SYM || params->tag == T_STR) {
+        Val **items = checked_malloc(sizeof *items);
+        items[0] = params;
+        params = make_seq(T_ARRAY, items, 1);
+    } else if (params->tag != T_ARRAY && params->tag != T_LIST) {
+        params = make_seq(T_ARRAY, checked_malloc(sizeof(Val *)), 0);
+    }
+    /* A T_LIST word is the machine's argument list; a T_ARRAY word is a
+       guest array object and binds as one value. */
+    if (values->tag != T_LIST) {
         Val **items = checked_malloc(sizeof *items);
         items[0] = values;
         values = make_seq(T_ARRAY, items, 1);
     }
-    if (params->u.seq.len != values->u.seq.len) {
-        char message[128];
-        snprintf(message, sizeof message, "wrong number of arguments: %zu parameters, %zu values",
-                 params->u.seq.len, values->u.seq.len);
-        die(message);
+    size_t len = params->u.seq.len;
+    size_t bound = values->u.seq.len < len ? values->u.seq.len : len;
+    Val **names = checked_malloc((len + 1) * sizeof *names);
+    Val **vals = checked_malloc((len + 1) * sizeof *vals);
+    size_t count = len;
+    for (size_t i = 0; i < len; i += 1) {
+        names[i] = params->u.seq.items[i];
+        vals[i] = i < bound ? values->u.seq.items[i] : V_UNDEF;
     }
-    return env_word(make_env(params, values, env_of(base)));
+    if ((rest->tag == T_SYM || rest->tag == T_STR) && rest->u.text[0] != '\0') {
+        Val **leftover = checked_malloc((values->u.seq.len - bound + 1) * sizeof *leftover);
+        size_t rest_len = 0;
+        for (size_t i = len; i < values->u.seq.len; i += 1) {
+            leftover[rest_len] = values->u.seq.items[i];
+            rest_len += 1;
+        }
+        names[count] = rest;
+        vals[count] = make_seq(T_ARRAY, leftover, rest_len);
+        count += 1;
+    }
+    return env_word(make_env(make_seq(T_ARRAY, names, count),
+                             make_seq(T_ARRAY, vals, count),
+                             env_of(base)));
+}
+
+static Val *boundVariable(Val *name, Val *env) {
+    return make_bool(lookup_binding(env_of(env), name_of(name)) != NULL);
+}
+
+static void predeclareVariable(Val *name, Val *flag, Val *env) {
+    (void)flag;
+    defineVariableValue(name, V_UNDEF, env);
+}
+
+static Val *procedureRest(Val *proc) {
+    return make_str(proc->tag == T_COMPILED ? proc->u.compiled.rest : "");
 }
 
 static Val *makeProcedure(Val *params, Val *body, Val *env) {
@@ -526,10 +558,11 @@ static Val *makeProcedure(Val *params, Val *body, Val *env) {
     return value;
 }
 
-static Val *makeCompiledProcedure(void *entry, Val *params, Val *env) {
+static Val *makeCompiledProcedure(void *entry, Val *params, Val *env, Val *rest) {
     Val *value = new_value(T_COMPILED);
     value->u.compiled.entry = entry;
     value->u.compiled.params = params;
+    value->u.compiled.rest = rest->tag == T_STR || rest->tag == T_SYM ? rest->u.text : "";
     value->u.compiled.env = env_of(env);
     return value;
 }
@@ -590,6 +623,18 @@ static Val *adjoinArg(Val *value, Val *argl) {
     }
     items[len] = value;
     return make_seq(T_LIST, items, len + 1);
+}
+
+static Val *adjoinSpread(Val *spread, Val *argl) {
+    if (spread->tag != T_ARRAY && spread->tag != T_LIST) {
+        die("adjoin-spread on a non-sequence word");
+    }
+    size_t tail = argl->u.seq.len;
+    size_t head = spread->u.seq.len;
+    Val **items = checked_malloc((head + tail) * sizeof *items);
+    for (size_t i = 0; i < tail; i += 1) items[i] = argl->u.seq.items[i];
+    for (size_t i = 0; i < head; i += 1) items[tail + i] = spread->u.seq.items[i];
+    return make_seq(T_LIST, items, head + tail);
 }
 
 static Val *noArgs(Val *argl) { return make_bool(argl->u.seq.len == 0); }

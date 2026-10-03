@@ -575,7 +575,8 @@ export class Session {
       callee.tag === "member" &&
       callee.object.tag === "variable" &&
       callee.object.name === "console" &&
-      callee.name === "log"
+      callee.name === "log" &&
+      findCell(env, "console") === undefined
     ) {
       return this.emitOutput(args, env);
     }

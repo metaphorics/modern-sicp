@@ -43,11 +43,13 @@ const cString = (text: string): string =>
 
 const C_OPERATION_NAMES: Readonly<Record<string, string>> = {
   "adjoin-arg": "adjoinArg",
+  "adjoin-spread": "adjoinSpread",
   "apply-primitive-procedure": "applyProcedure",
   "array-index": "arrayIndex",
   "array-length": "arrayLength",
   "array-new": "arrayNew",
   "boolean-not": "booleanNot",
+  "bound-variable": "boundVariable",
   "define-variable": "defineVariableValue",
   "empty-argl": "emptyArgList",
   "error-new": "errorNew",
@@ -63,7 +65,9 @@ const C_OPERATION_NAMES: Readonly<Record<string, string>> = {
   "number-multiply": "numberMultiply",
   "number-subtract": "numberSubtract",
   "parent-environment": "parentEnvironment",
+  "predeclare-variable": "predeclareVariable",
   "print-value": "printValue",
+  "procedure-rest": "procedureRest",
   "procedure-environment": "compiledProcedureEnvironment",
   "procedure-entry": "procedureEntryWord",
   "procedure-parameters": "compiledProcedureParameters",
@@ -197,6 +201,16 @@ const mapEntries = (entries: unknown): ReadonlyArray<readonly [unknown, unknown]
   return result;
 };
 
+/** One operation call as C: the compiled op contract tolerates an
+ * omitted rest argument on extend-environment, so the call pads it
+ * with the empty name the compiled op would read. */
+const opCallC = (name: string, args: ReadonlyArray<Source<Word>>): string => {
+  if (name === "extend-environment" && args.length === 3) {
+    return `extendEnvironment(${args.map(sourceC).join(", ")}, make_str(""))`;
+  }
+  return `${cOperation(name)}(${args.map(sourceC).join(", ")})`;
+};
+
 /** One Source as a C expression: inputs first, then operation calls
  * with their arguments resolved recursively, the exchange contract's
  * nesting. */
@@ -230,9 +244,10 @@ const sourceC = (source: Source<Word>): string => {
     ) {
       throw new Error("a compiled C procedure needs its entry label, parameters, and environment");
     }
-    return `makeCompiledProcedure(&&${cIdent(entry.value)}, ${sourceC(params)}, ${sourceC(env)})`;
+    const rest = source.args[3];
+    return `makeCompiledProcedure(&&${cIdent(entry.value)}, ${sourceC(params)}, ${sourceC(env)}, ${rest === undefined ? 'make_str("")' : sourceC(rest)})`;
   }
-  return `${cOperation(source.operation)}(${source.args.map(sourceC).join(", ")})`;
+  return opCallC(source.operation, source.args);
 };
 
 /** One controller statement as C lines over the backend runtime. */
@@ -243,9 +258,7 @@ const statementC = (statement: CompiledProgram["instructions"][number]): string[
     case "assign":
       return [`R_${cIdent(statement.register)} = ${sourceC(statement.source)};`];
     case "test":
-      return [
-        `flag = ${cOperation(statement.operation)}(${statement.args.map(sourceC).join(", ")}) != V_FALSE;`,
-      ];
+      return [`flag = ${opCallC(statement.operation, statement.args)} != V_FALSE;`];
     case "branch":
       return [`if (flag) goto ${cIdent(statement.label)};`];
     case "goto-label":
@@ -257,9 +270,7 @@ const statementC = (statement: CompiledProgram["instructions"][number]): string[
     case "restore":
       return [`R_${cIdent(statement.register)} = pop_val();`];
     case "perform":
-      return [
-        `(void)${cOperation(statement.operation)}(${statement.args.map(sourceC).join(", ")});`,
-      ];
+      return [`(void)${opCallC(statement.operation, statement.args)};`];
   }
 };
 

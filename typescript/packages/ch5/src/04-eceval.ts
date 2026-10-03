@@ -1044,7 +1044,8 @@ const isConsoleCall: Operation<Word> = (args) => {
     callee.tag === "member" &&
     formOf((callee as unknown as { object: Expr }).object)?.tag === "variable" &&
     (callee as unknown as { object: { name: string } }).object.name === "console" &&
-    (callee as unknown as { name: string }).name === "log"
+    (callee as unknown as { name: string }).name === "log" &&
+    findCell(envOf(args[1]) ?? null, "console") === undefined
   );
 };
 
@@ -1707,7 +1708,7 @@ export const evaluatorController: ReadonlyArray<EvaluatorMachineStatement> = [
   gotoLabel("continue-dispatch"),
 
   label("ev-call"),
-  test("isConsoleCall", register("expr")),
+  test("isConsoleCall", register("expr"), register("env")),
   branch("ev-output"),
   test("isTailReturnContinuation", register("continue")),
   branch("ev-call-tail"),

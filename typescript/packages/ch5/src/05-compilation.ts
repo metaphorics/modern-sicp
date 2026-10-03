@@ -206,6 +206,9 @@ export const compiledOperations = (
       (typeof value === "number" && Number.isNaN(value))
     );
   return {
+    "bound-variable": (args) =>
+      findCell((args[1] as Env | null) ?? null, typeof args[0] === "string" ? args[0] : "") !==
+      undefined,
     "lookup-variable-value": (args) => {
       const name = typeof args[0] === "string" ? args[0] : "";
       const cell = findCell(args[1] as Env | null, name);
@@ -1103,16 +1106,26 @@ const compileApplication = (
   linkage: Linkage,
   context: CompileContext,
 ): CompileResult => {
-  if (isConsoleLog(expr)) {
-    const argument = expr.args[0]?.expr;
-    if (argument === undefined || expr.args.length !== 1) {
-      return compileError("compiled/console.log");
-    }
-    const value = compileExpression(argument, "val", nextLinkage, context);
-    if (isCompileError(value)) {
-      return value;
-    }
-    return withLinkage(
+  if (!isConsoleLog(expr) || expr.args.length !== 1 || expr.args[0]?.expr === undefined) {
+    return compileOrdinaryApplication(expr, linkage, context);
+  }
+  const ordinary = compileOrdinaryApplication(expr, linkage, context);
+  if (isCompileError(ordinary)) {
+    return ordinary;
+  }
+  const value = compileExpression(expr.args[0].expr, "val", nextLinkage, context);
+  if (isCompileError(value)) {
+    return value;
+  }
+  const bound = makeLabel("console-bound");
+  const after = makeLabel("console-call-after");
+  return appendInstructionSequences(
+    makeSequence(
+      ["env"],
+      [],
+      [test("bound-variable", constant("console"), register("env")), branch(bound)],
+    ),
+    withLinkage(
       appendInstructionSequences(
         value,
         makeSequence(
@@ -1122,8 +1135,18 @@ const compileApplication = (
         ),
       ),
       linkage,
-    );
-  }
+    ),
+    makeSequence([], [], [gotoLabel(after), { tag: "label", name: bound }]),
+    ordinary,
+    makeSequence([], [], [{ tag: "label", name: after }]),
+  );
+};
+
+const compileOrdinaryApplication = (
+  expr: Extract<Expr, { tag: "call" }>,
+  linkage: Linkage,
+  context: CompileContext,
+): CompileResult => {
   const operator = compileExpression(expr.callee, "val", nextLinkage, context);
   if (isCompileError(operator)) {
     return operator;

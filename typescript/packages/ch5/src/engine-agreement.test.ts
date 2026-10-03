@@ -41,6 +41,11 @@ const programs: ReadonlyArray<readonly [string, string, ReadonlyArray<string>]> 
     ["12"],
   ],
   [
+    "a bound console shadows the log builtin",
+    'const call = (console: { log: (x: string) => string }): string =>\n  console.log("inner");\nconsole.log(call({ log: (x: string): string => "S:" + x }));\n',
+    ["S:inner"],
+  ],
+  [
     "nested loops and a switch inside a loop keep the outer loop's state",
     'let total = 0;\nfor (const a of [1, 2]) {\n  for (const b of [10, 20, 30]) {\n    total = total + a * b;\n  }\n}\nconsole.log(total);\nfor (const s of ["x", "y"]) {\n  switch (s) {\n    case "x":\n      console.log("ex");\n      break;\n    default:\n      console.log("other");\n  }\n}\n',
     ["180", "ex", "other"],

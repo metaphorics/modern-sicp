@@ -184,7 +184,10 @@ interactive sessions of section 1.1 of this book, in the Kotlin this
 primer teaches.  Evaluate the expressions in order and write each response
 as a @code{// =>} comment, exactly as the transcripts of this section do:
 every @code{val} answers with the value it binds, and every other
-expression with the value it evaluates to.  @ref{0.8} works the first and
+expression with the value it evaluates to.@footnote{Recording a
+@code{val}'s value is this book's transcript convention, not a Kotlin
+rule --- a definition produces no value, which is why @ref{1.1}
+annotates only expressions.}  @ref{0.8} works the first and
 third sessions out in full.  The arithmetic is the original book's, so
 every numeric response is the one its own session prints.
 

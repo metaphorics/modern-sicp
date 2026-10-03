@@ -30,7 +30,10 @@ public class S0_7TestingTest :
             }
         }
         test("a property test runs the assertion over generated inputs") {
-            checkAll(Arb.long(-100L, 100L), Arb.long(-100L, 100L)) { a, b ->
+            checkAll(
+                Arb.long(-100L, 100L),
+                Arb.long(-100L, 100L),
+            ) { a, b ->
                 absDiff(a, b) shouldBe absDiff(b, a)
             }
         }

@@ -712,18 +712,20 @@ public class Checker(
         target: Index,
         scope: Scope,
     ) {
-        val receiver = coreType(checkExpression(target.receiver, scope, null))
+        val receiver = checkExpression(target.receiver, scope, null)
+        if (receiver is GuestType.Nullable) fail("TypeMismatch", target.receiver, "nullable receivers need `?.` or `?:`")
+        val core = coreType(receiver)
         val keyType = checkExpression(target.index, scope, null)
-        if (receiver !is GuestType.Named || receiver.name !in setOf("MutableList", "MutableMap")) {
+        if (core !is GuestType.Named || core.name !in setOf("MutableList", "MutableMap")) {
             fail("TypeMismatch", target, "indexed writes need a mutable collection")
         }
         val valueType = checkExpression(statement.value, scope, null)
-        if (receiver.name == "MutableList") {
+        if (core.name == "MutableList") {
             conformOrFail(keyType, T_INT, target.index, "list indices are Int")
-            conformOrFail(valueType, receiver.arguments[0], statement.value, "element type mismatch")
+            conformOrFail(valueType, core.arguments[0], statement.value, "element type mismatch")
         } else {
-            conformOrFail(keyType, receiver.arguments[0], target.index, "key type mismatch")
-            conformOrFail(valueType, receiver.arguments[1], statement.value, "value type mismatch")
+            conformOrFail(keyType, core.arguments[0], target.index, "key type mismatch")
+            conformOrFail(valueType, core.arguments[1], statement.value, "value type mismatch")
         }
         checkCompound(statement.operator, valueType, valueType, statement)
     }
@@ -1143,23 +1145,7 @@ public class Checker(
         first: GuestType,
         second: GuestType,
         at: Node,
-    ): GuestType {
-        if (first is GuestType.Nothing) return second
-        if (second is GuestType.Nothing) return first
-        if (first is GuestType.Null && second !is GuestType.Null) return nullable(second)
-        if (second is GuestType.Null && first !is GuestType.Null) return nullable(first)
-        val firstCore = coreType(first)
-        val secondCore = coreType(second)
-        val family = (firstCore as? GuestType.Named)?.name?.let(TypeFamilies::familyOf)
-        val joined =
-            when {
-                conforms(firstCore, secondCore) -> secondCore
-                conforms(secondCore, firstCore) -> firstCore
-                family != null && family == (secondCore as? GuestType.Named)?.name?.let(TypeFamilies::familyOf) -> GuestType.Named(family)
-                else -> fail("TypeMismatch", at, "branch values disagree on type")
-            }
-        return if (first is GuestType.Nullable || second is GuestType.Nullable) nullable(joined) else joined
-    }
+    ): GuestType = joinedBranchType(first, second) ?: fail("TypeMismatch", at, "branch values disagree on type")
 
     context(r: Raise<AdmissionError>)
     private fun isType(
@@ -1347,7 +1333,10 @@ public class Checker(
             requireBoolean(checkExpression(pattern, scope, T_BOOL), pattern)
             return
         }
-        checkExpression(pattern, scope, null)
+        val patternType = checkExpression(pattern, scope, null)
+        if (subjectType != null && patternType != GuestType.Null && !sameType(patternType, subjectType)) {
+            fail("MixedEquality", pattern, "a `when` branch value shares the subject type")
+        }
     }
 
     context(r: Raise<AdmissionError>)
@@ -1776,18 +1765,20 @@ public class Checker(
         expression: Index,
         scope: Scope,
     ): GuestType {
-        val receiver = coreType(checkExpression(expression.receiver, scope, null))
+        val receiver = checkExpression(expression.receiver, scope, null)
+        if (receiver is GuestType.Nullable) fail("TypeMismatch", expression.receiver, "nullable receivers need `?.` or `?:`")
+        val core = coreType(receiver)
         val index = checkExpression(expression.index, scope, null)
-        if (receiver !is GuestType.Named) fail("TypeMismatch", expression.receiver, "indexing needs a collection")
-        return when (receiver.name) {
+        if (core !is GuestType.Named) fail("TypeMismatch", expression.receiver, "indexing needs a collection")
+        return when (core.name) {
             "List", "MutableList" -> {
                 conformOrFail(index, T_INT, expression.index, "list indices are Int")
-                receiver.arguments[0]
+                core.arguments[0]
             }
 
             "Map", "MutableMap" -> {
-                conformOrFail(index, receiver.arguments[0], expression.index, "key type mismatch")
-                nullable(receiver.arguments[1])
+                conformOrFail(index, core.arguments[0], expression.index, "key type mismatch")
+                nullable(core.arguments[1])
             }
 
             "String" -> {

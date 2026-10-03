@@ -996,7 +996,7 @@ impl Checker {
 
     fn check_access(&mut self, root: BindId, access: Access, span: Span) -> Result<(), Diag> {
         let ty = self.sema.bindings[root.0 as usize].ty.clone();
-        let moved = self.ctx().uninit.contains(&root);
+        let moved = self.ctxs.iter().any(|ctx| ctx.uninit.contains(&root));
         match access {
             Access::Read | Access::Move => {
                 if moved {

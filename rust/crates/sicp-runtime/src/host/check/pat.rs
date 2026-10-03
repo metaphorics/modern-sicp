@@ -121,9 +121,14 @@ impl Checker {
         Ok(Some(HirPatKind::UnitPath(Resolved::UnitStruct(item))))
     }
 
-    /// A constructor pattern must build the scrutinee's own type.
+    /// A constructor pattern must build the scrutinee's own type,
+    /// binding an unresolved scrutinee cell to it so a later arm
+    /// against a different constructor mismatches (grammar §4).
+    ///
+    /// # Errors
+    /// A type error when the pattern cannot match the scrutinee type.
     fn expect_pattern_type(
-        &self,
+        &mut self,
         resolved: &Resolved,
         wanted: &HostTy,
         span: Span,
@@ -134,7 +139,7 @@ impl Checker {
             _ => return Ok(()),
         };
         match self.deep(wanted) {
-            HostTy::Infer(_) => Ok(()),
+            HostTy::Infer(_) => self.unify(wanted, &expected, span).map(|_| ()),
             found if found == expected => Ok(()),
             _ => Err(Diag::type_error(
                 span,
@@ -144,7 +149,7 @@ impl Checker {
     }
 
     fn check_path_pattern(
-        &self,
+        &mut self,
         path: &[ast::Ident],
         wanted: &HostTy,
         span: Span,

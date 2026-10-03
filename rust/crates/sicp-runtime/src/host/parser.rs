@@ -40,8 +40,10 @@ struct Parser {
     map_local: Option<String>,
 }
 
-/// The name the program's `HashMap` import binds, scanned ahead of the
-/// items because a type may be named before a later `use`.
+/// The name the program's `HashMap` import binds, scanned ahead of
+/// the items because the grammar's `use_item*` prefix precedes every
+/// other item (grammar §2): an import after an item is outside the
+/// prefix and names nothing.
 fn scan_map_import(tokens: &[Tok]) -> Option<String> {
     let word = |at: usize, text: &str| matches!(tokens.get(at).map(|tok| &tok.kind), Some(TokKind::Ident(name)) if name == text);
     let colons = |at: usize| {
@@ -49,21 +51,32 @@ fn scan_map_import(tokens: &[Tok]) -> Option<String> {
             .get(at)
             .is_some_and(|tok| tok.kind == TokKind::ColonColon)
     };
-    let at = (0..tokens.len()).find(|&at| {
-        word(at, "use")
-            && word(at + 1, "std")
+    let mut at = 0;
+    while word(at, "use") {
+        let mut end = at + 1;
+        while !matches!(tokens.get(end).map(|tok| &tok.kind), Some(TokKind::Semi)) {
+            end += 1;
+            if end >= tokens.len() {
+                return None;
+            }
+        }
+        if word(at + 1, "std")
             && colons(at + 2)
             && word(at + 3, "collections")
             && colons(at + 4)
             && word(at + 5, "HashMap")
-    })?;
-    if !word(at + 6, "as") {
-        return Some("HashMap".to_owned());
+        {
+            if !word(at + 6, "as") {
+                return Some("HashMap".to_owned());
+            }
+            return match tokens.get(at + 7).map(|tok| &tok.kind) {
+                Some(TokKind::Ident(name)) => Some(name.clone()),
+                _ => None,
+            };
+        }
+        at = end + 1;
     }
-    match tokens.get(at + 7).map(|tok| &tok.kind) {
-        Some(TokKind::Ident(name)) => Some(name.clone()),
-        _ => None,
-    }
+    None
 }
 
 /// Rust spells these types, the subset does not admit them; naming one
@@ -206,11 +219,26 @@ impl Parser {
 
     fn parse_program(&mut self) -> Result<Program, Diag> {
         let mut items = Vec::new();
+        let mut saw_other_item = false;
         while let Some(tok) = self.peek() {
             if let Some(diag) = Self::reject_excluded_keywords(tok) {
                 return Err(diag);
             }
-            items.push(self.parse_item()?);
+            let item_span = self.span();
+            let item = self.parse_item()?;
+            match item {
+                Item::Use(_) if saw_other_item => {
+                    return Err(Diag::unsupported(
+                        item_span,
+                        "`use` items come before all other items",
+                    ));
+                }
+                Item::Use(_) => items.push(item),
+                _ => {
+                    saw_other_item = true;
+                    items.push(item);
+                }
+            }
         }
         Ok(Program { items })
     }
@@ -219,6 +247,7 @@ impl Parser {
         let derives = self.parse_derives()?;
         match self.peek_kind() {
             Some(TokKind::Ident(word)) if word == "use" => {
+                self.reject_item_derives(&derives)?;
                 self.bump();
                 self.parse_use()
             }
@@ -231,15 +260,27 @@ impl Parser {
                 self.parse_enum(derives)
             }
             Some(TokKind::Ident(word)) if word == "type" => {
+                self.reject_item_derives(&derives)?;
                 self.bump();
                 self.parse_type_alias()
             }
             Some(TokKind::Ident(word)) if word == "fn" => {
+                self.reject_item_derives(&derives)?;
                 self.bump();
                 self.parse_fn()
             }
             _ => Err(Diag::syntax(self.span(), "expected an item")),
         }
+    }
+
+    fn reject_item_derives(&self, derives: &[DeriveName]) -> Result<(), Diag> {
+        if derives.is_empty() {
+            return Ok(());
+        }
+        Err(Diag::unsupported(
+            self.span(),
+            "`#[derive]` is admitted only on `struct` and `enum` items",
+        ))
     }
 
     fn parse_derives(&mut self) -> Result<Vec<DeriveName>, Diag> {
@@ -559,6 +600,22 @@ impl Parser {
     fn parse_ty_named(&mut self, word: &str, span: Span) -> Result<TyKind, Diag> {
         self.bump();
         Ok(match word {
+            // An import rename shadows the prelude names the following
+            // arms spell, as `rustc` resolves it.
+            name if self.map_local.as_deref() == Some(name) => {
+                self.parse_angle_open()?;
+                let key = self.expect_ident("the `HashMap` key type")?;
+                if key.name != "String" {
+                    return Err(Diag::unsupported(
+                        key.span,
+                        "`HashMap` keys are `String` in the admitted subset",
+                    ));
+                }
+                self.expect(&TokKind::Comma, "`,` in `HashMap<...>`")?;
+                let value = self.parse_ty()?;
+                self.expect(&TokKind::Gt, "`>` to close `HashMap<...>`")?;
+                TyKind::HashMap(Box::new(value))
+            }
             "bool" => TyKind::Bool,
             "i64" => TyKind::I64,
             "usize" => TyKind::Usize,
@@ -594,20 +651,6 @@ impl Parser {
                 let err = self.parse_ty()?;
                 self.expect(&TokKind::Gt, "`>` to close `Result<...>`")?;
                 TyKind::Result(Box::new(ok), Box::new(err))
-            }
-            name if self.map_local.as_deref() == Some(name) => {
-                self.parse_angle_open()?;
-                let key = self.expect_ident("the `HashMap` key type")?;
-                if key.name != "String" {
-                    return Err(Diag::unsupported(
-                        key.span,
-                        "`HashMap` keys are `String` in the admitted subset",
-                    ));
-                }
-                self.expect(&TokKind::Comma, "`,` in `HashMap<...>`")?;
-                let value = self.parse_ty()?;
-                self.expect(&TokKind::Gt, "`>` to close `HashMap<...>`")?;
-                TyKind::HashMap(Box::new(value))
             }
             "fn" => {
                 self.expect(&TokKind::LParen, "`(` in a function type")?;

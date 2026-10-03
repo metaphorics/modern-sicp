@@ -112,7 +112,7 @@ impl Checker {
                     .expect("the block scope")
                     .insert(name.name.clone(), binding);
                 self.retire_borrow_into(&value, name.name.clone());
-                self.settle_initializer_loans(&value.ty, &[name.name.as_str()]);
+                self.settle_initializer_loans(&value.ty, &[name.name.as_str()], value.span)?;
                 Ok(HirStmt::Let {
                     binding,
                     destruct: None,
@@ -128,6 +128,15 @@ impl Checker {
                         "let patterns are identifiers or two-element tuples of identifiers",
                     ));
                 };
+                if left.name == right.name {
+                    return Err(Diag::type_error(
+                        right.span,
+                        format!(
+                            "identifier `{}` is bound more than once in the same pattern",
+                            right.name
+                        ),
+                    ));
+                }
                 let HostTy::Tuple(a, b) = self.deep(&value.ty) else {
                     return Err(Diag::type_error(
                         let_stmt.pat.span,
@@ -142,7 +151,8 @@ impl Checker {
                 self.settle_initializer_loans(
                     &value.ty,
                     &[left.name.as_str(), right.name.as_str()],
-                );
+                    value.span,
+                )?;
                 Ok(HirStmt::Let {
                     binding: BindId(u32::MAX),
                     destruct: Some((left_id, right_id)),
@@ -160,8 +170,18 @@ impl Checker {
     /// a value that holds no reference releases them (like Rust's
     /// temporaries), while a value that holds a reference may be
     /// derived from them through elided lifetimes, so they stay live
-    /// as long as the bound names have later uses.
-    fn settle_initializer_loans(&mut self, ty: &HostTy, holders: &[&str]) {
+    /// as long as the bound names have later uses. A borrow of a
+    /// materialized temporary may not be settled at all: the temporary
+    /// dies at the statement end, Rust's E0716.
+    ///
+    /// # Errors
+    /// An ownership error when a temporary borrow escapes into a binding.
+    fn settle_initializer_loans(
+        &mut self,
+        ty: &HostTy,
+        holders: &[&str],
+        span: Span,
+    ) -> Result<(), Diag> {
         let temporaries: Vec<Loan> = {
             let loans = &mut self.ctx_mut().loans;
             let (temporaries, held) = std::mem::take(loans)
@@ -171,15 +191,22 @@ impl Checker {
             temporaries
         };
         if !self.holds_reference(ty) {
-            return;
+            return Ok(());
         }
         for loan in temporaries {
+            if self.sema.bindings[loan.root.0 as usize].name == "<temporary>" {
+                return Err(Diag::ownership(
+                    span,
+                    "temporary value dropped while borrowed",
+                ));
+            }
             for holder in holders {
                 let mut held = loan.clone();
                 held.holder = Some((*holder).to_owned());
                 self.ctx_mut().loans.push(held);
             }
         }
+        Ok(())
     }
 
     fn holds_reference(&self, ty: &HostTy) -> bool {
@@ -832,11 +859,11 @@ impl Checker {
             return Ok(Resolved::Variant(item, table_index(index, path[1].span)?));
         }
         let ctor = match (head.as_str(), tail.as_str()) {
+            (map, "new") if self.map_alias.as_deref() == Some(map) => Some(CtorOp::MapNew),
             ("String", "from") => Some(CtorOp::StringFrom),
             ("Vec", "new") => Some(CtorOp::VecNew),
             ("Vec", "with_capacity") => Some(CtorOp::VecWithCapacity),
             ("Box", "new") => Some(CtorOp::BoxNew),
-            (map, "new") if self.map_alias.as_deref() == Some(map) => Some(CtorOp::MapNew),
             _ => None,
         };
         ctor.map_or_else(
@@ -957,6 +984,12 @@ impl Checker {
                     format!("no field `{}` here", field_name.name),
                 ));
             };
+            if checked[position].is_some() {
+                return Err(Diag::type_error(
+                    field_name.span,
+                    format!("field `{}` is bound more than once", field_name.name),
+                ));
+            }
             let want = want_types[position].clone();
             let expr = match value {
                 Some(value) => self.check_expr(value, Some(&want))?,
@@ -1401,6 +1434,22 @@ impl Checker {
         if matches!(op, MethodOp::IntoIter | MethodOp::Enumerate) {
             self.consume_receiver(&checked_receiver, span)?;
         }
+        // `iter` and `iter_mut` borrow their receiver for the
+        // iterator's lifetime; the loan keeps mutation and moves out
+        // while it is live.
+        if matches!(op, MethodOp::Iter | MethodOp::IterMut)
+            && let Some(place) = &receiver_place
+            && let PlaceRoot::Local(root) = place.root
+        {
+            let mutable = op == MethodOp::IterMut;
+            let access = if mutable {
+                Access::BorrowMut
+            } else {
+                Access::BorrowShared
+            };
+            self.check_access(root, access, span)?;
+            self.begin_loan(root, mutable, None);
+        }
         let (params, ret) = self.method_signature(op, &recv_ty, span)?;
         if args.len() != params.len() {
             return Err(Diag::type_error(
@@ -1411,6 +1460,49 @@ impl Checker {
         let mut checked_args = Vec::with_capacity(args.len());
         for (arg, want) in args.iter().zip(&params) {
             checked_args.push(self.check_expr(arg, Some(want))?);
+        }
+        if receiver_place.is_none() && matches!(op, MethodOp::Iter | MethodOp::IterMut) {
+            // A temporary collection the iterator borrows materializes
+            // the way `&value` does: a slot that lives for the whole
+            // statement, which is why its loan may not settle into a
+            // `let` (Rust's E0716).
+            let mutable = op == MethodOp::IterMut;
+            let binding = self.fresh_bind("<temporary>", checked_receiver.ty.clone(), mutable);
+            self.begin_loan(binding, mutable, None);
+            let place = Place {
+                root: PlaceRoot::Local(binding),
+                proj: Vec::new(),
+                span: receiver.span,
+            };
+            let read = node(
+                HirExprKind::Place {
+                    place: place.clone(),
+                    mode: PlaceUse::Read,
+                },
+                checked_receiver.ty.clone(),
+                false,
+                receiver.span,
+            );
+            let method = node(
+                HirExprKind::Method {
+                    op,
+                    receiver: Box::new(read),
+                    receiver_place: Some(place),
+                    args: checked_args,
+                },
+                ret.clone(),
+                false,
+                span,
+            );
+            let block = HirBlock {
+                stmts: vec![HirStmt::Let {
+                    binding,
+                    destruct: None,
+                    value: checked_receiver,
+                }],
+                tail: Some(Box::new(method)),
+            };
+            return Ok(node(HirExprKind::Block(block), ret, false, span));
         }
         Ok(node(
             HirExprKind::Method {

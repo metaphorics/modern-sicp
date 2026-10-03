@@ -314,6 +314,143 @@ fn main() {
 }
 "#,
     ),
+    (
+        "tuple_let_rebinds_name",
+        DiagKind::Type,
+        r#"
+fn main() {
+    let (x, x) = (1i64, 2i64);
+    println!("{}", x);
+}
+"#,
+    ),
+    (
+        "struct_literal_rebinds_field",
+        DiagKind::Type,
+        r#"
+struct P {
+    x: i64,
+    y: i64,
+}
+fn main() {
+    let p = P { x: 1, x: 2, y: 3 };
+    println!("{}", p.x);
+}
+"#,
+    ),
+    (
+        "closure_uses_moved_outer",
+        DiagKind::Ownership,
+        r#"
+fn main() {
+    let s = String::from("a");
+    let t = s;
+    let f = || s.len();
+    println!("{} {}", f(), t);
+}
+"#,
+    ),
+    (
+        "ctor_pattern_on_unresolved_scrutinee",
+        DiagKind::Type,
+        r#"
+struct A {}
+struct B(i64);
+fn main() {
+    let f = |x| match x {
+        B(n) => n,
+        _ => 0,
+    };
+    println!("{}", f(A));
+}
+"#,
+    ),
+    (
+        "debug_formats_later_resolved",
+        DiagKind::Type,
+        r#"
+struct S {
+    x: i64,
+}
+fn main() {
+    let mut v = Vec::new();
+    println!("{?}", v);
+    v.push(S { x: 1 });
+}
+"#,
+    ),
+    (
+        "iter_loan_blocks_mutation",
+        DiagKind::Ownership,
+        r"
+fn main() {
+    let mut v = vec![1i64];
+    let it = v.iter();
+    v.push(2);
+    let _j = it;
+}
+",
+    ),
+    (
+        "iter_mut_loan_blocks_use",
+        DiagKind::Ownership,
+        r#"
+fn main() {
+    let mut v = vec![1i64];
+    let it = v.iter_mut();
+    println!("{}", v.len());
+    let _j = it;
+}
+"#,
+    ),
+    (
+        "temporary_iterator_escapes",
+        DiagKind::Ownership,
+        r"
+fn main() {
+    let it = vec![1i64].iter();
+    let _j = it;
+}
+",
+    ),
+    (
+        "use_item_after_item",
+        DiagKind::Unsupported,
+        r#"
+fn f() -> i64 {
+    1
+}
+use std::collections::HashMap;
+fn main() {
+    let _m: HashMap<String, i64> = HashMap::new();
+    println!("{}", f());
+}
+"#,
+    ),
+    (
+        "derive_hash_over_closure",
+        DiagKind::Type,
+        r"
+#[derive(Hash)]
+struct S {
+    f: Box<dyn Fn() -> i64 + 'static>,
+}
+fn main() {}
+",
+    ),
+    (
+        "derive_on_fn_item",
+        DiagKind::Unsupported,
+        r#"
+#[derive(Debug)]
+fn f() -> i64 {
+    1
+}
+fn main() {
+    println!("{}", f());
+}
+"#,
+    ),
 ];
 
 /// Programs `rustc` accepts that the checker must admit.
@@ -511,6 +648,39 @@ fn main() {
         r#"
 fn main() -> () {
     println!("ok");
+}
+"#,
+    ),
+    (
+        "iter_over_temporary",
+        r#"
+fn main() {
+    for x in vec![1i64, 2].iter() {
+        println!("{}", x);
+    }
+    println!("{?}", vec![3i64].iter().next());
+}
+"#,
+    ),
+    (
+        "iter_shared_read_while_borrowed",
+        r#"
+fn main() {
+    let mut v = vec![1i64];
+    let it = v.iter();
+    println!("{}", v.len());
+    let _j = it;
+}
+"#,
+    ),
+    (
+        "hashmap_rename_shadows_builtin",
+        r#"
+use std::collections::HashMap as Vec;
+fn main() {
+    let mut m: Vec<String, i64> = Vec::new();
+    m.insert(String::from("a"), 1);
+    println!("{}", m.len());
 }
 "#,
     ),

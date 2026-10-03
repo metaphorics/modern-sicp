@@ -132,10 +132,8 @@ impl<'a> JsonParser<'a> {
                     return Ok(value);
                 }
                 Some(b'\\') => {
-                    return Err(invalid_data(format!(
-                        "escaped strings are not supported in descriptors at byte {}",
-                        self.offset,
-                    )));
+                    self.offset += 1;
+                    value.push(self.escape()?);
                 }
                 Some(byte) if byte < 0x20 => {
                     return Err(invalid_data(format!(
@@ -147,12 +145,75 @@ impl<'a> JsonParser<'a> {
                     let character = self.source[self.offset..]
                         .chars()
                         .next()
-                        .ok_or_else(|| invalid_data("invalid UTF-8 in descriptor"))?;
+                        .expect("current() returned Some, so the suffix is nonempty");
                     value.push(character);
                     self.offset += character.len_utf8();
                 }
                 None => return Err(invalid_data("unterminated descriptor string")),
             }
         }
+    }
+
+    fn escape(&mut self) -> io::Result<char> {
+        let byte = self
+            .current()
+            .ok_or_else(|| invalid_data("unterminated escape in descriptor string"))?;
+        self.offset += 1;
+        let character = match byte {
+            b'"' => '"',
+            b'\\' => '\\',
+            b'/' => '/',
+            b'b' => '\u{8}',
+            b'f' => '\u{c}',
+            b'n' => '\n',
+            b'r' => '\r',
+            b't' => '\t',
+            b'u' => return self.unicode_escape(),
+            _ => {
+                return Err(invalid_data(format!(
+                    "invalid escape in descriptor string at byte {}",
+                    self.offset - 1,
+                )));
+            }
+        };
+        Ok(character)
+    }
+
+    fn unicode_escape(&mut self) -> io::Result<char> {
+        let high = self.hex_quad()?;
+        let scalar = if (0xD800..0xDC00).contains(&high) {
+            if !self.take(b'\\') || !self.take(b'u') {
+                return Err(invalid_data("unpaired surrogate in descriptor string"));
+            }
+            let low = self.hex_quad()?;
+            if !(0xDC00..0xE000).contains(&low) {
+                return Err(invalid_data("unpaired surrogate in descriptor string"));
+            }
+            0x10000 + ((high - 0xD800) << 10) + (low - 0xDC00)
+        } else {
+            high
+        };
+        char::from_u32(scalar)
+            .ok_or_else(|| invalid_data("invalid unicode escape in descriptor string"))
+    }
+
+    fn hex_quad(&mut self) -> io::Result<u32> {
+        let mut value = 0;
+        for _ in 0..4 {
+            let digit = match self.current() {
+                Some(byte @ b'0'..=b'9') => byte - b'0',
+                Some(byte @ b'a'..=b'f') => byte - b'a' + 10,
+                Some(byte @ b'A'..=b'F') => byte - b'A' + 10,
+                _ => {
+                    return Err(invalid_data(format!(
+                        "invalid unicode escape in descriptor string at byte {}",
+                        self.offset,
+                    )));
+                }
+            };
+            value = value * 16 + u32::from(digit);
+            self.offset += 1;
+        }
+        Ok(value)
     }
 }

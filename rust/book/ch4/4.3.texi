@@ -441,19 +441,25 @@ index.  For this to work, our search must undo the effects of the assignment
 when it backtracks---which is exactly the trailed @code{Search::Set}.}
 
 @example rust
-// parse_word(part): bind "word" to the next input index, guard that
-// the word there has the required part of speech, then Set("unparsed",
-// index + 1, Success(...)) on the accepted path.
+// parse_word(part): bind "word" to the index at "unparsed",
+// guard that the word there has the required part of
+// speech, then Set("unparsed", index + 1, Success(...)) on
+// the accepted path.
 let parse_word = |part: Part| Search::ChooseRange @{
     var: String::from("word"),
     lo: 0,
     hi: last_index,
     body: Box::new(Search::Guard(
-        word_has_part("word", part),
-        Box::new(Search::Set(
-            String::from("unparsed"),
-            next_index,
-            Box::new(Search::Success(vec![word_of("word")])),
+        Eq(word, unparsed),
+        Box::new(Search::Guard(
+            word_has_part("word", part),
+            Box::new(Search::Set(
+                String::from("unparsed"),
+                next_index,
+                Box::new(Search::Success(
+                    vec![word_of("word")],
+                )),
+            )),
         )),
     )),
 @};
@@ -674,15 +680,13 @@ inclusive bound, @code{ChooseFrom} is
 
 @example rust
 Search::ChooseRange @{ var, lo, hi, body @} => @{
-    let mut value = *lo;
-    while value <= *hi @{
+    for value in *lo..=*hi @{
         if self.answers.len() >= self.limit @{
             return;
         @}
         self.bind(var, value);
         self.explore(body);
         self.rollback_binding(var);
-        value = value.saturating_add(1);
     @}
 @},
 @end example

@@ -31,9 +31,9 @@ let best_time f =
     let rec run n =
       if n = 0
       then Ok ()
-      else (
+      else
         let* _ = f () in
-        run (n - 1))
+        run (n - 1)
     in
     let start = Sys.time () in
     let* _ = run batch in

@@ -755,8 +755,7 @@ public object Primitives {
         current: GValue,
         value: GValue,
         at: Span,
-    ): GValue =
-        if (operator == "=") value else binary(operator.dropLast(1), current, value, at)
+    ): GValue = if (operator == "=") value else binary(operator.dropLast(1), current, value, at)
 
     context(r: Raise<GuestError>)
     public fun unary(

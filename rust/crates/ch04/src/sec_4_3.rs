@@ -270,15 +270,13 @@ impl SearchEngine {
                         return;
                     }
                 }
-                let mut value = *lo;
-                while value <= *hi {
+                for value in *lo..=*hi {
                     if self.answers.len() >= self.limit {
                         return;
                     }
                     self.bind(var, value);
                     self.explore(body);
                     self.rollback_binding(var);
-                    value = value.saturating_add(1);
                 }
             }
             Search::ChooseFrom { var, start, body } => {
@@ -606,8 +604,8 @@ fn reference_holds(predicate: &Predicate, bindings: &HashMap<String, i64>) -> bo
         Predicate::SumEq(terms, bound) => {
             let mut total = 0_i64;
             for term in terms {
-                match reference_term(term, bindings) {
-                    Some(value) => total = total.checked_add(value).unwrap_or(i64::MAX),
+                match reference_term(term, bindings).and_then(|value| total.checked_add(value)) {
+                    Some(next) => total = next,
                     None => return false,
                 }
             }
@@ -620,14 +618,17 @@ fn reference_holds(predicate: &Predicate, bindings: &HashMap<String, i64>) -> bo
         Predicate::DiffEq(a, b, c, d) => {
             let (a, b, c, d) = (value(a), value(b), value(c), value(d));
             match (a, b, c, d) {
-                (Some(a), Some(b), Some(c), Some(d)) => a.checked_sub(b) == c.checked_sub(d),
+                (Some(a), Some(b), Some(c), Some(d)) => a
+                    .checked_sub(b)
+                    .zip(c.checked_sub(d))
+                    .is_some_and(|(l, r)| l == r),
                 _ => false,
             }
         }
         Predicate::Pythagorean(a, b, c) => match (value(a), value(b), value(c)) {
             (Some(a), Some(b), Some(c)) => {
                 match (a.checked_mul(a), b.checked_mul(b), c.checked_mul(c)) {
-                    (Some(aa), Some(bb), Some(cc)) => aa + bb == cc,
+                    (Some(aa), Some(bb), Some(cc)) => aa.checked_add(bb) == Some(cc),
                     _ => false,
                 }
             }
@@ -725,6 +726,52 @@ pub fn search_dwelling() -> Search {
     use sicp_runtime::host::query::{Predicate, Term};
     let name = |who: &str| Term::Variable(who.to_owned());
     let floor = |value: i64| Term::Integer(value);
+    let distinct = [
+        ("baker", "cooper"),
+        ("baker", "fletcher"),
+        ("baker", "miller"),
+        ("baker", "smith"),
+        ("cooper", "fletcher"),
+        ("cooper", "miller"),
+        ("cooper", "smith"),
+        ("fletcher", "miller"),
+        ("fletcher", "smith"),
+        ("miller", "smith"),
+    ];
+    let mut guards: Vec<Predicate> = distinct
+        .iter()
+        .map(|(a, b)| Predicate::Ne(name(a), name(b)))
+        .collect();
+    guards.push(Predicate::Ne(name("baker"), floor(5)));
+    guards.push(Predicate::Ne(name("cooper"), floor(1)));
+    guards.push(Predicate::Ne(name("fletcher"), floor(1)));
+    guards.push(Predicate::Ne(name("fletcher"), floor(5)));
+    guards.push(Predicate::Gt(name("miller"), name("cooper")));
+    // Adjacent floors differ by one, so each adjacency exclusion
+    // admits only the differences two, three, or four either way.
+    for (high, low) in [("smith", "fletcher"), ("fletcher", "cooper")] {
+        guards.push(Predicate::Or(
+            ["c2", "c3", "c4"]
+                .iter()
+                .flat_map(|plus| {
+                    [
+                        Predicate::DiffEq(
+                            high.to_owned(),
+                            low.to_owned(),
+                            (*plus).to_owned(),
+                            "c0".to_owned(),
+                        ),
+                        Predicate::DiffEq(
+                            high.to_owned(),
+                            low.to_owned(),
+                            "c0".to_owned(),
+                            (*plus).to_owned(),
+                        ),
+                    ]
+                })
+                .collect(),
+        ));
+    }
     let mut program = Search::Success(vec![
         AnswerTerm::Var("baker".to_owned()),
         AnswerTerm::Var("cooper".to_owned()),
@@ -732,43 +779,25 @@ pub fn search_dwelling() -> Search {
         AnswerTerm::Var("miller".to_owned()),
         AnswerTerm::Var("smith".to_owned()),
     ]);
-    // Constraints, folded so the trail exercises rollback.
-    program = Search::Guard(
-        Predicate::Ne(name("smith"), name("fletcher")),
-        Box::new(Search::Guard(
-            Predicate::Ne(name("fletcher"), name("cooper")),
-            Box::new(Search::Guard(
-                Predicate::Ne(name("baker"), floor(5)),
-                Box::new(Search::Guard(
-                    Predicate::Ne(name("cooper"), floor(1)),
-                    Box::new(Search::Guard(
-                        Predicate::Ne(name("fletcher"), floor(1)),
-                        Box::new(Search::Guard(
-                            Predicate::Ne(name("fletcher"), floor(5)),
-                            Box::new(Search::Guard(
-                                Predicate::Gt(name("miller"), name("cooper")),
-                                Box::new(Search::Guard(
-                                    Predicate::Or(vec![
-                                        Predicate::Eq(name("smith"), Term::Integer(0)),
-                                        Predicate::Eq(name("fletcher"), Term::Integer(0)),
-                                    ]),
-                                    Box::new(program),
-                                )),
-                            )),
-                        )),
-                    )),
-                )),
-            )),
-        )),
-    );
-    // The occupants choose floors 1..=5, all distinct.
-    for who in ["baker", "cooper", "fletcher", "miller", "smith"] {
+    for guard in guards.into_iter().rev() {
+        program = Search::Guard(guard, Box::new(program));
+    }
+    for who in ["baker", "cooper", "fletcher", "miller", "smith"]
+        .into_iter()
+        .rev()
+    {
         program = Search::ChooseRange {
             var: who.to_owned(),
             lo: 1,
             hi: 5,
             body: Box::new(program),
         };
+    }
+    for (constant, value) in [("c0", 0), ("c2", 2), ("c3", 3), ("c4", 4)]
+        .into_iter()
+        .rev()
+    {
+        program = Search::Set(constant.to_owned(), value, Box::new(program));
     }
     program
 }

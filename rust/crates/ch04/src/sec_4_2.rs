@@ -143,6 +143,11 @@ impl LazyEngine {
     /// Runs one experiment program in the engine's mode.
     #[must_use]
     pub fn run(&mut self, expr: &LazyExpr) -> LazyOutcome {
+        // A reused engine keeps no memoized value or thunk
+        // environment from an earlier run: a matching thunk id
+        // would otherwise force a stale body.
+        self.memo.clear();
+        self.thunks.clear();
         self.next_id = max_thunk_id(expr);
         let env = HashMap::new();
         let produced = self.eval(expr, &env);
@@ -219,7 +224,10 @@ impl LazyEngine {
                         // Primitive application demands its operands.
                         let mut values = Vec::with_capacity(args.len());
                         for arg in args {
-                            values.push(self.eval(arg, env)?);
+                            values.push(match self.eval(arg, env)? {
+                                LazyVal::Later(id) => self.force_id(id)?,
+                                other => other,
+                            });
                         }
                         return Self::apply_prim(&callable, &values);
                     }
@@ -335,9 +343,8 @@ fn render_val(value: &LazyVal) -> String {
 fn max_thunk_id(expr: &LazyExpr) -> usize {
     match expr {
         LazyExpr::Thunk(id, body) => (*id + 1).max(max_thunk_id(body)),
-        LazyExpr::Force(inner) | LazyExpr::Let(_, inner, _) | LazyExpr::Lambda(_, inner) => {
-            max_thunk_id(inner)
-        }
+        LazyExpr::Force(inner) | LazyExpr::Lambda(_, inner) => max_thunk_id(inner),
+        LazyExpr::Let(_, value, body) => max_thunk_id(value).max(max_thunk_id(body)),
         LazyExpr::Add(left, right) | LazyExpr::Mul(left, right) | LazyExpr::Pair(left, right) => {
             max_thunk_id(left).max(max_thunk_id(right))
         }
@@ -446,7 +453,10 @@ impl RefModel {
                     LazyVal::Prim(_) => {
                         let mut values = Vec::with_capacity(args.len());
                         for arg in args {
-                            values.push(self.eval(arg, env)?);
+                            values.push(match self.eval(arg, env)? {
+                                LazyVal::Later(id) => self.force_id(id)?,
+                                other => other,
+                            });
                         }
                         return Self::apply_prim(&callable, &values);
                     }

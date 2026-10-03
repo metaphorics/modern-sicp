@@ -37,6 +37,9 @@ pub use sicp_runtime::host::admit;
 pub struct Direct {
     /// The shared engine state.
     pub engine: Engine,
+    /// The analyzed bodies top-level calls run when present; empty
+    /// on the direct walker, which re-reads the checked blocks.
+    plans: Vec<Plan>,
 }
 
 impl Direct {
@@ -45,6 +48,7 @@ impl Direct {
     pub fn new(sema: Sema) -> Self {
         Self {
             engine: Engine::new(sema),
+            plans: Vec::new(),
         }
     }
 
@@ -70,7 +74,11 @@ impl Direct {
         for ((binding, _), value) in def.params.iter().zip(args) {
             self.write(*binding, value, frame)?;
         }
-        let outcome = self.eval_block(&def.body, frame);
+        let plan = self.plans.get(fun.0 as usize).cloned();
+        let outcome = match plan {
+            Some(plan) => eval_plan(self, &plan, frame),
+            None => self.eval_block(&def.body, frame),
+        };
         self.engine.pop_activation();
         match outcome? {
             Flow::Value(value) | Flow::Return(value) => Ok(value),
@@ -232,10 +240,7 @@ impl Direct {
                 receiver,
                 receiver_place,
                 args,
-            } => {
-                let values = self.eval_args(args, frame)?;
-                self.eval_method(*op, receiver, receiver_place.as_ref(), &values, frame, span)?
-            }
+            } => self.eval_method(*op, receiver, receiver_place.as_ref(), args, frame, span)?,
             HirExprKind::Unary { op, operand } => {
                 if let (UnOp::Ref | UnOp::RefMut, HirExprKind::Place { place, .. }) =
                     (op, &operand.kind)
@@ -447,10 +452,12 @@ impl Direct {
         op: MethodOp,
         receiver: &HirExpr,
         receiver_place: Option<&Place>,
-        args: &[HostValue],
+        args: &[HirExpr],
         frame: usize,
         span: sicp_runtime::host::diag::Span,
     ) -> Result<HostValue, TrapReport> {
+        // The receiver resolves before the arguments, matching the
+        // native left-to-right operand order.
         let place = match receiver_place {
             Some(place) => {
                 let (addr, projs) = self.eval_place(place, frame)?;
@@ -461,17 +468,33 @@ impl Direct {
             }
             None => None,
         };
-        let taken = if let (MethodOp::IntoIter, Some((addr, projs))) = (op, place.as_ref()) {
-            self.engine
-                .take_at(*addr, projs)
-                .map_err(|trap| Self::trap(trap, span))?
-        } else {
+        let given = if place.is_none() {
             let taken = self.eval_value(receiver, frame)?;
             // Method bodies match on owned shapes: a borrowed receiver
             // reads through to its referent first.
-            self.deref_scrutinee(taken, span)?
+            Some(self.deref_scrutinee(taken, span)?)
+        } else {
+            None
         };
-        let (result, updated) = ops::apply_method(op, taken, place.clone(), args)
+        let values = self.eval_args(args, frame)?;
+        let taken = match (given, place.as_ref()) {
+            (Some(taken), _) => taken,
+            (None, Some((addr, projs))) => {
+                if op == MethodOp::IntoIter {
+                    self.engine
+                        .take_at(*addr, projs)
+                        .map_err(|trap| Self::trap(trap, span))?
+                } else {
+                    let taken = self
+                        .engine
+                        .read_at(*addr, projs)
+                        .map_err(|trap| Self::trap(trap, span))?;
+                    self.deref_scrutinee(taken, span)?
+                }
+            }
+            (None, None) => return Err(Self::trap(Trap::Dangling, span)),
+        };
+        let (result, updated) = ops::apply_method(op, taken, place.clone(), &values)
             .map_err(|trap| Self::trap(trap, span))?;
         if let (Some(updated), Some((addr, projs))) = (updated, place) {
             self.engine
@@ -1171,9 +1194,9 @@ fn analyze_place(place: &Place) -> (PlanRoot, Vec<PlanProj>) {
 #[must_use]
 pub fn run_analyzed_program(program: &AnalyzedProgram) -> RunOutcome {
     let mut direct = Direct::new(program.sema.clone());
+    direct.plans.clone_from(&program.bodies);
     let main = direct.engine.sema.main;
-    let plan = program.bodies[main.0 as usize].clone();
-    let outcome = run_plan(&mut direct, &plan, main);
+    let outcome = direct.call_fun(main, Vec::new());
     match outcome {
         Ok(_) => RunOutcome {
             stdout: direct.engine.effects.stdout,
@@ -1192,369 +1215,580 @@ pub fn run_analyzed(program: &CheckedProgram) -> RunOutcome {
     run_analyzed_program(&analyze(program))
 }
 
-fn run_plan(direct: &mut Direct, plan: &Plan, fun: FunId) -> Result<Flow, TrapReport> {
-    let def = direct.engine.sema.funs[fun.0 as usize].clone();
-    let frame = direct
-        .engine
-        .push_activation(def.bind_base, def.frame_slots, Vec::new());
-    let outcome = eval_plan(direct, plan, frame);
-    direct.engine.pop_activation();
-    outcome
-}
-
 // Keep the executable plan's exhaustive control-flow dispatch in one place.
-#[allow(clippy::too_many_lines)]
+// Each arm runs in its own helper's frame so a deep plan chain pays for
+// the executing arm's locals, not the union of every arm's.
 fn eval_plan(direct: &mut Direct, plan: &Plan, frame: usize) -> Result<Flow, TrapReport> {
     match plan {
         Plan::Value(value) => Ok(Flow::Value(value.clone())),
-        Plan::Place { root, proj, mov } => {
-            let (addr, projs) = eval_plan_place(direct, root, proj, frame)?;
-            let (addr, projs) = direct.see_through_root(addr, projs, false, default_span())?;
-            let result = if *mov {
-                direct.engine.take_at(addr, &projs)
-            } else {
-                direct.engine.read_at(addr, &projs)
-            };
-            result
-                .map(Flow::Value)
-                .map_err(|trap| Direct::trap(trap, default_span()))
-        }
-        Plan::StructLit(id, fields) => {
-            let values = eval_plan_args(direct, fields, frame)?;
-            Ok(Flow::Value(HostValue::Struct(*id, values)))
-        }
+        Plan::Place { root, proj, mov } => eval_plan_place_expr(direct, root, proj, *mov, frame),
+        Plan::StructLit(id, fields) => eval_plan_struct_lit(direct, *id, fields, frame),
         Plan::VariantLit(id, index, payload) => {
-            let values = eval_plan_args(direct, payload, frame)?;
-            Ok(Flow::Value(HostValue::Variant(*id, *index, values)))
+            eval_plan_variant_lit(direct, *id, *index, payload, frame)
         }
-        Plan::Tuple(left, right) => {
-            let a = eval_plan_value(direct, left, frame)?;
-            let b = eval_plan_value(direct, right, frame)?;
-            Ok(Flow::Value(HostValue::Tuple(Box::new(a), Box::new(b))))
-        }
-        Plan::Array(items) => {
-            let values = eval_plan_args(direct, items, frame)?;
-            Ok(Flow::Value(HostValue::Vec(values)))
-        }
-        Plan::VecRepeat(value, count) => {
-            let item = eval_plan_value(direct, value, frame)?;
-            let HostValue::Int(times) = eval_plan_value(direct, count, frame)? else {
-                return Err(Direct::trap(Trap::Dangling, default_span()));
-            };
-            let times = usize::try_from(times)
-                .map_err(|_| Direct::trap(Trap::Overflow("repeat"), default_span()))?;
-            Ok(Flow::Value(HostValue::Vec(vec![item; times])))
-        }
-        Plan::Format { kind, spec, args } => {
-            let values = eval_plan_args(direct, args, frame)?;
-            let rendered = ops::render_format(spec, &values, &direct.engine.store)
-                .map_err(|trap| Direct::trap(trap, default_span()))?;
-            match kind {
-                FormatKind::Format => Ok(Flow::Value(HostValue::Text(rendered))),
-                FormatKind::Print => {
-                    direct.engine.effects.push_text(&rendered);
-                    Ok(Flow::Value(HostValue::Unit))
-                }
-                FormatKind::Println => {
-                    direct.engine.effects.push_line(&rendered);
-                    Ok(Flow::Value(HostValue::Unit))
-                }
-            }
-        }
-        Plan::Field { base, index } => {
-            let value = eval_plan_value(direct, base, frame)?;
-            let value = direct.deref_scrutinee(value, default_span())?;
-            project_value(&value, *index)
-                .map(Flow::Value)
-                .map_err(|trap| Direct::trap(trap, default_span()))
-        }
-        Plan::Index { base, index } => {
-            let value = eval_plan_value(direct, base, frame)?;
-            let value = direct.deref_scrutinee(value, default_span())?;
-            let index = eval_plan_value(direct, index, frame)?;
-            let at =
-                ops::index_position(&index).map_err(|trap| Direct::trap(trap, default_span()))?;
-            index_value(&value, at)
-                .map(Flow::Value)
-                .map_err(|trap| Direct::trap(trap, default_span()))
-        }
-        Plan::Call { callee, args } => {
-            let values = eval_plan_args(direct, args, frame)?;
-            direct.call_fun(*callee, values).map(Flow::Value)
-        }
-        Plan::Ctor(op, args) => {
-            let values = eval_plan_args(direct, args, frame)?;
-            ops::construct(*op, &values)
-                .map(Flow::Value)
-                .map_err(|trap| Direct::trap(trap, default_span()))
-        }
-        Plan::IndirectCall { callee, args } => {
-            let function = eval_plan_value(direct, callee, frame)?;
-            let values = eval_plan_args(direct, args, frame)?;
-            direct.call_value(function, values).map(Flow::Value)
-        }
+        Plan::Tuple(left, right) => eval_plan_tuple(direct, left, right, frame),
+        Plan::Array(items) => eval_plan_array(direct, items, frame),
+        Plan::VecRepeat(value, count) => eval_plan_vec_repeat(direct, value, count, frame),
+        Plan::Format { kind, spec, args } => eval_plan_format(direct, *kind, spec, args, frame),
+        Plan::Field { base, index } => eval_plan_field(direct, base, *index, frame),
+        Plan::Index { base, index } => eval_plan_index(direct, base, index, frame),
+        Plan::Call { callee, args } => eval_plan_call(direct, *callee, args, frame),
+        Plan::Ctor(op, args) => eval_plan_ctor(direct, *op, args, frame),
+        Plan::IndirectCall { callee, args } => eval_plan_indirect_call(direct, callee, args, frame),
         Plan::Method {
             op,
             receiver,
             place,
             args,
-        } => {
-            let values = eval_plan_args(direct, args, frame)?;
-            let resolved = match place {
-                Some((root, proj)) => {
-                    let (addr, projs) = eval_plan_place(direct, root, proj, frame)?;
-                    Some(direct.see_through_root(addr, projs, true, default_span())?)
-                }
-                None => None,
-            };
-            let taken = if let (MethodOp::IntoIter, Some((addr, projs))) = (*op, resolved.as_ref())
-            {
-                direct
-                    .engine
-                    .take_at(*addr, projs)
-                    .map_err(|trap| Direct::trap(trap, default_span()))?
-            } else {
-                let taken = eval_plan_value(direct, receiver, frame)?;
-                direct.deref_scrutinee(taken, default_span())?
-            };
-            let (result, updated) = ops::apply_method(*op, taken, resolved.clone(), &values)
-                .map_err(|trap| Direct::trap(trap, default_span()))?;
-            if let (Some(updated), Some((addr, projs))) = (updated, resolved) {
-                direct
-                    .engine
-                    .write_at(addr, &projs, updated)
-                    .map_err(|trap| Direct::trap(trap, default_span()))?;
-            }
-            Ok(Flow::Value(result))
-        }
-        Plan::Unary(op, operand) => {
-            if matches!(op, UnOp::Ref | UnOp::RefMut)
-                && let Plan::Place { root, proj, .. } = operand.as_ref()
-            {
-                // Borrowing resolves the analyzed place without
-                // reading it, mirroring the direct evaluator.
-                let (addr, projs) = eval_plan_place(direct, root, proj, frame)?;
-                let (addr, projs) = direct.see_through_root(addr, projs, false, default_span())?;
-                return Ok(Flow::Value(HostValue::Ref {
-                    addr,
-                    projs,
-                    mutable: *op == UnOp::RefMut,
-                }));
-            }
-            let value = eval_plan_value(direct, operand, frame)?;
-            ops::checked_unary(*op, &value)
-                .map(Flow::Value)
-                .map_err(|trap| Direct::trap(trap, default_span()))
-        }
-        Plan::Binary(op, left, right) => {
-            if *op == BinOp::And || *op == BinOp::Or {
-                let HostValue::Bool(first) = eval_plan_value(direct, left, frame)? else {
-                    return Err(Direct::trap(Trap::Dangling, default_span()));
-                };
-                if (*op == BinOp::And && !first) || (*op == BinOp::Or && first) {
-                    return Ok(Flow::Value(HostValue::Bool(*op == BinOp::Or)));
-                }
-                let HostValue::Bool(second) = eval_plan_value(direct, right, frame)? else {
-                    return Err(Direct::trap(Trap::Dangling, default_span()));
-                };
-                return Ok(Flow::Value(HostValue::Bool(second)));
-            }
-            let a = eval_plan_value(direct, left, frame)?;
-            let b = eval_plan_value(direct, right, frame)?;
-            ops::checked_binary(*op, &a, &b)
-                .map(Flow::Value)
-                .map_err(|trap| Direct::trap(trap, default_span()))
-        }
+        } => eval_plan_method(direct, *op, receiver, place.as_ref(), args, frame),
+        Plan::Unary(op, operand) => eval_plan_unary(direct, *op, operand, frame),
+        Plan::Binary(op, left, right) => eval_plan_binary(direct, *op, left, right, frame),
         Plan::Assign {
             op,
             root,
             proj,
             value,
-        } => {
-            let (addr, projs) = eval_plan_place(direct, root, proj, frame)?;
-            let (addr, projs) = direct.see_through_root(addr, projs, false, default_span())?;
-            let produced = eval_plan_value(direct, value, frame)?;
-            let final_value = match op {
-                None => produced,
-                Some(binop) => {
-                    let current = direct
-                        .engine
-                        .read_at(addr, &projs)
-                        .map_err(|trap| Direct::trap(trap, default_span()))?;
-                    ops::checked_binary(*binop, &current, &produced)
-                        .map_err(|trap| Direct::trap(trap, default_span()))?
-                }
-            };
-            direct
-                .engine
-                .write_at(addr, &projs, final_value)
-                .map_err(|trap| Direct::trap(trap, default_span()))?;
-            Ok(Flow::Value(HostValue::Unit))
-        }
-        Plan::If { test, then, els } => {
-            let HostValue::Bool(decision) = eval_plan_value(direct, test, frame)? else {
-                return Err(Direct::trap(Trap::Dangling, default_span()));
-            };
-            if decision {
-                eval_plan(direct, then, frame)
-            } else {
-                eval_plan(direct, els, frame)
-            }
-        }
+        } => eval_plan_assign(direct, *op, root, proj, value, frame),
+        Plan::If { test, then, els } => eval_plan_if(direct, test, then, els, frame),
         Plan::IfLet {
             pat,
             value,
             then,
             els,
-        } => {
-            let tested = eval_plan_value(direct, value, frame)?;
-            if direct.bind_pattern(pat, &tested, frame)? {
-                eval_plan(direct, then, frame)
-            } else {
-                eval_plan(direct, els, frame)
-            }
-        }
-        Plan::Match { scrutinee, arms } => {
-            let tested = eval_plan_value(direct, scrutinee, frame)?;
-            for (pat, body) in arms {
-                if direct.bind_pattern(pat, &tested, frame)? {
-                    return eval_plan(direct, body, frame);
-                }
-            }
-            Err(Direct::trap(Trap::Dangling, default_span()))
-        }
-        Plan::Seq { stmts, tail } => {
-            for stmt in stmts {
-                let flow = match stmt {
-                    PlanStmt::Let {
-                        binding,
-                        destruct,
-                        value,
-                    } => {
-                        let produced = eval_plan(direct, value, frame)?;
-                        let Flow::Value(produced) = produced else {
-                            return Ok(produced);
-                        };
-                        match destruct {
-                            Some((left, right)) => {
-                                if let HostValue::Tuple(a, b) = produced {
-                                    direct.write(*left, *a, frame)?;
-                                    direct.write(*right, *b, frame)?;
-                                }
-                            }
-                            None => direct.write(*binding, produced, frame)?,
-                        }
-                        Flow::Value(HostValue::Unit)
-                    }
-                    PlanStmt::Expr(plan) => eval_plan(direct, plan, frame)?,
-                };
-                if !matches!(flow, Flow::Value(_)) {
-                    return Ok(flow);
-                }
-            }
-            match tail {
-                Some(tail) => eval_plan(direct, tail, frame),
-                None => Ok(Flow::Value(HostValue::Unit)),
-            }
-        }
-        Plan::Loop { test, body } => loop {
-            if let Some(test) = test {
-                let HostValue::Bool(decision) = eval_plan_value(direct, test, frame)? else {
-                    return Err(Direct::trap(Trap::Dangling, default_span()));
-                };
-                if !decision {
-                    break Ok(Flow::Value(HostValue::Unit));
-                }
-            }
-            match eval_plan(direct, body, frame)? {
-                Flow::Value(_) | Flow::Continue => {}
-                Flow::Break(value) => break Ok(Flow::Value(value)),
-                flow @ Flow::Return(_) => break Ok(flow),
-            }
-        },
-        Plan::WhileLet { pat, value, body } => loop {
-            let tested = eval_plan_value(direct, value, frame)?;
-            if !direct.bind_pattern(pat, &tested, frame)? {
-                break Ok(Flow::Value(HostValue::Unit));
-            }
-            match eval_plan(direct, body, frame)? {
-                Flow::Value(_) | Flow::Continue => {}
-                Flow::Break(value) => break Ok(Flow::Value(value)),
-                flow @ Flow::Return(_) => break Ok(flow),
-            }
-        },
+        } => eval_plan_iflet(direct, pat, value, then, els, frame),
+        Plan::Match { scrutinee, arms } => eval_plan_match(direct, scrutinee, arms, frame),
+        Plan::Seq { stmts, tail } => eval_plan_seq(direct, stmts, tail.as_deref(), frame),
+        Plan::Loop { test, body } => eval_plan_loop(direct, test.as_deref(), body, frame),
+        Plan::WhileLet { pat, value, body } => eval_plan_whilelet(direct, pat, value, body, frame),
         Plan::For {
             pat,
             iterable,
             body,
-        } => {
-            let mut iterator = eval_plan_iterable(direct, iterable, frame)?;
-            loop {
-                let step = ops::iterator_next(&mut iterator)
-                    .map_err(|trap| Direct::trap(trap, default_span()))?;
-                let item = match ops::builtin_variant(&step) {
-                    Some((0, payload)) if payload.len() == 1 => payload[0].clone(),
-                    _ => break Ok(Flow::Value(HostValue::Unit)),
-                };
-                if direct.bind_pattern(pat, &item, frame)? {
-                    match eval_plan(direct, body, frame)? {
-                        Flow::Value(_) | Flow::Continue => {}
-                        Flow::Break(value) => break Ok(Flow::Value(value)),
-                        flow @ Flow::Return(_) => break Ok(flow),
-                    }
-                }
-            }
-        }
-        Plan::Return(value) => {
-            let produced = match value {
-                Some(plan) => eval_plan_value(direct, plan, frame)?,
-                None => HostValue::Unit,
-            };
-            Ok(Flow::Return(produced))
-        }
-        Plan::Break(value) => {
-            let produced = match value {
-                Some(plan) => eval_plan_value(direct, plan, frame)?,
-                None => HostValue::Unit,
-            };
-            Ok(Flow::Break(produced))
-        }
+        } => eval_plan_for(direct, pat, iterable, body, frame),
+        Plan::Return(value) => eval_plan_return(direct, value.as_deref(), frame),
+        Plan::Break(value) => eval_plan_break(direct, value.as_deref(), frame),
         Plan::Continue => Ok(Flow::Continue),
-        Plan::Try(inner) => {
-            let tested = eval_plan_value(direct, inner, frame)?;
-            match ops::builtin_variant(&tested) {
-                Some((0, payload)) if payload.len() == 1 => Ok(Flow::Value(payload[0].clone())),
-                Some((1, _)) => Ok(Flow::Return(tested)),
-                _ => Err(Direct::trap(Trap::Dangling, default_span())),
-            }
+        Plan::Try(inner) => eval_plan_try(direct, inner, frame),
+        Plan::Range(left, right) => eval_plan_range(direct, left, right, frame),
+        Plan::ClosureValue { closure } => eval_plan_closure(direct, closure, frame),
+    }
+}
+
+fn eval_plan_place_expr(
+    direct: &mut Direct,
+    root: &PlanRoot,
+    proj: &[PlanProj],
+    mov: bool,
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    let (addr, projs) = eval_plan_place(direct, root, proj, frame)?;
+    let (addr, projs) = direct.see_through_root(addr, projs, false, default_span())?;
+    let result = if mov {
+        direct.engine.take_at(addr, &projs)
+    } else {
+        direct.engine.read_at(addr, &projs)
+    };
+    result
+        .map(Flow::Value)
+        .map_err(|trap| Direct::trap(trap, default_span()))
+}
+
+fn eval_plan_struct_lit(
+    direct: &mut Direct,
+    id: u32,
+    fields: &[Plan],
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    let values = eval_plan_args(direct, fields, frame)?;
+    Ok(Flow::Value(HostValue::Struct(id, values)))
+}
+
+fn eval_plan_variant_lit(
+    direct: &mut Direct,
+    id: u32,
+    index: u32,
+    payload: &[Plan],
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    let values = eval_plan_args(direct, payload, frame)?;
+    Ok(Flow::Value(HostValue::Variant(id, index, values)))
+}
+
+fn eval_plan_tuple(
+    direct: &mut Direct,
+    left: &Plan,
+    right: &Plan,
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    let a = eval_plan_value(direct, left, frame)?;
+    let b = eval_plan_value(direct, right, frame)?;
+    Ok(Flow::Value(HostValue::Tuple(Box::new(a), Box::new(b))))
+}
+
+fn eval_plan_array(direct: &mut Direct, items: &[Plan], frame: usize) -> Result<Flow, TrapReport> {
+    let values = eval_plan_args(direct, items, frame)?;
+    Ok(Flow::Value(HostValue::Vec(values)))
+}
+
+fn eval_plan_vec_repeat(
+    direct: &mut Direct,
+    value: &Plan,
+    count: &Plan,
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    let item = eval_plan_value(direct, value, frame)?;
+    let HostValue::Int(times) = eval_plan_value(direct, count, frame)? else {
+        return Err(Direct::trap(Trap::Dangling, default_span()));
+    };
+    let times = usize::try_from(times)
+        .map_err(|_| Direct::trap(Trap::Overflow("repeat"), default_span()))?;
+    Ok(Flow::Value(HostValue::Vec(vec![item; times])))
+}
+
+fn eval_plan_format(
+    direct: &mut Direct,
+    kind: FormatKind,
+    spec: &FormatSpec,
+    args: &[Plan],
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    let values = eval_plan_args(direct, args, frame)?;
+    let rendered = ops::render_format(spec, &values, &direct.engine.store)
+        .map_err(|trap| Direct::trap(trap, default_span()))?;
+    match kind {
+        FormatKind::Format => Ok(Flow::Value(HostValue::Text(rendered))),
+        FormatKind::Print => {
+            direct.engine.effects.push_text(&rendered);
+            Ok(Flow::Value(HostValue::Unit))
         }
-        Plan::Range(left, right) => {
-            let start = eval_plan_value(direct, left, frame)?;
-            let end = eval_plan_value(direct, right, frame)?;
-            let iterator =
-                ops::range_of(&start, &end).map_err(|trap| Direct::trap(trap, default_span()))?;
-            Ok(Flow::Value(iterator))
-        }
-        Plan::ClosureValue { closure } => {
-            let mut resolved = Vec::with_capacity(closure.captures.len());
-            for capture in &closure.captures {
-                let value = direct
-                    .engine
-                    .capture_value(capture.binding, capture.mode)
-                    .map_err(|trap| Direct::trap(trap, default_span()))?;
-                resolved.push((capture.binding, capture.mode, value));
-            }
-            Ok(Flow::Value(ops::closure_value(
-                closure.kind,
-                Arc::new(closure.body.clone()),
-                closure.params.clone(),
-                resolved,
-                closure.ret.clone(),
-                closure.frame_slots,
-                closure.bind_base,
-            )))
+        FormatKind::Println => {
+            direct.engine.effects.push_line(&rendered);
+            Ok(Flow::Value(HostValue::Unit))
         }
     }
+}
+
+fn eval_plan_field(
+    direct: &mut Direct,
+    base: &Plan,
+    index: u32,
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    let value = eval_plan_value(direct, base, frame)?;
+    let value = direct.deref_scrutinee(value, default_span())?;
+    project_value(&value, index)
+        .map(Flow::Value)
+        .map_err(|trap| Direct::trap(trap, default_span()))
+}
+
+fn eval_plan_index(
+    direct: &mut Direct,
+    base: &Plan,
+    index: &Plan,
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    let value = eval_plan_value(direct, base, frame)?;
+    let value = direct.deref_scrutinee(value, default_span())?;
+    let index = eval_plan_value(direct, index, frame)?;
+    let at = ops::index_position(&index).map_err(|trap| Direct::trap(trap, default_span()))?;
+    index_value(&value, at)
+        .map(Flow::Value)
+        .map_err(|trap| Direct::trap(trap, default_span()))
+}
+
+fn eval_plan_call(
+    direct: &mut Direct,
+    callee: FunId,
+    args: &[Plan],
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    let values = eval_plan_args(direct, args, frame)?;
+    direct.call_fun(callee, values).map(Flow::Value)
+}
+
+fn eval_plan_ctor(
+    direct: &mut Direct,
+    op: CtorOp,
+    args: &[Plan],
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    let values = eval_plan_args(direct, args, frame)?;
+    ops::construct(op, &values)
+        .map(Flow::Value)
+        .map_err(|trap| Direct::trap(trap, default_span()))
+}
+
+fn eval_plan_indirect_call(
+    direct: &mut Direct,
+    callee: &Plan,
+    args: &[Plan],
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    let function = eval_plan_value(direct, callee, frame)?;
+    let values = eval_plan_args(direct, args, frame)?;
+    direct.call_value(function, values).map(Flow::Value)
+}
+
+fn eval_plan_method(
+    direct: &mut Direct,
+    op: MethodOp,
+    receiver: &Plan,
+    place: Option<&(PlanRoot, Vec<PlanProj>)>,
+    args: &[Plan],
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    // The receiver resolves before the arguments, matching
+    // the direct evaluator's operand order.
+    let resolved = match place {
+        Some((root, proj)) => {
+            let (addr, projs) = eval_plan_place(direct, root, proj, frame)?;
+            Some(direct.see_through_root(addr, projs, true, default_span())?)
+        }
+        None => None,
+    };
+    let given = if resolved.is_none() {
+        let taken = eval_plan_value(direct, receiver, frame)?;
+        Some(direct.deref_scrutinee(taken, default_span())?)
+    } else {
+        None
+    };
+    let values = eval_plan_args(direct, args, frame)?;
+    let taken = match (given, resolved.as_ref()) {
+        (Some(taken), _) => taken,
+        (None, Some((addr, projs))) => {
+            if op == MethodOp::IntoIter {
+                direct
+                    .engine
+                    .take_at(*addr, projs)
+                    .map_err(|trap| Direct::trap(trap, default_span()))?
+            } else {
+                let taken = direct
+                    .engine
+                    .read_at(*addr, projs)
+                    .map_err(|trap| Direct::trap(trap, default_span()))?;
+                direct.deref_scrutinee(taken, default_span())?
+            }
+        }
+        (None, None) => {
+            return Err(Direct::trap(Trap::Dangling, default_span()));
+        }
+    };
+    let (result, updated) = ops::apply_method(op, taken, resolved.clone(), &values)
+        .map_err(|trap| Direct::trap(trap, default_span()))?;
+    if let (Some(updated), Some((addr, projs))) = (updated, resolved) {
+        direct
+            .engine
+            .write_at(addr, &projs, updated)
+            .map_err(|trap| Direct::trap(trap, default_span()))?;
+    }
+    Ok(Flow::Value(result))
+}
+
+fn eval_plan_unary(
+    direct: &mut Direct,
+    op: UnOp,
+    operand: &Plan,
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    if matches!(op, UnOp::Ref | UnOp::RefMut)
+        && let Plan::Place { root, proj, .. } = operand
+    {
+        // Borrowing resolves the analyzed place without
+        // reading it, mirroring the direct evaluator.
+        let (addr, projs) = eval_plan_place(direct, root, proj, frame)?;
+        let (addr, projs) = direct.see_through_root(addr, projs, false, default_span())?;
+        return Ok(Flow::Value(HostValue::Ref {
+            addr,
+            projs,
+            mutable: op == UnOp::RefMut,
+        }));
+    }
+    let value = eval_plan_value(direct, operand, frame)?;
+    ops::checked_unary(op, &value)
+        .map(Flow::Value)
+        .map_err(|trap| Direct::trap(trap, default_span()))
+}
+
+fn eval_plan_binary(
+    direct: &mut Direct,
+    op: BinOp,
+    left: &Plan,
+    right: &Plan,
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    if op == BinOp::And || op == BinOp::Or {
+        let HostValue::Bool(first) = eval_plan_value(direct, left, frame)? else {
+            return Err(Direct::trap(Trap::Dangling, default_span()));
+        };
+        if (op == BinOp::And && !first) || (op == BinOp::Or && first) {
+            return Ok(Flow::Value(HostValue::Bool(op == BinOp::Or)));
+        }
+        let HostValue::Bool(second) = eval_plan_value(direct, right, frame)? else {
+            return Err(Direct::trap(Trap::Dangling, default_span()));
+        };
+        return Ok(Flow::Value(HostValue::Bool(second)));
+    }
+    let a = eval_plan_value(direct, left, frame)?;
+    let b = eval_plan_value(direct, right, frame)?;
+    ops::checked_binary(op, &a, &b)
+        .map(Flow::Value)
+        .map_err(|trap| Direct::trap(trap, default_span()))
+}
+
+fn eval_plan_assign(
+    direct: &mut Direct,
+    op: Option<BinOp>,
+    root: &PlanRoot,
+    proj: &[PlanProj],
+    value: &Plan,
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    let (addr, projs) = eval_plan_place(direct, root, proj, frame)?;
+    let (addr, projs) = direct.see_through_root(addr, projs, false, default_span())?;
+    let produced = eval_plan_value(direct, value, frame)?;
+    let final_value = match op {
+        None => produced,
+        Some(binop) => {
+            let current = direct
+                .engine
+                .read_at(addr, &projs)
+                .map_err(|trap| Direct::trap(trap, default_span()))?;
+            ops::checked_binary(binop, &current, &produced)
+                .map_err(|trap| Direct::trap(trap, default_span()))?
+        }
+    };
+    direct
+        .engine
+        .write_at(addr, &projs, final_value)
+        .map_err(|trap| Direct::trap(trap, default_span()))?;
+    Ok(Flow::Value(HostValue::Unit))
+}
+
+fn eval_plan_if(
+    direct: &mut Direct,
+    test: &Plan,
+    then: &Plan,
+    els: &Plan,
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    let HostValue::Bool(decision) = eval_plan_value(direct, test, frame)? else {
+        return Err(Direct::trap(Trap::Dangling, default_span()));
+    };
+    if decision {
+        eval_plan(direct, then, frame)
+    } else {
+        eval_plan(direct, els, frame)
+    }
+}
+
+fn eval_plan_iflet(
+    direct: &mut Direct,
+    pat: &HirPat,
+    value: &Plan,
+    then: &Plan,
+    els: &Plan,
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    let tested = eval_plan_value(direct, value, frame)?;
+    if direct.bind_pattern(pat, &tested, frame)? {
+        eval_plan(direct, then, frame)
+    } else {
+        eval_plan(direct, els, frame)
+    }
+}
+
+fn eval_plan_match(
+    direct: &mut Direct,
+    scrutinee: &Plan,
+    arms: &[(HirPat, Plan)],
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    let tested = eval_plan_value(direct, scrutinee, frame)?;
+    for (pat, body) in arms {
+        if direct.bind_pattern(pat, &tested, frame)? {
+            return eval_plan(direct, body, frame);
+        }
+    }
+    Err(Direct::trap(Trap::Dangling, default_span()))
+}
+
+fn eval_plan_seq(
+    direct: &mut Direct,
+    stmts: &[PlanStmt],
+    tail: Option<&Plan>,
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    for stmt in stmts {
+        let flow = match stmt {
+            PlanStmt::Let {
+                binding,
+                destruct,
+                value,
+            } => {
+                let produced = eval_plan(direct, value, frame)?;
+                let Flow::Value(produced) = produced else {
+                    return Ok(produced);
+                };
+                match destruct {
+                    Some((left, right)) => {
+                        if let HostValue::Tuple(a, b) = produced {
+                            direct.write(*left, *a, frame)?;
+                            direct.write(*right, *b, frame)?;
+                        }
+                    }
+                    None => direct.write(*binding, produced, frame)?,
+                }
+                Flow::Value(HostValue::Unit)
+            }
+            PlanStmt::Expr(plan) => eval_plan(direct, plan, frame)?,
+        };
+        if !matches!(flow, Flow::Value(_)) {
+            return Ok(flow);
+        }
+    }
+    match tail {
+        Some(tail) => eval_plan(direct, tail, frame),
+        None => Ok(Flow::Value(HostValue::Unit)),
+    }
+}
+
+fn eval_plan_loop(
+    direct: &mut Direct,
+    test: Option<&Plan>,
+    body: &Plan,
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    loop {
+        if let Some(test) = test {
+            let HostValue::Bool(decision) = eval_plan_value(direct, test, frame)? else {
+                return Err(Direct::trap(Trap::Dangling, default_span()));
+            };
+            if !decision {
+                break Ok(Flow::Value(HostValue::Unit));
+            }
+        }
+        match eval_plan(direct, body, frame)? {
+            Flow::Value(_) | Flow::Continue => {}
+            Flow::Break(value) => break Ok(Flow::Value(value)),
+            flow @ Flow::Return(_) => break Ok(flow),
+        }
+    }
+}
+
+fn eval_plan_whilelet(
+    direct: &mut Direct,
+    pat: &HirPat,
+    value: &Plan,
+    body: &Plan,
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    loop {
+        let tested = eval_plan_value(direct, value, frame)?;
+        if !direct.bind_pattern(pat, &tested, frame)? {
+            break Ok(Flow::Value(HostValue::Unit));
+        }
+        match eval_plan(direct, body, frame)? {
+            Flow::Value(_) | Flow::Continue => {}
+            Flow::Break(value) => break Ok(Flow::Value(value)),
+            flow @ Flow::Return(_) => break Ok(flow),
+        }
+    }
+}
+
+fn eval_plan_for(
+    direct: &mut Direct,
+    pat: &HirPat,
+    iterable: &Plan,
+    body: &Plan,
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    let mut iterator = eval_plan_iterable(direct, iterable, frame)?;
+    loop {
+        let step =
+            ops::iterator_next(&mut iterator).map_err(|trap| Direct::trap(trap, default_span()))?;
+        let item = match ops::builtin_variant(&step) {
+            Some((0, payload)) if payload.len() == 1 => payload[0].clone(),
+            _ => break Ok(Flow::Value(HostValue::Unit)),
+        };
+        if direct.bind_pattern(pat, &item, frame)? {
+            match eval_plan(direct, body, frame)? {
+                Flow::Value(_) | Flow::Continue => {}
+                Flow::Break(value) => break Ok(Flow::Value(value)),
+                flow @ Flow::Return(_) => break Ok(flow),
+            }
+        }
+    }
+}
+
+fn eval_plan_return(
+    direct: &mut Direct,
+    value: Option<&Plan>,
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    let produced = match value {
+        Some(plan) => eval_plan_value(direct, plan, frame)?,
+        None => HostValue::Unit,
+    };
+    Ok(Flow::Return(produced))
+}
+
+fn eval_plan_break(
+    direct: &mut Direct,
+    value: Option<&Plan>,
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    let produced = match value {
+        Some(plan) => eval_plan_value(direct, plan, frame)?,
+        None => HostValue::Unit,
+    };
+    Ok(Flow::Break(produced))
+}
+
+fn eval_plan_try(direct: &mut Direct, inner: &Plan, frame: usize) -> Result<Flow, TrapReport> {
+    let tested = eval_plan_value(direct, inner, frame)?;
+    match ops::builtin_variant(&tested) {
+        Some((0, payload)) if payload.len() == 1 => Ok(Flow::Value(payload[0].clone())),
+        Some((1, _)) => Ok(Flow::Return(tested)),
+        _ => Err(Direct::trap(Trap::Dangling, default_span())),
+    }
+}
+
+fn eval_plan_range(
+    direct: &mut Direct,
+    left: &Plan,
+    right: &Plan,
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    let start = eval_plan_value(direct, left, frame)?;
+    let end = eval_plan_value(direct, right, frame)?;
+    let iterator =
+        ops::range_of(&start, &end).map_err(|trap| Direct::trap(trap, default_span()))?;
+    Ok(Flow::Value(iterator))
+}
+
+fn eval_plan_closure(
+    direct: &mut Direct,
+    closure: &HirClosure,
+    frame: usize,
+) -> Result<Flow, TrapReport> {
+    let _ = frame;
+    let mut resolved = Vec::with_capacity(closure.captures.len());
+    for capture in &closure.captures {
+        let value = direct
+            .engine
+            .capture_value(capture.binding, capture.mode)
+            .map_err(|trap| Direct::trap(trap, default_span()))?;
+        resolved.push((capture.binding, capture.mode, value));
+    }
+    Ok(Flow::Value(ops::closure_value(
+        closure.kind,
+        Arc::new(closure.body.clone()),
+        closure.params.clone(),
+        resolved,
+        closure.ret.clone(),
+        closure.frame_slots,
+        closure.bind_base,
+    )))
 }
 
 fn eval_plan_iterable(

@@ -9,19 +9,30 @@ package sicp.ch4.examples
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import sicp.ch4.QueryDatabase
 import sicp.ch4.QueryDriver
 
 public class S4_4_4DatabaseTest :
     FunSpec({
         val x = variable("x")
         val y = variable("y")
+        val z = variable("z")
 
         test("the indexed bucket answers the stored assertions chronologically") {
             val driver = QueryDriver.streaming(microshaftDatabase())
             val names = answerLines(driver, pattern(terms(sym("job"), x, y)), listOf(x))
-            names.size shouldBe 9
-            names.first() shouldBe "?x = [Bitdiddle, Ben]"
-            names.last() shouldBe "?x = [Aull, DeWitt]"
+            names shouldBe
+                listOf(
+                    "?x = [Bitdiddle, Ben]",
+                    "?x = [Hacker, Alyssa, P]",
+                    "?x = [Fect, Cy, D]",
+                    "?x = [Tweakit, Lem, E]",
+                    "?x = [Reasoner, Louis]",
+                    "?x = [Warbucks, Oliver]",
+                    "?x = [Scrooge, Eben]",
+                    "?x = [Cratchet, Robert]",
+                    "?x = [Aull, DeWitt]",
+                )
         }
 
         test("a new assertion is appended, not added in front") {
@@ -40,5 +51,14 @@ public class S4_4_4DatabaseTest :
                 .take(40)
                 .toList()
                 .size shouldBe 40
+        }
+
+        test("a variable-headed rule stays in scope for a constant-headed query") {
+            val database = QueryDatabase()
+            database.addRule(rule(terms(x, sym("derivative"), y), pattern(terms(sym("same"), x, y))))
+            database.assertFact(fact(terms(sym("same"), sym("f"), sym("g"))))
+            val driver = QueryDriver.streaming(database)
+            answerLines(driver, pattern(terms(sym("f"), sym("derivative"), z)), listOf(z)) shouldBe
+                listOf("?z = g")
         }
     })

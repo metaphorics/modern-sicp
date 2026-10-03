@@ -75,7 +75,7 @@ public class QueryDatabase {
     internal fun factsWithHead(head: String): List<QFact> = if (head == "?") facts.toList() else facts.filter { headOf(it.term) == head }
 
     internal fun rulesWithHead(head: String): List<QRule> =
-        if (head == "?") rules.toList() else rules.filter { headOf(it.conclusion) == head }
+        if (head == "?") rules.toList() else rules.filter { headOf(it.conclusion) == head } + rules.filter { headOf(it.conclusion) == "?" }
 }
 
 private fun headOf(term: QTerm): String =

@@ -19,7 +19,7 @@ public class E3_67Test :
         test("Exercise 3.67: the diagonal (i, i) appears, at 0-based index (4^i - 4) / 3") {
             val prefix = pairsAll(integers, integers).take(1500)
             for (i in 1L..6L) {
-                prefix.indexOf(i to i) shouldBe ((1L shl (2 * i.toInt())) - 4) / 3
+                prefix.indexOf(i to i) shouldBe (((1L shl (2 * i.toInt())) - 4) / 3).toInt()
             }
         }
 

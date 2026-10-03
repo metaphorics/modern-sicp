@@ -48,6 +48,7 @@ private fun coreRows(): List<CorpusRow> =
         .filter { it.isNotBlank() && !it.startsWith("#") }
         .map { line ->
             val cells = line.split("\t")
+            if (cells.size < 2) throw AssertionError("malformed manifest row: $line")
             CorpusRow(cells[0], cells[1])
         }.filter { it.id.startsWith("core/") }
 

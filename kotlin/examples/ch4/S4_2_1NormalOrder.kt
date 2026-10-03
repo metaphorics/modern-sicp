@@ -32,7 +32,7 @@ private val UNLESS_SESSION: String =
         if (condition) exceptional else usual
 
     fun exceptional(): Long {
-        print("exception: returning 0")
+        println("exception: returning 0")
         return 0L
     }
 
@@ -69,7 +69,7 @@ public class S4_2_1NormalOrderTest :
 
         test("unless does useful work past an argument that would fault") {
             val result = runLazy(UNLESS_SESSION)
-            result.output shouldBe "exception: returning 00\n"
+            result.output shouldBe "exception: returning 0\n0\n"
             result.error shouldBe null
         }
 

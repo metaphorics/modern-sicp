@@ -490,7 +490,7 @@ fn reference_explore(
             for value in *lo..=*hi {
                 reference_bind(var, value, trail, bindings);
                 reference_explore(body, answers, effects, trail, bindings);
-                reference_rollback(trail, bindings, trail.len() - 1);
+                reference_rollback_binding(trail, bindings, var);
             }
         }
         Search::ChooseFrom { var, start, body } => {
@@ -501,7 +501,7 @@ fn reference_explore(
             while produced < 32 {
                 reference_bind(var, value, trail, bindings);
                 reference_explore(body, answers, effects, trail, bindings);
-                reference_rollback(trail, bindings, trail.len() - 1);
+                reference_rollback_binding(trail, bindings, var);
                 value = value.saturating_add(1);
                 produced += 1;
             }
@@ -552,6 +552,30 @@ fn reference_rollback(
             None => {
                 bindings.remove(&name);
             }
+        }
+    }
+}
+
+/// Mirrors [`SearchEngine::rollback_binding`]: backtracks the trail
+/// through the iteration variable's own bind, so every assignment the
+/// candidate's body trailed is undone before the next candidate.
+fn reference_rollback_binding(
+    trail: &mut Vec<(String, Option<i64>)>,
+    bindings: &mut HashMap<String, i64>,
+    name: &str,
+) {
+    while let Some((bound, previous)) = trail.pop() {
+        let restoring = bound == name;
+        match previous {
+            Some(value) => {
+                bindings.insert(bound, value);
+            }
+            None => {
+                bindings.remove(&bound);
+            }
+        }
+        if restoring {
+            break;
         }
     }
 }
@@ -828,4 +852,81 @@ pub fn search_pythagorean() -> Search {
         };
     }
     program
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AnswerTerm, AnswerValue, Search, SearchEngine, SearchOutcome, reference_model};
+
+    fn var(name: &str) -> AnswerTerm {
+        AnswerTerm::Var(name.to_owned())
+    }
+
+    fn run(program: &Search) -> (SearchOutcome, SearchOutcome) {
+        (SearchEngine::new().run(program), reference_model(program))
+    }
+
+    /// A `ChooseRange` candidate that trails more than one assignment
+    /// must roll every one of them back before the next candidate and
+    /// before sibling alternatives: the reference model's per-candidate
+    /// mark restored only the deepest entry, leaking the iteration
+    /// variable's own bind and the body's earlier writes.
+    #[test]
+    fn choose_range_rolls_back_the_whole_candidate() {
+        let leaked_var = Search::Choose(vec![
+            Search::ChooseRange {
+                var: "x".to_owned(),
+                lo: 1,
+                hi: 2,
+                body: Box::new(Search::Set("y".to_owned(), 0, Box::new(Search::Fail))),
+            },
+            Search::Success(vec![var("x")]),
+        ]);
+        let (engine, reference) = run(&leaked_var);
+        assert_eq!(engine.answers, Vec::<Vec<AnswerValue>>::new());
+        assert_eq!(reference, engine);
+
+        let leaked_body_write = Search::Choose(vec![
+            Search::ChooseRange {
+                var: "x".to_owned(),
+                lo: 1,
+                hi: 2,
+                body: Box::new(Search::Set(
+                    "y".to_owned(),
+                    0,
+                    Box::new(Search::Set("z".to_owned(), 0, Box::new(Search::Fail))),
+                )),
+            },
+            Search::Success(vec![var("y")]),
+        ]);
+        let (engine, reference) = run(&leaked_body_write);
+        assert_eq!(engine.answers, Vec::<Vec<AnswerValue>>::new());
+        assert_eq!(reference, engine);
+    }
+
+    /// `ChooseFrom` shares the rollback helper: the iteration variable
+    /// still unbinds between candidates, and `run_prefix` keeps the
+    /// prefix observable.
+    #[test]
+    fn choose_from_rolls_back_the_whole_candidate() {
+        let program = Search::ChooseFrom {
+            var: "x".to_owned(),
+            start: 1,
+            body: Box::new(Search::Set(
+                "y".to_owned(),
+                0,
+                Box::new(Search::Success(vec![var("x"), var("y")])),
+            )),
+        };
+        let engine = SearchEngine::new().run_prefix(&program, 2);
+        let reference = reference_model(&program);
+        assert_eq!(
+            engine.answers,
+            vec![
+                vec![AnswerValue::Int(1), AnswerValue::Int(0)],
+                vec![AnswerValue::Int(2), AnswerValue::Int(0)],
+            ]
+        );
+        assert_eq!(reference.answers[..2].to_vec(), engine.answers);
+    }
 }

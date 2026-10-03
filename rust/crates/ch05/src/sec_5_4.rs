@@ -1047,7 +1047,8 @@ impl Eceval {
             }
             Resume::Format { kind, spec } => {
                 let rendered =
-                    ops::render_format(&spec, &values, &self.engine.store).map_err(Self::trap)?;
+                    ops::render_format(&spec, &values, &self.engine.store, &self.engine.sema.items)
+                        .map_err(Self::trap)?;
                 self.val = match kind {
                     FormatKind::Format => HostValue::Text(rendered),
                     FormatKind::Print => {
@@ -1312,6 +1313,7 @@ impl Eceval {
             match rest.next() {
                 None => return self.finish_place(addr, projs, then),
                 Some(Proj::Field(index)) => projs.push(RtProj::Field(index)),
+                Some(Proj::BoxDeref) => projs.push(RtProj::BoxDeref),
                 Some(Proj::Index(expr)) => {
                     self.continues.push(Control::PlaceIndex {
                         addr,

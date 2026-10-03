@@ -10,7 +10,19 @@
 
 use std::collections::HashMap;
 
-use crate::host::hir::{BindId, CaptureMode, ClosureKind, FunId, HirBlock, HostTy};
+use crate::host::hir::{
+    BindId, CaptureMode, ClosureKind, FunId, HirBlock, HostTy, ItemDef, ItemKind,
+};
+
+/// The reserved item marker `Option` values carry, so a user enum
+/// can never collide with them.
+pub const BUILTIN: u32 = u32::MAX;
+
+/// The reserved item marker `Result` values carry: kept distinct
+/// from [`BUILTIN`] so the `Debug` text can name `Ok`/`Err` — a
+/// shared sentinel would erase which of the two built-in types the
+/// variant belongs to.
+pub const BUILTIN_RES: u32 = u32::MAX - 1;
 
 /// A frame slot address: one binding of one activation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -214,17 +226,22 @@ impl HostValue {
         })
     }
 
-    /// The Rust `Debug` rendering of the admitted forms.
+    /// The Rust `Debug` rendering of the admitted forms. Struct and
+    /// variant values carry only their item index, so the declared
+    /// `items` restore the type, variant, and field names a derived
+    /// `Debug` impl prints; a `Box` forwards to its contents exactly
+    /// like `Box`'s own `Debug` impl.
     #[must_use]
-    pub fn debug_text(&self) -> String {
+    pub fn debug_text(&self, items: &[ItemDef]) -> String {
         match self {
             Self::Int(value) => value.to_string(),
             Self::Usize(value) => value.to_string(),
             Self::Bool(value) => value.to_string(),
             Self::Unit => "()".to_owned(),
             Self::Text(text) => format!("{text:?}"),
-            Self::Vec(items) | Self::Array(items) => {
-                let rendered: Vec<String> = items.iter().map(Self::debug_text).collect();
+            Self::Vec(values) | Self::Array(values) => {
+                let rendered: Vec<String> =
+                    values.iter().map(|value| value.debug_text(items)).collect();
                 format!("[{}]", rendered.join(", "))
             }
             Self::Map(entries) => {
@@ -232,27 +249,105 @@ impl HostValue {
                 keys.sort();
                 let rendered: Vec<String> = keys
                     .iter()
-                    .map(|key| format!("{key:?}: {}", entries[*key].debug_text()))
+                    .map(|key| format!("{key:?}: {}", entries[*key].debug_text(items)))
                     .collect();
                 format!("{{{}}}", rendered.join(", "))
             }
-            Self::Box(inner) => format!("Box({})", inner.debug_text()),
+            Self::Box(inner) => inner.debug_text(items),
             Self::Tuple(left, right) => {
-                format!("({}, {})", left.debug_text(), right.debug_text())
+                format!("({}, {})", left.debug_text(items), right.debug_text(items))
             }
-            Self::Struct(_, fields) => {
-                let rendered: Vec<String> = fields.iter().map(Self::debug_text).collect();
-                format!("{{{}}}", rendered.join(", "))
+            Self::Struct(item, fields) => {
+                if let Some((name, fields_def)) = items.get(*item as usize).and_then(|def| {
+                    if let ItemKind::Struct(names) = &def.kind {
+                        Some((def.name.as_str(), names))
+                    } else {
+                        None
+                    }
+                }) {
+                    render_ctor(name, fields_def, fields, items)
+                } else {
+                    let rendered: Vec<String> =
+                        fields.iter().map(|value| value.debug_text(items)).collect();
+                    format!("{{{}}}", rendered.join(", "))
+                }
             }
-            Self::Variant(_, _, payload) => {
-                let rendered: Vec<String> = payload.iter().map(Self::debug_text).collect();
-                format!("({})", rendered.join(", "))
+            Self::Variant(item, variant, payload) => {
+                if let Some(name) = builtin_variant_name(*item, *variant) {
+                    let rendered: Vec<String> = payload
+                        .iter()
+                        .map(|value| value.debug_text(items))
+                        .collect();
+                    return if rendered.is_empty() {
+                        name.to_owned()
+                    } else {
+                        format!("{name}({})", rendered.join(", "))
+                    };
+                }
+                if let Some((name, fields_def)) = items.get(*item as usize).and_then(|def| {
+                    if let ItemKind::Enum(variants) = &def.kind {
+                        variants.get(*variant as usize)
+                    } else {
+                        None
+                    }
+                }) {
+                    render_ctor(name, fields_def, payload, items)
+                } else {
+                    let rendered: Vec<String> = payload
+                        .iter()
+                        .map(|value| value.debug_text(items))
+                        .collect();
+                    format!("({})", rendered.join(", "))
+                }
             }
             Self::FnPtr(id) => format!("fn{}", id.0),
             Self::Closure(_) => "closure".to_owned(),
             Self::Ref { .. } => "reference".to_owned(),
             Self::Iter(_) => "iterator".to_owned(),
         }
+    }
+}
+
+/// The variant name a built-in `Option` or `Result` value carries:
+/// rustc prints `Some`/`None`/`Ok`/`Err`, so the marker decides
+/// which family the discriminant names.
+fn builtin_variant_name(item: u32, variant: u32) -> Option<&'static str> {
+    match (item, variant) {
+        (BUILTIN, 0) => Some("Some"),
+        (BUILTIN, _) => Some("None"),
+        (BUILTIN_RES, 0) => Some("Ok"),
+        (BUILTIN_RES, _) => Some("Err"),
+        _ => None,
+    }
+}
+
+/// Renders one struct or enum variant the way its derived `Debug`
+/// impl does: `Name` when there are no fields, `Name(v, ..)` for
+/// positional fields, `Name { f: v, .. }` for named ones. The
+/// declared field names are `0`, `1`, and so on for positional
+/// fields, which no user-written field name can be.
+fn render_ctor(
+    name: &str,
+    fields: &[(String, HostTy)],
+    values: &[HostValue],
+    items: &[ItemDef],
+) -> String {
+    if fields.is_empty() {
+        return name.to_owned();
+    }
+    let rendered: Vec<String> = values.iter().map(|value| value.debug_text(items)).collect();
+    if fields
+        .iter()
+        .all(|(field, _)| field.bytes().next().is_some_and(|c| c.is_ascii_digit()))
+    {
+        format!("{name}({})", rendered.join(", "))
+    } else {
+        let named: Vec<String> = fields
+            .iter()
+            .zip(rendered)
+            .map(|((field, _), value)| format!("{field}: {value}"))
+            .collect();
+        format!("{name} {{ {} }}", named.join(", "))
     }
 }
 
@@ -372,8 +467,8 @@ pub fn render_display(value: &HostValue) -> String {
     value.display_text().unwrap_or_default()
 }
 
-/// The debug rendering contract for `{:?}` arguments.
+/// The debug rendering contract for `{?}` arguments.
 #[must_use]
-pub fn render_debug(value: &HostValue) -> String {
-    value.debug_text()
+pub fn render_debug(value: &HostValue, items: &[ItemDef]) -> String {
+    value.debug_text(items)
 }

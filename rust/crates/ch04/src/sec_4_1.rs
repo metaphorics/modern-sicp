@@ -194,8 +194,9 @@ impl Direct {
             }
             HirExprKind::Format { kind, spec, args } => {
                 let values = self.eval_args(args, frame)?;
-                let rendered = ops::render_format(spec, &values, &self.engine.store)
-                    .map_err(|trap| Self::trap(trap, span))?;
+                let rendered =
+                    ops::render_format(spec, &values, &self.engine.store, &self.engine.sema.items)
+                        .map_err(|trap| Self::trap(trap, span))?;
                 match kind {
                     FormatKind::Format => HostValue::Text(rendered),
                     FormatKind::Print => {
@@ -667,6 +668,7 @@ impl Direct {
                         ops::index_position(&index).map_err(|trap| Self::trap(trap, place.span))?;
                     projs.push(RtProj::Index(at));
                 }
+                Proj::BoxDeref => projs.push(RtProj::BoxDeref),
             }
         }
         Ok((addr, projs))
@@ -964,6 +966,8 @@ pub enum PlanProj {
     Field(u32),
     /// `[index]`.
     Index(Box<Plan>),
+    /// `*` on a `Box<T>` operand.
+    BoxDeref,
 }
 
 /// One precomputed statement of a [`Plan::Seq`].
@@ -1185,6 +1189,7 @@ fn analyze_place(place: &Place) -> (PlanRoot, Vec<PlanProj>) {
         .map(|step| match step {
             Proj::Field(index) => PlanProj::Field(*index),
             Proj::Index(index) => PlanProj::Index(Box::new(analyze_expr(index))),
+            Proj::BoxDeref => PlanProj::BoxDeref,
         })
         .collect();
     (root, proj)
@@ -1353,8 +1358,13 @@ fn eval_plan_format(
     frame: usize,
 ) -> Result<Flow, TrapReport> {
     let values = eval_plan_args(direct, args, frame)?;
-    let rendered = ops::render_format(spec, &values, &direct.engine.store)
-        .map_err(|trap| Direct::trap(trap, default_span()))?;
+    let rendered = ops::render_format(
+        spec,
+        &values,
+        &direct.engine.store,
+        &direct.engine.sema.items,
+    )
+    .map_err(|trap| Direct::trap(trap, default_span()))?;
     match kind {
         FormatKind::Format => Ok(Flow::Value(HostValue::Text(rendered))),
         FormatKind::Print => {
@@ -1872,6 +1882,7 @@ fn eval_plan_place(
                     .map_err(|trap| Direct::trap(trap, default_span()))?;
                 projs.push(RtProj::Index(at));
             }
+            PlanProj::BoxDeref => projs.push(RtProj::BoxDeref),
         }
     }
     Ok((addr, projs))

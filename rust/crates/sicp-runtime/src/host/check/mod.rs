@@ -1746,6 +1746,7 @@ fn resolve_place(place: &Place, cells: &[Option<HostTy>]) -> Result<Place, Diag>
         proj.push(match step {
             Proj::Field(index) => Proj::Field(*index),
             Proj::Index(expr) => Proj::Index(Box::new(resolve_expr(expr, cells)?)),
+            Proj::BoxDeref => Proj::BoxDeref,
         });
     }
     Ok(Place {

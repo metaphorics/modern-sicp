@@ -58,9 +58,9 @@ fn main() {
     // A string's debug form is quoted and escaped; its display form is
     // bare.
     let text = HostValue::Text(String::from("a \"quoted\" word"));
-    println!("{}", render_debug(&text));
+    println!("{}", render_debug(&text, &[]));
     // => "a \"quoted\" word"
-    assert_eq!(render_debug(&text), "\"a \\\"quoted\\\" word\"");
+    assert_eq!(render_debug(&text, &[]), "\"a \\\"quoted\\\" word\"");
     println!("{}", render_display(&text));
     // => a "quoted" word
     assert_eq!(render_display(&text), "a \"quoted\" word");

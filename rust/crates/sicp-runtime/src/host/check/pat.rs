@@ -50,10 +50,10 @@ impl Checker {
                 let value = i64::try_from(raw)
                     .map_err(|_| Diag::syntax(span, "integer literal out of range for `i64`"))?;
                 match (suffix, &peeled) {
-                    (None, HostTy::I64) | (Some(crate::host::lexer::IntSuffix::I64), _) => {
+                    (None | Some(crate::host::lexer::IntSuffix::I64), HostTy::I64) => {
                         HirPatKind::I64(value)
                     }
-                    (None, HostTy::Usize) | (Some(crate::host::lexer::IntSuffix::Usize), _) => {
+                    (None | Some(crate::host::lexer::IntSuffix::Usize), HostTy::Usize) => {
                         HirPatKind::Usize(raw)
                     }
                     _ => {

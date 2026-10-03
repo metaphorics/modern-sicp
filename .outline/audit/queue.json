@@ -1987,8 +1987,9 @@
       "suggestion": "Apply the narrowing only when the Is node sits in a condition position (the narrowCondition path), not for every evaluated `is` expression.",
       "confidence": "medium",
       "falsePositive": false,
-      "status": "open",
-      "locationWeak": false
+      "status": "false-positive",
+      "locationWeak": false,
+      "fpReason": "checkExpression (Checker.kt:838-848) saves/restores narrowings around every expression, so narrow() evaluated as a value is dead state \u2014 `x is A; println(x.n)` already rejects (probed)."
     },
     {
       "pass": "code-quality",
@@ -3811,9 +3812,9 @@
   ],
   "counts": {
     "total": 123,
-    "open": 96,
+    "open": 95,
     "fixed": 20,
-    "falsePositive": 7,
+    "falsePositive": 8,
     "blockedByNoVerifier": 0,
     "openCriticalHigh": 0,
     "openLow": 42,
@@ -3865,5 +3866,5 @@
       "decision": "Surface.kt:802 dismissed as false-positive with evidence (member gates already restrict to Mutable*)"
     }
   ],
-  "updatedAt": "2026-10-03T10:05:00Z"
+  "updatedAt": "2026-10-03T10:20:00Z"
 }

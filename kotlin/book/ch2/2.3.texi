@@ -283,11 +283,13 @@ reader, so a quoted spelling is never something a running program types at
 a prompt, but the reader's expansion rule is simple enough to apply by hand:
 a single quote before a datum is sugar for the two-element list holding the
 symbol @code{quote} and the datum, so a doubled quote is sugar for a
-quotation of a quotation.  Build the @code{Value} that the doubly quoted
-symbol @code{abracadabra} would have read
-as, using only @code{vlist} and @code{VSym}, and give its car.  Explain, in
-terms of the value's own shape rather than by appealing to a reader, why that
-car is the symbol @code{quote} and not @code{abracadabra}.
+quotation of a quotation.  The edition models that nesting directly: each
+@code{QuotationForm.Quoted} node is one quote layer over its operand, and
+@code{QuotationForm.Name} is the symbol.  Build the tree for the doubly
+quoted symbol @code{abracadabra} and return the outer node's operand.
+Explain, in terms of the tree's own shape rather than by appealing to a
+reader, why that operand is a quotation node rather than the name
+@code{abracadabra}.
 @end quotation
 
 @node	2.3.2, 2.3.3, 2.3.1, 2.3

@@ -2,5 +2,7 @@
 
 package sicp.ch2.exercises
 
-/** Marks a deliberately incomplete student exercise without depending on the old data runtime. */
-internal class PendingExercise : IllegalStateException("pending exercise: implement the body to satisfy its documented expectation")
+import sicp.runtime.PendingSolution
+
+/** The shared pending marker an unsolved scaffold throws (D28). */
+internal typealias PendingExercise = PendingSolution

@@ -8,8 +8,9 @@ import sicp.runtime.Datum
 /**
  * Exercise 2.54: implement structural equality for finite datum trees.
  * Atomic values compare by their native contents; two pair cells compare
- * when both fields compare recursively. Pair-cell identity alone is not
- * sufficient, and different nesting shapes must remain unequal.
+ * when both fields compare recursively, and two tagged values compare when
+ * both the tag and the payload compare recursively. Pair-cell identity alone
+ * is not sufficient, and different nesting shapes must remain unequal.
  */
 public fun myEqual(
     a: Datum,

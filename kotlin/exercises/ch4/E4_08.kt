@@ -14,7 +14,7 @@ import sicp.runtime.PendingSolution
  * so an outer binding of the same name survives; a plain `let` still
  * evaluates.
  *
- * Expected: the book's named-let Fibonacci over 10 answers 55; the probe
+ * Expected: the named-let Fibonacci probe over 10 answers 55; the probe
  * with an outer name answers 1 from the loop and then reads 7 outside;
  * the plain-let probe answers 3.
  */

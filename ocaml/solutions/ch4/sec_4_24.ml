@@ -63,6 +63,6 @@ let ex_4_24 () =
     [ Printf.sprintf "direct: %.6f s" direct
     ; Printf.sprintf "analyzed execution: %.6f s" analyzed
     ; Printf.sprintf "analysis alone: %.6f s" analysis
-    ; Printf.sprintf "direct / analyzed: %.2f" (direct /. Float.max analyzed Float.epsilon)
+    ; Printf.sprintf "direct / analyzed: %.6f" (direct /. Float.max analyzed Float.epsilon)
     ]
 ;;

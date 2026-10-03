@@ -372,7 +372,9 @@ impl Machine {
     /// # Errors
     /// The first [`Fault`] the instruction raises.
     pub fn step(&mut self) -> Result<(), Fault> {
-        let instruction = self.assembled.instructions[self.pc].clone();
+        let Some(instruction) = self.assembled.instructions.get(self.pc).cloned() else {
+            return Ok(());
+        };
         if self.tracing {
             self.trace.push(format!("{:4}: {:?}", self.pc, instruction));
         }
@@ -597,7 +599,7 @@ fn op_rem(values: &[MachineValue]) -> Result<MachineValue, Fault> {
     if *b == 0 {
         return Err(Fault::DivByZero);
     }
-    Ok(a % b)
+    a.checked_rem(*b).ok_or(Fault::Overflow("rem"))
 }
 
 fn op_eq(values: &[MachineValue]) -> Result<MachineValue, Fault> {

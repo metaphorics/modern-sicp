@@ -2463,8 +2463,9 @@
       "suggestion": "Report FORBIDDEN_CALLEES also on a `variable` expression whose name is in the table (so the binding is refused at the read site).",
       "confidence": "medium",
       "falsePositive": false,
-      "status": "open",
-      "locationWeak": false
+      "status": "fixed",
+      "locationWeak": false,
+      "fixedBy": "e28a0b0 (resolve/pr9-codex-ts): variable case rejects unshadowed forbidden-global reads"
     },
     {
       "pass": "performance",
@@ -3810,8 +3811,8 @@
   ],
   "counts": {
     "total": 123,
-    "open": 97,
-    "fixed": 19,
+    "open": 96,
+    "fixed": 20,
     "falsePositive": 7,
     "blockedByNoVerifier": 0,
     "openCriticalHigh": 0,
@@ -3864,5 +3865,5 @@
       "decision": "Surface.kt:802 dismissed as false-positive with evidence (member gates already restrict to Mutable*)"
     }
   ],
-  "updatedAt": "2026-10-03T02:14:30.725397+00:00"
+  "updatedAt": "2026-10-03T10:05:00Z"
 }

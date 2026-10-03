@@ -3,6 +3,7 @@
 
 import { format } from "./read.ts";
 import {
+  ARRAY_NAMES,
   MATH_NAMES,
   makeBuiltins,
   NUMBER_NAMES,
@@ -115,6 +116,7 @@ export class Session {
     this.analyzed = analyzed;
     this.#globals.set("Math", namespaceValue(this.#builtins, "math", MATH_NAMES));
     this.#globals.set("Number", namespaceValue(this.#builtins, "number", NUMBER_NAMES));
+    this.#globals.set("Array", namespaceValue(this.#builtins, "array", ARRAY_NAMES));
   }
 
   /**
@@ -543,7 +545,7 @@ export class Session {
       return ok(itemAt(object.items, index));
     }
     if (typeof object === "string" && typeof index === "number") {
-      return ok(itemAt([...object], index));
+      return ok(object[index]);
     }
     if (isRecordValue(object) && typeof index === "string") {
       return ok(object.fields.get(index));
@@ -688,11 +690,26 @@ export class Session {
     if (fn === undefined || (!isClosure(fn) && !isPrimitive(fn))) {
       return fail({ tag: "not-callable", detail: `${name} needs a procedure` });
     }
-    const call = (callArgs: ReadonlyArray<Value>): Outcome => this.applyProcedure(fn, callArgs);
+    // Native callbacks receive the full argument list; a strict-arity guest
+    // closure instead sees exactly its declared parameters — extras dropped,
+    // missing positions `undefined`, a rest parameter gathering the rest.
+    const fitted = (standard: ReadonlyArray<Value>): Value[] => {
+      if (!isClosure(fn) || fn.rest !== null) {
+        return [...standard];
+      }
+      const out = standard.slice(0, fn.params.length) as Value[];
+      while (out.length < fn.params.length) {
+        out.push(undefined);
+      }
+      return out;
+    };
+    const call = (callArgs: ReadonlyArray<Value>): Outcome =>
+      this.applyProcedure(fn, fitted(callArgs));
     const items = receiver.items;
+    const len = items.length;
     if (name === "forEach") {
-      for (const item of items) {
-        const result = call([item]);
+      for (let i = 0; i < len; i++) {
+        const result = call([items[i], i, receiver]);
         if (result.tag === "error") {
           return result;
         }
@@ -701,8 +718,9 @@ export class Session {
     }
     if (name === "map" || name === "flatMap" || name === "filter") {
       const out: Value[] = [];
-      for (const item of items) {
-        const result = call([item]);
+      for (let i = 0; i < len; i++) {
+        const item = items[i];
+        const result = call([item, i, receiver]);
         if (result.tag === "error") {
           return result;
         }
@@ -721,8 +739,9 @@ export class Session {
       return ok(makeArray(out));
     }
     if (name === "find" || name === "some" || name === "every") {
-      for (const item of items) {
-        const result = call([item]);
+      for (let i = 0; i < len; i++) {
+        const item = items[i];
+        const result = call([item, i, receiver]);
         if (result.tag === "error") {
           return result;
         }
@@ -739,24 +758,26 @@ export class Session {
       }
       return ok(name === "find" ? undefined : name === "every");
     }
-    return this.reduceItems(items, name, args, call);
+    return this.reduceItems(receiver, name, args, call);
   }
 
   reduceItems(
-    items: ReadonlyArray<Value>,
+    receiver: ArrayValue,
     name: string,
     args: ReadonlyArray<Value>,
     call: (callArgs: ReadonlyArray<Value>) => Outcome,
   ): Outcome {
     const right = name === "reduceRight";
-    const ordered = right ? [...items].reverse() : [...items];
+    const items = receiver.items;
+    const len = items.length;
     const hasInit = args.length > 1;
-    if (!hasInit && ordered.length === 0) {
+    if (!hasInit && len === 0) {
       return bad(name, "empty array without an initial value");
     }
-    let acc = hasInit ? args[1] : ordered[0];
-    for (const item of ordered.slice(hasInit ? 0 : 1)) {
-      const result = call([acc, item]);
+    let acc = hasInit ? args[1] : items[right ? len - 1 : 0];
+    for (let i = hasInit ? 0 : 1; i < len; i++) {
+      const index = right ? len - 1 - i : i;
+      const result = call([acc, items[index], index, receiver]);
       if (result.tag === "error") {
         return result;
       }

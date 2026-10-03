@@ -79,7 +79,40 @@ const flatten = (items: ReadonlyArray<Value>, depth: number): Value[] => {
   return out;
 };
 
+const joinItem = (item: Value): string => {
+  if (item === null || item === undefined) {
+    return "";
+  }
+  return isArrayValue(item) ? item.items.map(joinItem).join(",") : String(item);
+};
+
 const installArrayBuiltins = (table: OpTable): void => {
+  table.put("array.from", (args) => {
+    const input = args[0];
+    if (isArrayValue(input)) {
+      return ok(makeArray(input.items));
+    }
+    if (typeof input === "string") {
+      return ok(makeArray([...input]));
+    }
+    if (isSetValue(input)) {
+      return ok(makeArray([...input.items]));
+    }
+    if (isMapValue(input)) {
+      return ok(makeArray([...input.entries].map(([key, value]) => makeArray([key, value]))));
+    }
+    if (input instanceof RecordValue) {
+      const len = input.fields.get("length");
+      if (typeof len === "number" && Number.isInteger(len) && len >= 0) {
+        const out: Value[] = [];
+        for (let i = 0; i < len; i++) {
+          out.push(input.fields.get(String(i)));
+        }
+        return ok(makeArray(out));
+      }
+    }
+    return ok(makeArray([]));
+  });
   table.put("array.push", (args) => {
     const receiver = args[0];
     if (!isArrayValue(receiver)) {
@@ -126,11 +159,7 @@ const installArrayBuiltins = (table: OpTable): void => {
       return bad("join", "receiver is not an array");
     }
     const separator = args[1] === undefined ? "," : String(args[1]);
-    return ok(
-      receiver.items
-        .map((item) => (item === null || item === undefined ? "" : String(item)))
-        .join(separator),
-    );
+    return ok(receiver.items.map(joinItem).join(separator));
   });
   table.put("array.reverse", (args) => {
     const receiver = args[0];
@@ -161,10 +190,13 @@ const installStringBuiltins = (table: OpTable): void => {
   table.put("string.split", (args) => {
     const receiver = args[0];
     const separator = args[1];
-    if (typeof receiver !== "string" || typeof separator !== "string") {
+    if (
+      typeof receiver !== "string" ||
+      (separator !== undefined && typeof separator !== "string")
+    ) {
       return bad("split", "receiver or separator is not a string");
     }
-    return ok(makeArray(receiver.split(separator)));
+    return ok(makeArray(separator === undefined ? [receiver] : receiver.split(separator)));
   });
   table.put("string.startsWith", (args) => {
     const receiver = args[0];
@@ -344,3 +376,5 @@ export const builtinMember = (receiver: Value, name: string): Value | undefined 
 export const MATH_NAMES: ReadonlyArray<string> = ["abs", "floor", "max", "min", "sqrt", "trunc"];
 /** Names admitted on the `Number` namespace value. */
 export const NUMBER_NAMES: ReadonlyArray<string> = ["isInteger"];
+/** Names admitted on the `Array` namespace value: static constructors for finite inputs. */
+export const ARRAY_NAMES: ReadonlyArray<string> = ["from"];

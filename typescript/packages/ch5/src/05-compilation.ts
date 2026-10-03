@@ -454,12 +454,13 @@ export const compiledOperations = (
     "array-set": (args) => {
       const object = args[0];
       const index = args[1];
-      if (
-        object instanceof ArrayValue &&
-        typeof index === "number" &&
-        index >= 0 &&
-        index < object.items.length
-      ) {
+      if (object instanceof ArrayValue && typeof index === "number") {
+        if (!Number.isInteger(index) || index < 0) {
+          return errorWord({ tag: "bad-operand", operator: "index", detail: String(index) });
+        }
+        while (object.items.length < index) {
+          object.items.push(undefined);
+        }
         object.items[index] = args[2] as Value;
         return args[2];
       }

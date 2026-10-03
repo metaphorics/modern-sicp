@@ -128,7 +128,7 @@ to obtain the result in @code{val}, restores the saved registers, and finally
 moves the result from @code{val} to @code{proc}.  However, in the particular
 expression we are dealing with, the operator is the symbol @code{f}, whose
 evaluation is accomplished by the machine operation
-@code{lookupVariableValue}, which does not alter any registers.  The compiler
+@code{lookup-variable-value}, which does not alter any registers.  The compiler
 that we implement in this section will take advantage of this fact and generate
 code that evaluates the operator using the instruction
 
@@ -136,8 +136,8 @@ code that evaluates the operator using the instruction
 assign(
   "proc",
   op(
-    "lookupVariableValue",
-    constant(@{ tag: "symbol", name: "f" @}),
+    "lookup-variable-value",
+    constant("f"),
     register("env")
   )
 ),
@@ -151,7 +151,7 @@ obtain the result in @code{val} and then move this to @code{proc}.
 A compiler can also optimize access to the environment.  Having analyzed the
 code, the compiler can in many cases know in which frame a particular variable
 will be located and access that frame directly, rather than performing the
-@code{lookupVariableValue} search.  We will discuss how to implement such
+@code{lookup-variable-value} search.  We will discuss how to implement such
 variable access in @ref{5.5.6}.  Until then, however, we will focus on
 the kind of register and stack optimizations described above.  There are many
 other optimizations that can be performed by a compiler, such as coding
@@ -974,10 +974,15 @@ take a target or linkage option at the program entry point.
   ⟨@emph{compilation of definition value, 
    target @code{val}, linkage @code{next}}⟩
   ⟨@emph{restore @code{env} if saved above}⟩
-perform("defineVariableValue",
-  constant(@{ tag: "symbol", name: "factorial" @}),
-  register("val"),
-  register("env")),
+assign(
+  "val",
+  op(
+    "define-variable",
+    constant("factorial"),
+    register("val"),
+    register("env")
+  )
+),
 assign("val", register("val")),
   @r{; the defined value stays in @code{val}}
 @end example
@@ -990,34 +995,27 @@ label. The closure stores the current environment. At run time, the call
 compiler extends that environment with the procedure parameters and arguments.
 
 @example typescript
+gotoLabel("after-lambda1"),
+@{ tag: "label", name: "entry2" @},
+⟨@emph{compilation of procedure body}⟩
+@{ tag: "label", name: "after-lambda1" @},
 assign(
   "val",
   op(
-    "makeCompiledProcedure",
-    labelRef("entry2"),
+    "make-procedure",
+    constant("entry2"),
+    constant(["n"]),
     register("env"),
   )
 ),
-gotoLabel("after-lambda1"),
-@{ tag: "label", name: "entry2" @},
 assign(
-  "env",
-  op("compiledProcedureEnvironment", register("proc")),
-),
-assign("env", op("extendEnvironment",
-                 constant(
-                   @{ tag: "list",
-                   items: [constant(@{ tag: "symbol", name: "n" @})] @}
-                 ),
-                 register("argl"),
-                 register("env"))),
-⟨@emph{compilation of procedure body}⟩
-@{ tag: "label", name: "after-lambda1" @},
-perform(
-  "defineVariableValue",
-  constant(@{ tag: "symbol", name: "factorial" @}),
-  register("val"),
-  register("env")
+  "val",
+  op(
+    "define-variable",
+    constant("factorial"),
+    register("val"),
+    register("env")
+  )
 ),
 assign("val", register("val")),
 @end example
@@ -1034,7 +1032,7 @@ the procedure result in @code{val}.
   ⟨@emph{compilation of predicate, 
    target @code{val}, linkage @code{next}}⟩
   ⟨@emph{restore @code{continue}, @code{env} if saved above}⟩
-test("isFalse", register("val")),
+test("boolean-not", register("val")),
 branch("false-branch4"),
 @{ tag: "label", name: "true-branch5" @},
   ⟨@emph{compilation of true branch, 
@@ -1046,46 +1044,40 @@ branch("false-branch4"),
 @end example
 
 @noindent
-This code tests whether @code{proc} contains a primitive or a compound procedure, and
-dispatches to a primitive branch or a compound branch accordingly.  Both
-branches resume at the @code{after-call} label.  The requirements to preserve
-registers around the evaluation of the callCallee and callArgs don't result in
-any saving of registers, because in this case those evaluations don't modify
-the registers in question.
+The predicate @code{n <= 1} is not a call in this edition: the guest's
+binary operators compile directly to machine operations. The generated code
+evaluates @code{n} into @code{val}, stages it through @code{item} while the
+constant 1 is loaded, and applies @code{number-less-equal}. The test then
+dispatches to the false branch while the true branch falls through. The
+requirements to preserve registers around the evaluation don't result in any
+saving of registers beyond the @code{item} staging, because in this case
+those evaluations don't modify the registers in question.
 
 @example typescript
 const controller: Instruction[] = [
   assign(
-    "proc",
+    "val",
     op(
-      "lookupVariableValue",
-      constant(@{ tag: "symbol", name: "=" @}),
+      "lookup-variable-value",
+      constant("n"),
       register("env")
     )
   ),
+  save("item"),
+  assign("item", register("val")),
   assign("val", constant(1)),
-  assign("argl", op("list", register("val"))),
   assign(
     "val",
     op(
-      "lookupVariableValue",
-      constant(@{ tag: "symbol", name: "n" @}),
-      register("env")
+      "number-less-equal",
+      register("item"),
+      register("val")
     )
   ),
-  assign("argl", op("cons", register("val"), register("argl"))),
-  test("isPrimitiveProcedure", register("proc")),
-  branch("primitive-branch17"),
-  @{ tag: "label", name: "compiled-branch16" @},
-  assign("continue", labelRef("after-call15")),
-  assign("val", op("compiledProcedureEntry", register("proc"))),
-  gotoRegister("val"),
-  @{ tag: "label", name: "primitive-branch17" @},
-  assign(
-    "val",
-    op("applyProcedure", register("proc"), register("argl"))
-  ),
-  @{ tag: "label", name: "after-call15" @},
+  restore("item"),
+  test("boolean-not", register("val")),
+  branch("false-branch4"),
+  @{ tag: "label", name: "true-branch5" @},
 ];
 @end example
 
@@ -1097,218 +1089,176 @@ const controller: Instruction[] = [
 @end example
 
 @noindent
-The code for the false branch is another procedure call, where the procedure
-is the value of the symbol @code{*}, and the arguments are @code{n} and the
-result of another procedure call (a call to @code{factorial}).  Each of these
-calls sets up @code{proc} and @code{argl} and its own primitive and compound
-branches.  @ref{Figure 5.17} shows the complete compilation of the definition
+The code for the false branch is a recursive procedure call, where the
+procedure is the value of the symbol @code{factorial} and the argument is the
+result of the @code{n - 1} computation, followed by a direct
+@code{number-multiply} operation.  The call sets up @code{proc} and
+@code{argl} and its own primitive and compound branches.  @ref{Figure 5.17}
+shows the complete compilation of the definition
 of the @code{factorial} procedure.  Notice that the possible @code{save} and
 @code{restore} of @code{continue} and @code{env} around the predicate, shown
-above, are in fact generated, because these registers are modified by the
-procedure call in the predicate and needed for the procedure call and the
-@code{return} linkage in the branches.
+above, are not generated here, because the predicate is a direct machine
+operation that modifies only @code{val} and @code{item}.
 
 @quotation
 @strong{@anchor{Figure 5.17}Figure 5.17:} @math{\downarrow} Compilation of the definition of the @code{factorial} procedure.
 
 @example typescript
-@r{;; construct the procedure and skip over code}
-@r{;; for the procedure body}
-assign(
-  "val",
-  op(
-    "makeCompiledProcedure",
-    labelRef("entry2"),
-    register("env"),
-  )
-),
+@r{;; skip over the code for the procedure}
+@r{;; body; the closure is built after it}
 gotoLabel("after-lambda1"),
 @{ tag: "label", name: "entry2" @},
-@r{; calls to @code{factorial} will enter here}
-assign(
-  "env",
-  op("compiledProcedureEnvironment", register("proc")),
-),
-assign(
-  "env",
-  op(
-    "extendEnvironment",
-    constant(
-      @{ tag: "list",
-      items: [constant(@{ tag: "symbol", name: "n" @})] @}
-    ),
-    register("argl"),
-    register("env")
-  )
-),
+@r{; calls to @code{factorial} will enter here;}
+@r{; the call site extended the captured}
+@r{; environment with the argument list}
 @r{;; begin actual procedure body}
-save("continue"),
-save("env"),
-@r{;; compute @code{(= n 1)}}
+@r{;; compute @code{n <= 1}}
 assign(
-  "proc",
+  "val",
   op(
-    "lookupVariableValue",
-    constant(@{ tag: "symbol", name: "=" @}),
+    "lookup-variable-value",
+    constant("n"),
     register("env")
   )
 ),
+save("item"),
+assign("item", register("val")),
 assign("val", constant(1)),
-assign("argl", op("list", register("val"))),
 assign(
   "val",
   op(
-    "lookupVariableValue",
-    constant(@{ tag: "symbol", name: "n" @}),
-    register("env")
+    "number-less-equal",
+    register("item"),
+    register("val")
   )
 ),
-assign("argl", op("cons", register("val"), register("argl"))),
-test("isPrimitiveProcedure", register("proc")),
-branch("primitive-branch17"),
-@{ tag: "label", name: "compiled-branch16" @},
-assign("continue", labelRef("after-call15")),
-assign("val", op("compiledProcedureEntry", register("proc"))),
-gotoRegister("val"),
-@{ tag: "label", name: "primitive-branch17" @},
-assign(
-  "val",
-  op(
-    "applyProcedure",
-    register("proc"),
-    register("argl"),
-  ),
-),
-@{ tag: "label", name: "after-call15" @},
-@r{; @code{val} now contains result of @code{(= n 1)}}
-restore("env"),
-restore("continue"),
-test("isFalse", register("val")),
+restore("item"),
+test("boolean-not", register("val")),
 branch("false-branch4"),
 @{ tag: "label", name: "true-branch5" @},  @r{; return 1}
 assign("val", constant(1)),
 gotoRegister("continue"),
 @{ tag: "label", name: "false-branch4" @},
-@r{;; compute and return @code{(* (factorial (- n 1)) n)}}
-assign(
-  "proc",
-  op(
-    "lookupVariableValue",
-    constant(@{ tag: "symbol", name: "*" @}),
-    register("env")
-  )
-),
-save("continue"),
-save("proc"),   @r{; save @code{*}} procedure
+@r{;; compute and return @code{factorial(n - 1) * n}}
+@r{;; set up the @code{factorial} call}
 assign(
   "val",
   op(
-    "lookupVariableValue",
-    constant(@{ tag: "symbol", name: "n" @}),
+    "lookup-variable-value",
+    constant("factorial"),
     register("env")
   )
 ),
-assign("argl", op("list", register("val"))),
-save("argl"),   @r{; save partial argument list for @code{*}}
-@r{;; compute @code{(factorial (- n 1))},}
-@r{;; which is the other argument for @code{*}}
+save("proc"),  @r{; save the caller's @code{proc}}
+assign("proc", register("val")),
+assign("argl", op("empty-argl")),
+save("argl"),   @r{; save the argument list}
+@r{;; compute @code{n - 1}, which is the argument}
+@r{;; for @code{factorial}}
 assign(
-  "proc",
+  "val",
   op(
-    "lookupVariableValue",
-    constant(@{ tag: "symbol", name: "factorial" @}),
+    "lookup-variable-value",
+    constant("n"),
     register("env")
   )
 ),
-save("proc"),  @r{; save @code{factorial} procedure}
-@r{;; compute @code{(- n 1)}, which is the argument for @code{factorial}}
-assign(
-  "proc",
-  op(
-    "lookupVariableValue",
-    constant(@{ tag: "symbol", name: "-" @}),
-    register("env")
-  )
-),
+save("item"),
+assign("item", register("val")),
 assign("val", constant(1)),
-assign("argl", op("list", register("val"))),
 assign(
   "val",
   op(
-    "lookupVariableValue",
-    constant(@{ tag: "symbol", name: "n" @}),
-    register("env")
+    "number-subtract",
+    register("item"),
+    register("val")
   )
 ),
-assign("argl", op("cons", register("val"), register("argl"))),
-test("isPrimitiveProcedure", register("proc")),
+restore("item"),
+restore("argl"), @r{; restore the argument list}
+assign(
+  "argl",
+  op(
+    "adjoin-arg",
+    register("val"),
+    register("argl")
+  )
+),
+@r{;; apply @code{factorial}}
+save("continue"),
+save("env"),
+test("is-primitive-procedure", register("proc")),
 branch("primitive-branch8"),
 @{ tag: "label", name: "compiled-branch7" @},
 assign("continue", labelRef("after-call6")),
-assign("val", op("compiledProcedureEntry", register("proc"))),
-gotoRegister("val"),
+assign(
+  "env",
+  op(
+    "extend-environment",
+    op("procedure-parameters", register("proc")),
+    register("argl"),
+    op("procedure-environment", register("proc"))
+  )
+),
+assign("item", op("procedure-entry", register("proc"))),
+gotoRegister("item"),
 @{ tag: "label", name: "primitive-branch8" @},
 assign(
   "val",
   op(
-    "applyProcedure",
+    "apply-primitive-procedure",
     register("proc"),
     register("argl"),
   ),
 ),
 @{ tag: "label", name: "after-call6" @},
-@r{; @code{val} now contains result of @code{(- n 1)}}
-assign("argl", op("list", register("val"))),
-restore("proc"), @r{; restore @code{factorial}}
-@r{;; apply @code{factorial}}
-test("isPrimitiveProcedure", register("proc")),
-branch("primitive-branch11"),
-@{ tag: "label", name: "compiled-branch10" @},
-assign("continue", labelRef("after-call9")),
-assign("val", op("compiledProcedureEntry", register("proc"))),
-gotoRegister("val"),
-@{ tag: "label", name: "primitive-branch11" @},
-assign(
-  "val",
-  op(
-    "applyProcedure",
-    register("proc"),
-    register("argl"),
-  ),
-),
-@{ tag: "label", name: "after-call9" @},
-@r{; @code{val} now contains result}
-@r{; of @code{(factorial (- n 1))}}
-restore("argl"), @r{; restore partial argument list for @code{*}}
-assign("argl", op("cons", register("val"), register("argl"))),
-restore("proc"), @r{; restore @code{*}}
+@r{; @code{val} now contains the result}
+@r{; of @code{factorial(n - 1)}}
+restore("env"),
 restore("continue"),
-@r{;; apply @code{*} and return its value}
-test("isPrimitiveProcedure", register("proc")),
-branch("primitive-branch14"),
-@{ tag: "label", name: "compiled-branch13" @},
-@r{;; note that a compound procedure here}
-assign("val", op("compiledProcedureEntry", register("proc"))),
-gotoRegister("val"),
-@{ tag: "label", name: "primitive-branch14" @},
+restore("proc"), @r{; restore the caller's @code{proc}}
+@r{;; multiply by @code{n} and return}
+save("item"),
+assign("item", register("val")),
 assign(
   "val",
   op(
-    "applyProcedure",
-    register("proc"),
-    register("argl"),
-  ),
+    "lookup-variable-value",
+    constant("n"),
+    register("env")
+  )
 ),
+assign(
+  "val",
+  op(
+    "number-multiply",
+    register("item"),
+    register("val")
+  )
+),
+restore("item"),
 gotoRegister("continue"),
-@{ tag: "label", name: "after-call12" @},
 @{ tag: "label", name: "after-if3" @},
 @{ tag: "label", name: "after-lambda1" @},
-@r{;; assign the procedure to the variable @code{factorial}}
-perform(
-  "defineVariableValue",
-  constant(@{ tag: "symbol", name: "factorial" @}),
-  register("val"),
-  register("env")
+@r{;; construct the procedure and assign it to}
+@r{;; the variable @code{factorial}}
+assign(
+  "val",
+  op(
+    "make-procedure",
+    constant("entry2"),
+    constant(["n"]),
+    register("env"),
+  )
+),
+assign(
+  "val",
+  op(
+    "define-variable",
+    constant("factorial"),
+    register("val"),
+    register("env")
+  )
 ),
 assign("val", register("val")),
 @r{; the defined value stays in @code{val}}
@@ -1367,140 +1317,132 @@ produce the code shown in @ref{Figure 5.18}?
 @quotation
 
 @example typescript
-assign(
-  "val",
-  op(
-    "makeCompiledProcedure",
-    labelRef("entry16"),
-    register("env"),
-  )
-),
+@r{;; skip over the code for the procedure}
+@r{;; body; the closure is built after it}
 gotoLabel("after-lambda15"),
 @{ tag: "label", name: "entry16" @},
-assign(
-  "env",
-  op("compiledProcedureEnvironment", register("proc")),
-),
-assign(
-  "env",
-  op(
-    "extendEnvironment",
-    constant(
-      @{ tag: "list",
-      items: [constant(@{ tag: "symbol", name: "x" @})] @}
-    ),
-    register("argl"),
-    register("env")
-  )
-),
-assign(
-  "proc",
-  op(
-    "lookupVariableValue",
-    constant(@{ tag: "symbol", name: "+" @}),
-    register("env")
-  )
-),
-save("continue"),
-save("proc"),
-save("env"),
-assign(
-  "proc",
-  op(
-    "lookupVariableValue",
-    constant(@{ tag: "symbol", name: "g" @}),
-    register("env")
-  )
-),
-save("proc"),
-assign(
-  "proc",
-  op(
-    "lookupVariableValue",
-    constant(@{ tag: "symbol", name: "+" @}),
-    register("env")
-  )
-),
-assign("val", constant(2)),
-assign("argl", op("list", register("val"))),
+@r{; calls to @code{f} will enter here;}
+@r{; the call site extended the captured}
+@r{; environment with the argument list}
+@r{;; compute @code{g(x + 2) + x}}
+@r{;; set up the @code{g} call}
 assign(
   "val",
   op(
-    "lookupVariableValue",
-    constant(@{ tag: "symbol", name: "x" @}),
+    "lookup-variable-value",
+    constant("g"),
     register("env")
   )
 ),
-assign("argl", op("cons", register("val"), register("argl"))),
-test("isPrimitiveProcedure", register("proc")),
+save("proc"),  @r{; save the caller's @code{proc}}
+assign("proc", register("val")),
+assign("argl", op("empty-argl")),
+save("argl"),   @r{; save the argument list}
+@r{;; compute @code{x + 2}, which is the}
+@r{;; argument for @code{g}}
+assign(
+  "val",
+  op(
+    "lookup-variable-value",
+    constant("x"),
+    register("env")
+  )
+),
+save("item"),
+assign("item", register("val")),
+assign("val", constant(2)),
+assign(
+  "val",
+  op(
+    "number-add",
+    register("item"),
+    register("val")
+  )
+),
+restore("item"),
+restore("argl"), @r{; restore the argument list}
+assign(
+  "argl",
+  op(
+    "adjoin-arg",
+    register("val"),
+    register("argl")
+  )
+),
+@r{;; apply @code{g}}
+save("continue"),
+save("env"),
+test("is-primitive-procedure", register("proc")),
 branch("primitive-branch19"),
 @{ tag: "label", name: "compiled-branch18" @},
 assign("continue", labelRef("after-call17")),
-assign("val", op("compiledProcedureEntry", register("proc"))),
-gotoRegister("val"),
+assign(
+  "env",
+  op(
+    "extend-environment",
+    op("procedure-parameters", register("proc")),
+    register("argl"),
+    op("procedure-environment", register("proc"))
+  )
+),
+assign("item", op("procedure-entry", register("proc"))),
+gotoRegister("item"),
 @{ tag: "label", name: "primitive-branch19" @},
 assign(
   "val",
   op(
-    "applyProcedure",
+    "apply-primitive-procedure",
     register("proc"),
     register("argl"),
   ),
 ),
 @{ tag: "label", name: "after-call17" @},
-assign("argl", op("list", register("val"))),
-restore("proc"),
-test("isPrimitiveProcedure", register("proc")),
-branch("primitive-branch22"),
-@{ tag: "label", name: "compiled-branch21" @},
-assign("continue", labelRef("after-call20")),
-assign("val", op("compiledProcedureEntry", register("proc"))),
-gotoRegister("val"),
-@{ tag: "label", name: "primitive-branch22" @},
-assign(
-  "val",
-  op(
-    "applyProcedure",
-    register("proc"),
-    register("argl"),
-  ),
-),
-@{ tag: "label", name: "after-call20" @},
-assign("argl", op("list", register("val"))),
+@r{; @code{val} now contains the result}
+@r{; of @code{g(x + 2)}}
 restore("env"),
+restore("continue"),
+restore("proc"), @r{; restore the caller's @code{proc}}
+@r{;; add @code{x} and return}
+save("item"),
+assign("item", register("val")),
 assign(
   "val",
   op(
-    "lookupVariableValue",
-    constant(@{ tag: "symbol", name: "x" @}),
+    "lookup-variable-value",
+    constant("x"),
     register("env")
   )
 ),
-assign("argl", op("cons", register("val"), register("argl"))),
-restore("proc"),
-restore("continue"),
-test("isPrimitiveProcedure", register("proc")),
-branch("primitive-branch25"),
-@{ tag: "label", name: "compiled-branch24" @},
-assign("val", op("compiledProcedureEntry", register("proc"))),
-gotoRegister("val"),
-@{ tag: "label", name: "primitive-branch25" @},
 assign(
   "val",
   op(
-    "applyProcedure",
-    register("proc"),
-    register("argl"),
-  ),
+    "number-add",
+    register("item"),
+    register("val")
+  )
 ),
+restore("item"),
 gotoRegister("continue"),
-@{ tag: "label", name: "after-call23" @},
 @{ tag: "label", name: "after-lambda15" @},
-perform(
-  "defineVariableValue",
-  constant(@{ tag: "symbol", name: "f" @}),
-  register("val"),
-  register("env")
+@r{;; construct the procedure and assign it to}
+@r{;; the variable @code{f}}
+assign(
+  "val",
+  op(
+    "make-procedure",
+    constant("entry16"),
+    constant(["x"]),
+    register("env"),
+  )
+),
+assign(
+  "val",
+  op(
+    "define-variable",
+    constant("f"),
+    register("val"),
+    register("env")
+  )
 ),
 assign("val", register("val")),
 @r{; the defined value stays in @code{val}}
@@ -1553,9 +1495,16 @@ primitives of the source language and primitives of the machine.}
 const controller: Instruction[] = [
   assign(
     "val",
-    op("lookupVariableValue", constant("a"), register("env"))
+    op(
+      "lookup-variable-value",
+      constant("a"),
+      register("env")
+    )
   ),
-  assign("val", op("+", register("val"), constant(1))),
+  assign(
+    "val",
+    op("number-add", register("val"), constant(1))
+  ),
 ];
 @end example
 
@@ -1615,7 +1564,7 @@ only two inputs.
 
 One of the most common optimizations performed by compilers is the optimization
 of variable lookup.  Our compiler, as we have implemented it so far, generates
-code that uses the @code{lookupVariableValue} operation of the evaluator
+code that uses the @code{lookup-variable-value} operation of the evaluator
 machine.  This searches for a variable by comparing it with each variable that
 is currently bound, working frame by frame outward through the run-time
 environment.  This search can be expensive if the frames are deeply nested or
@@ -1653,8 +1602,8 @@ readAll(`
 @end example
 
 @noindent
-Each time @code{lookupVariableValue} searches for @code{x}, it must determine
-that the symbol @code{x} is not @code{eq?} to @code{y} or @code{z} (in the
+Each time @code{lookup-variable-value} searches for @code{x}, it must determine
+that the name @code{x} is not equal to @code{y} or @code{z} (in the
 first frame), nor to @code{a}, @code{b}, @code{c}, @code{d}, or @code{e} (in
 the second frame).  We will assume, for the moment, that our programs do not
 use @code{define}---that variables are bound only with @code{lambda}.  Because
@@ -1668,17 +1617,17 @@ two frames out from the current frame and will be the first variable in that
 frame.
 
 We can exploit this fact by inventing a new kind of variable-lookup operation,
-@code{lexicalAddressLookup}, that takes as arguments an environment and a
+@code{lexical-address-lookup}, that takes as arguments an environment and a
 @newterm{lexical address} that consists of two numbers: a @newterm{frame number}, 
 which specifies how many frames to pass over, and a
 @newterm{displacement number}, which specifies how many variables to pass over
 in that frame.  @code{Lexical-address-lookup} will produce the value of the
 variable stored at that lexical address relative to the current environment.
-If we add the @code{lexicalAddressLookup} operation to our machine, we can
+If we add the @code{lexical-address-lookup} operation to our machine, we can
 make the compiler generate code that references variables using this operation,
-rather than @code{lookupVariableValue}.  Similarly, our compiled code can use
-a new @code{lexicalAddressSet}  operation instead of
-@code{setVariableValue}.
+rather than @code{lookup-variable-value}.  Similarly, our compiled code can use
+a new @code{lexical-address-set}  operation instead of
+@code{set-variable-value}.
 
 In order to generate such code, the compiler must be able to determine the
 lexical address of a variable it is about to compile a reference to.  The
@@ -1769,7 +1718,7 @@ those at top level, which act on the global environment.  Compilation of a
 definition does not cause the defined name to be entered in the compile-time
 environment.}  Thus, if you wish, you may have the evaluator operations look
 directly in the global environment, which can be obtained with the operation
-@code{(op getGlobalEnvironment)}, instead of having them search the whole
+@code{get-global-environment}, instead of having them search the whole
 run-time environment found in @code{env}.)  Test the modified compiler on a few
 simple cases, such as the nested @code{lambda} combination at the beginning of
 this section.

@@ -1905,7 +1905,8 @@ export const setupEnvironment = (): Env => @{
     env.bindings.set(
       procedure.name,
       @{ value: procedure,
-      initialized: true @}
+      initialized: true,
+      mutable: true @}
     );
   @}
   return env;
@@ -2043,7 +2044,25 @@ export const driverLoop = (
         break;
       @}
     @}
-    transcript.push(";;; M-Eval value:", format(last));
+    const outcome: Outcome =
+      last.tag === "normal" || last.tag === "return"
+        ? ok(last.value)
+        : last.tag === "throw"
+          ? fail(
+              @{ tag: "guest-throw",
+              value: last.value @})
+          : last.tag === "error"
+            ? fail(last.error)
+            : fail(
+                @{ tag: "unknown-syntax",
+                construct: "unexpected-break" @});
+    if (outcome.tag === "error") @{
+      transcript.push(
+        ";;; M-Eval error:", JSON.stringify(outcome.error));
+      continue;
+    @}
+    transcript.push(
+      ";;; M-Eval value:", format(outcome.value));
   @}
   return transcript;
 @};
@@ -2842,7 +2861,7 @@ export const analyze = (expr: Expr): ExecutionProcedure => @{
     case "arrow":
       return analyzeLambda(expr);
     case "call":
-      return analyzeApplication(expr);
+      return analyzeApplication(expr.callee, expr.args);
     case "member":
     case "index":
       return analyzeAccess(expr);
@@ -2881,16 +2900,35 @@ phase:
 @example typescript
 export const analyzeArray = (expr: Expr): ExecutionProcedure => @{
   const elements = expr.tag === "array"
-    ? expr.elements.map((arg) => analyze(arg.expr))
+    ? expr.elements.map((arg) => (@{
+        proc: analyze(arg.expr),
+        spread: arg.kind === "spread",
+      @}))
     : [];
   return (env) => @{
     const items: Value[] = [];
     for (const element of elements) @{
-      const value = element(env);
+      const value = element.proc(env);
       if (value.tag !== "ok") @{
         return value;
       @}
-      items.push(value.value);
+      if (!element.spread) @{
+        items.push(value.value);
+      @} else if (
+        value.value !== null &&
+        typeof value.value === "object" &&
+        value.value.tag === "array"
+      ) @{
+        for (const item of value.value.items) @{
+          items.push(item);
+        @}
+      @} else @{
+        return fail(
+            @{ tag: "bad-operand",
+            operator: "spread",
+            detail: "spread of a non-array" @}
+          );
+      @}
     @}
     return ok(@{ tag: "array", items @});
   @};
@@ -3088,7 +3126,10 @@ export const analyzeApplication = (
   args: ReadonlyArray<Arg>,
 ): ExecutionProcedure => @{
   const fproc = analyze(callee);
-  const aprocs = args.map((arg) => analyze(arg.expr));
+  const aprocs = args.map((arg) => (@{
+    proc: analyze(arg.expr),
+    spread: arg.kind === "spread",
+  @}));
   return (env) => @{
     const procedure = fproc(env);
     if (procedure.tag !== "ok") @{
@@ -3103,16 +3144,34 @@ export const analyzeApplication = (
 @};
 
 const runOperands = (
-  aprocs: ReadonlyArray<ExecutionProcedure>,
+  aprocs: ReadonlyArray<
+    @{ proc: ExecutionProcedure; spread: boolean @}
+  >,
   env: Env
 ): Outcome => @{
   const args: Value[] = [];
   for (const aproc of aprocs) @{
-    const value = aproc(env);
+    const value = aproc.proc(env);
     if (value.tag !== "ok") @{
       return value;
     @}
-    args.push(value.value);
+    if (!aproc.spread) @{
+      args.push(value.value);
+    @} else if (
+      value.value !== null &&
+      typeof value.value === "object" &&
+      value.value.tag === "array"
+    ) @{
+      for (const item of value.value.items) @{
+        args.push(item);
+      @}
+    @} else @{
+      return fail(
+          @{ tag: "bad-operand",
+          operator: "spread",
+          detail: "spread of a non-array" @}
+        );
+    @}
   @}
   return ok(args);
 @};

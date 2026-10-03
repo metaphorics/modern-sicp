@@ -253,17 +253,30 @@ let initial_env ~emit () =
                | Value.Int n -> Ok n
                | _ -> type_error "List.sort" "comparator did not answer an int")
         in
-        let rec insert x = function
-          | [] -> Ok [ x ]
-          | y :: rest ->
+        let rec merge acc left right =
+          match left, right with
+          | [], _ -> Ok (List.rev_append acc right)
+          | _, [] -> Ok (List.rev_append acc left)
+          | x :: left_rest, y :: right_rest ->
             Result.bind (order x y) (fun n ->
               if n <= 0
-              then Ok (x :: y :: rest)
-              else Result.map (fun t -> y :: t) (insert x rest))
+              then merge (x :: acc) left_rest right
+              else merge (y :: acc) left right_rest)
         in
-        let rec sort = function
-          | [] -> Ok []
-          | x :: rest -> Result.bind (sort rest) (fun sorted -> insert x sorted)
+        let split n items =
+          let rec take acc n = function
+            | x :: rest when n > 0 -> take (x :: acc) (n - 1) rest
+            | rest -> List.rev acc, rest
+          in
+          take [] n items
+        in
+        let rec sort items =
+          match items with
+          | [] | [ _ ] -> Ok items
+          | _ ->
+            let left, right = split (List.length items / 2) items in
+            Result.bind (sort left) (fun left ->
+              Result.bind (sort right) (fun right -> merge [] left right))
         in
         Result.map value_of_list (sort items))
     ; prim "Hashtbl.create" 1 (fun _apply args ->

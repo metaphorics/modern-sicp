@@ -1388,7 +1388,10 @@ module Machine_model = struct
     | "=", [ W_float a; W_float b ] -> Ok (W_bool (Float.equal a b))
     | "<", [ W_float a; W_float b ] -> Ok (W_bool (a < b))
     | ">", [ W_float a; W_float b ] -> Ok (W_bool (a > b))
+    | "<=", [ W_float a; W_float b ] -> Ok (W_bool (a <= b))
+    | ">=", [ W_float a; W_float b ] -> Ok (W_bool (a >= b))
     | "abs", [ W_int a ] -> Ok (W_int (abs a))
+    | "abs", [ W_float a ] -> Ok (W_float (Float.abs a))
     | "sqrt", [ W_float a ] -> Ok (W_float (sqrt a))
     | "float_of_int", [ W_int a ] -> Ok (W_float (float_of_int a))
     | "print", [ w ] ->

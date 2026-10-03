@@ -169,8 +169,8 @@ export const makeFormTable = (): FormTable => {
     if (expr.tag !== "arrow") {
       return fail({ tag: "unknown-syntax", construct: "arrow" });
     }
-    const { params, rest } = splitParams(expr.params);
-    return ok(makeClosure(params, rest, expr.body, env));
+    const { params, required, rest } = splitParams(expr.params);
+    return ok(makeClosure(params, required, rest, expr.body, env));
   });
 
   table.put("binary", (expr, env, session) => {
@@ -337,8 +337,11 @@ export const execDataSequence = (
       env.bindings.set(item.name, makeCell(undefined, false, item.kind === "let"));
     }
     if (item.tag === "function-decl") {
-      const { params, rest } = splitParams(item.params);
-      env.bindings.set(item.name, makeCell(makeClosure(params, rest, item.body, env), true));
+      const { params, required, rest } = splitParams(item.params);
+      env.bindings.set(
+        item.name,
+        makeCell(makeClosure(params, required, rest, item.body, env), true),
+      );
     }
   }
   let last: Completion = normal(undefined);

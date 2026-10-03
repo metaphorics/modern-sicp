@@ -13,6 +13,7 @@
  */
 import { fail, type Outcome, ok } from "./errors.ts";
 import {
+  type ArrayValue,
   isArrayValue,
   isMapValue,
   isSetValue,
@@ -114,7 +115,7 @@ const installArrayBuiltins = (table: OpTable): void => {
     if (!isArrayValue(receiver)) {
       return bad("includes", "receiver is not an array");
     }
-    return ok(receiver.items.some((item) => Object.is(item, args[1])));
+    return ok(receiver.items.includes(args[1]));
   });
   table.put("array.join", (args) => {
     const receiver = args[0];
@@ -319,8 +320,35 @@ export const makeBuiltins = (): OpTable => {
 
 const builtinMethods = makeBuiltins();
 
+/** Array methods that call guest procedures; callers route them to a runner. */
+export const CALLBACK_METHODS: Readonly<Record<string, true>> = {
+  map: true,
+  flatMap: true,
+  filter: true,
+  find: true,
+  some: true,
+  every: true,
+  reduce: true,
+  reduceRight: true,
+  forEach: true,
+};
+
+/** The evaluator surface a callback method needs: guest application. */
+export interface ArrayCallbackRunner {
+  callArrayCallback(receiver: ArrayValue, name: string, args: ReadonlyArray<Value>): Outcome;
+}
+
 /** Binds an installed first-order member to its guest receiver. */
-export const builtinMember = (receiver: Value, name: string): Value | undefined => {
+export const builtinMember = (
+  receiver: Value,
+  name: string,
+  callbacks?: ArrayCallbackRunner,
+): Value | undefined => {
+  if (callbacks !== undefined && isArrayValue(receiver) && CALLBACK_METHODS[name] === true) {
+    return makePrimitive(`array.${name}`, (args) =>
+      callbacks.callArrayCallback(receiver, name, args),
+    );
+  }
   const kind = isArrayValue(receiver)
     ? "array"
     : isMapValue(receiver)

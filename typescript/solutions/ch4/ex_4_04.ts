@@ -159,8 +159,11 @@ const execFormSequence = (
       env.bindings.set(item.name, makeCell(undefined, false, item.kind === "let"));
     }
     if (item.tag === "function-decl") {
-      const { params, rest } = splitParams(item.params);
-      env.bindings.set(item.name, makeCell(makeClosure(params, rest, item.body, env), true));
+      const { params, required, rest } = splitParams(item.params);
+      env.bindings.set(
+        item.name,
+        makeCell(makeClosure(params, required, rest, item.body, env), true),
+      );
     }
   }
   let last: Completion = normal(undefined);
@@ -317,8 +320,8 @@ export const evalWithAllAny = (
       return operand.tag === "error" ? operand : applyUnaryOperation(expr.op, operand.value);
     }
     case "arrow": {
-      const { params, rest } = splitParams(expr.params);
-      return ok(makeClosure(params, rest, expr.body, env));
+      const { params, required, rest } = splitParams(expr.params);
+      return ok(makeClosure(params, required, rest, expr.body, env));
     }
     case "member": {
       const object = evalWithAllAny(expr.object, env, session);

@@ -265,8 +265,8 @@ export const evalApplicationsFirst = (
       );
     }
     case "arrow": {
-      const { params, rest } = splitParams(expr.params);
-      return ok(makeClosure(params, rest, expr.body, env));
+      const { params, required, rest } = splitParams(expr.params);
+      return ok(makeClosure(params, required, rest, expr.body, env));
     }
     case "member": {
       const object = evalApplicationsFirst(expr.object, env, session);

@@ -148,19 +148,25 @@ const isValue = (word: Word): word is Value =>
 
 const listOf = (word: Word): readonly Word[] => (Array.isArray(word) ? word : []);
 
-const splitParamNames = (params: readonly unknown[]): { params: string[]; rest: string | null } => {
+const splitParamNames = (
+  params: readonly unknown[],
+): { params: string[]; required: number; rest: string | null } => {
   const names: string[] = [];
+  let required = 0;
   let rest: string | null = null;
   for (const param of params) {
-    const entry = param as { kind?: unknown; name?: unknown };
+    const entry = param as { kind?: unknown; name?: unknown; optional?: unknown };
     const name = typeof entry.name === "string" ? entry.name : "";
     if (entry.kind === "rest") {
       rest = name;
     } else {
       names.push(name);
+      if (entry.optional !== true) {
+        required += 1;
+      }
     }
   }
-  return { params: names, rest };
+  return { params: names, required, rest };
 };
 
 const errorOf = (word: Word): MachineErrorValue | undefined =>
@@ -264,8 +270,8 @@ const operationsFor = (state: EvaluatorState): Readonly<Record<string, Operation
     if (node === undefined || node.tag !== "function-decl" || env === null) {
       return new MachineErrorValue({ tag: "unknown-syntax", construct: "function-decl" });
     }
-    const { params, rest } = splitParamNames(node.params);
-    const closure = new Closure(params, rest, node.body, env);
+    const { params, required, rest } = splitParamNames(node.params);
+    const closure = new Closure(params, required, rest, node.body, env);
     env.bindings.set(node.name, makeCell(closure, true, false));
     return undefined;
   },
@@ -275,8 +281,8 @@ const operationsFor = (state: EvaluatorState): Readonly<Record<string, Operation
     if (body === undefined || env === undefined) {
       return new MachineErrorValue({ tag: "unknown-syntax", construct: "arrow" });
     }
-    const { params, rest } = splitParamNames(listOf(args[0]));
-    return new Closure(params, rest, body as Block, env);
+    const { params, required, rest } = splitParamNames(listOf(args[0]));
+    return new Closure(params, required, rest, body as Block, env);
   },
   lambdaParams: (args) => {
     const node = formOf(args[0]);
@@ -350,8 +356,8 @@ const operationsFor = (state: EvaluatorState): Readonly<Record<string, Operation
         env.bindings.set(node.name, makeCell(undefined, false, node.kind === "let"));
       }
       if (node.tag === "function-decl") {
-        const { params, rest } = splitParamNames(node.params);
-        const closure = new Closure(params, rest, node.body, env);
+        const { params, required, rest } = splitParamNames(node.params);
+        const closure = new Closure(params, required, rest, node.body, env);
         env.bindings.set(node.name, makeCell(closure, true, false));
       }
     }
@@ -456,7 +462,7 @@ const operationsFor = (state: EvaluatorState): Readonly<Record<string, Operation
       object instanceof SetValue ||
       typeof object === "string"
     ) {
-      const member = builtinMember(object, name);
+      const member = builtinMember(object, name, state.session);
       if (member !== undefined) {
         return member;
       }
@@ -774,6 +780,20 @@ const operationsFor = (state: EvaluatorState): Readonly<Record<string, Operation
       forms.push(...clause.body);
     }
     return forms as Word;
+  },
+  switchItems: (args) => {
+    const node = formOf(args[0]);
+    if (node === undefined || node.tag !== "switch") {
+      return undefined;
+    }
+    const items: Array<Decl | Stmt> = [];
+    for (const clause of node.cases) {
+      items.push(...clause.body);
+    }
+    if (node.defaultBody !== null) {
+      items.push(...node.defaultBody);
+    }
+    return items as Word;
   },
   caseCount: (args) => listOf(args[0]).length,
   restCases: (args) => listOf(args[0]).slice(1),
@@ -2011,6 +2031,7 @@ export const evaluatorController: ReadonlyArray<EvaluatorMachineStatement> = [
   save("argl"),
   save("continue"),
   assign("item", register("expr")),
+  save("env"),
   save("continue"),
   assign("expr", op("switchDiscriminant", register("item"))),
   assign("continue", constant({ tag: "symbol", name: "switch-scan" })),
@@ -2022,6 +2043,8 @@ export const evaluatorController: ReadonlyArray<EvaluatorMachineStatement> = [
   test("isErrorValue", register("val")),
   branch("switch-raise"),
   assign("proc", register("val")),
+  assign("env", op("extendEnvironment", constant([]), constant([]), register("env"))),
+  perform("predeclareForms", op("switchItems", register("item")), register("env")),
   assign("unev", op("switchCases", register("item"))),
   assign("argl", constant(0)),
   gotoLabel("switch-next"),
@@ -2064,6 +2087,7 @@ export const evaluatorController: ReadonlyArray<EvaluatorMachineStatement> = [
   label("switch-raise"),
   assign("transfer", op("throwTransfer", register("val"))),
   label("switch-exit"),
+  restore("env"),
   restore("continue"),
   restore("argl"),
   restore("proc"),

@@ -195,6 +195,7 @@ const paramsOf = (word: Word): readonly string[] => (word instanceof Closure ? w
 /** The runtime table for every operation the compiler emits. */
 export const compiledOperations = (
   output: string[] = [],
+  session?: Session,
 ): Readonly<Record<string, Operation<Word>>> => {
   const truthy = (value: Word): boolean =>
     !(
@@ -261,10 +262,12 @@ export const compiledOperations = (
       const entry = typeof args[0] === "string" ? args[0] : "";
       const rawParams = args[1];
       const params = Array.isArray(rawParams) ? rawParams.map((param) => String(param)) : [];
+      const body = args[4] as Block | undefined;
       const closure = new Closure(
         params,
+        typeof args[3] === "number" ? args[3] : params.length,
         null,
-        { body: [], span: { start: 0, end: 0, line: 1, column: 1 } },
+        body ?? { body: [], span: { start: 0, end: 0, line: 1, column: 1 } },
         args[2] as Env,
       );
       procedureEntries.set(closure, entry);
@@ -390,6 +393,9 @@ export const compiledOperations = (
       if (object instanceof ArrayValue && typeof index === "number") {
         return index >= 0 && index < object.items.length ? object.items[index] : undefined;
       }
+      if (object instanceof RecordValue && typeof index === "string") {
+        return object.fields.has(index) ? object.fields.get(index) : undefined;
+      }
       return errorWord({ tag: "bad-operand", operator: "index", detail: String(index) });
     },
     "array-set": (args) => {
@@ -443,7 +449,9 @@ export const compiledOperations = (
         object instanceof SetValue ||
         typeof object === "string"
       ) {
-        return builtinMember(object, name) ?? errorWord({ tag: "unknown-field", field: name });
+        return (
+          builtinMember(object, name, session) ?? errorWord({ tag: "unknown-field", field: name })
+        );
       }
       return errorWord({ tag: "unknown-field", field: name });
     },
@@ -964,7 +972,9 @@ const compileConditional = (
 };
 
 const compileLambda = (
-  params: Block extends never ? never : ReadonlyArray<{ kind: string; name: string }>,
+  params: Block extends never
+    ? never
+    : ReadonlyArray<{ kind: string; name: string; optional?: boolean }>,
   body: Block,
   linkage: Linkage,
   context: CompileContext,
@@ -976,13 +986,23 @@ const compileLambda = (
     return compiledBody;
   }
   const names = params.map((param) => param.name);
+  const required = params.filter(
+    (param) => param.kind !== "rest" && param.optional !== true,
+  ).length;
   const build = makeSequence(
     ["env"],
     ["val"],
     [
       assign(
         "val",
-        op("make-procedure", constant(entry), constant(names as Word), register("env")),
+        op(
+          "make-procedure",
+          constant(entry),
+          constant(names as Word),
+          register("env"),
+          constant(required),
+          constant(body as Word),
+        ),
       ),
     ],
   );
@@ -1576,13 +1596,12 @@ export const compileAndRun = (source: string, modules: LinkedModules = {}): RunR
   if (isCompileError(compiled)) {
     return { outcome: fail(compiled), transcript: [] };
   }
-  const output: string[] = [];
+  const session = new Session("core", modules);
   const machine: Machine<Word> = makeMachine<Word>({
     registers: ["val", "env", "argl", "proc", "continue", "entry", "thrown", "item"],
-    operations: compiledOperations(output),
+    operations: compiledOperations(session.transcript, session),
     controller: compiled.instructions,
   });
-  const session = new Session("core", modules);
   const environment = session.globalEnv();
   for (const form of admission.program) {
     // Imports link before the first instruction runs, like module instantiation.
@@ -1602,7 +1621,7 @@ export const compileAndRun = (source: string, modules: LinkedModules = {}): RunR
         : run.error.tag;
     return {
       outcome: fail({ tag: "unknown-syntax", construct: `machine-error/${detail}` }),
-      transcript: output,
+      transcript: session.transcript,
     };
   }
   const thrown = machine.readRegister("thrown");
@@ -1611,12 +1630,15 @@ export const compileAndRun = (source: string, modules: LinkedModules = {}): RunR
       ? (thrown as Transfer)
       : undefined;
   if (pending?.kind === "error") {
-    return { outcome: fail(pending.error), transcript: output };
+    return { outcome: fail(pending.error), transcript: session.transcript };
   }
   if (pending?.kind === "throw") {
-    return { outcome: fail({ tag: "guest-throw", value: pending.value }), transcript: output };
+    return {
+      outcome: fail({ tag: "guest-throw", value: pending.value }),
+      transcript: session.transcript,
+    };
   }
-  return { outcome: ok(machine.readRegister("val") as Value), transcript: output };
+  return { outcome: ok(machine.readRegister("val") as Value), transcript: session.transcript };
 };
 
 /** Compiles one expression and returns its instruction sequence (exercise seam). */

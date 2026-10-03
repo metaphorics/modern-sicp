@@ -45,6 +45,7 @@ describe("exercise 4.14: two maps, two fates", () => {
   it("Louis's host map cannot call an evaluator closure", () => {
     const identity = makeClosure(
       ["x"],
+      1,
       null,
       block([
         returnStmt({ tag: "variable", name: "x", span: { start: 0, end: 0, line: 1, column: 1 } }),

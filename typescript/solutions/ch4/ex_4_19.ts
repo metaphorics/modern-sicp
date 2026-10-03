@@ -170,7 +170,7 @@ export const evalForcing = (expr: Expr, env: Env, forcing: Forcing): Outcome => 
         }
         names.push(parameter.name);
       }
-      return ok(makeClosure(names, rest, expr.body, env));
+      return ok(makeClosure(names, names.length, rest, expr.body, env));
     }
     case "call": {
       const procedure = evalForcing(expr.callee, env, forcing);

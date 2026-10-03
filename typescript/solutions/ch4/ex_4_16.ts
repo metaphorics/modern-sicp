@@ -124,6 +124,7 @@ export const scannedProcedure = (
   onScan?.();
   const procedure = makeClosure(
     params,
+    params.length,
     null,
     { body: items, span: items[0]?.span ?? { start: 0, end: 0, line: 1, column: 1 } },
     env,

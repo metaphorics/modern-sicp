@@ -41,7 +41,7 @@ const shown = (outcome: Outcome): string =>
   outcome.tag === "ok" ? format(outcome.value) : `error:${outcome.error.tag}`;
 
 const procedureOf = (items: ReadonlyArray<Decl | Stmt>): Closure =>
-  makeClosure([], null, block(items), child(null));
+  makeClosure([], 0, null, block(items), child(null));
 
 describe("exercise 4.17: the extra frame of scanned-out definitions", () => {
   it("the same body answers 3 under all three application strategies", () => {

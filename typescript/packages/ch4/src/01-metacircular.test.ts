@@ -48,7 +48,7 @@ describe("section 9 guest evaluator kernel", () => {
 });
 
 describe("static named imports", () => {
-  const VALUE_IMPORT = 'import { Effect as E } from "effect";\nconsole.log(E === undefined);';
+  const VALUE_IMPORT = 'import { Effect as E } from "effect";\nconsole.log(E);';
   const TYPE_IMPORT = 'import { type Effect } from "effect";\nconsole.log(1);';
   const modules = { effect: { Effect: 41 } };
 
@@ -60,7 +60,7 @@ describe("static named imports", () => {
       compileAndRun(VALUE_IMPORT, modules),
     ]) {
       expect(result.outcome.tag).toBe("ok");
-      expect(result.transcript).toEqual(["false"]);
+      expect(result.transcript).toEqual(["41"]);
     }
   });
 

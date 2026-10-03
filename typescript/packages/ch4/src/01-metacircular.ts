@@ -3,6 +3,7 @@
 
 import { format } from "./read.ts";
 import {
+  CALLBACK_METHODS,
   MATH_NAMES,
   makeBuiltins,
   NUMBER_NAMES,
@@ -74,19 +75,6 @@ type ArgsOutcome =
 
 const bad = (operator: string, detail: string): Outcome =>
   fail({ tag: "bad-operand", operator, detail });
-
-/** Array methods that must call guest procedures; they live in the evaluator. */
-const CALLBACK_METHODS: Readonly<Record<string, true>> = {
-  map: true,
-  flatMap: true,
-  filter: true,
-  find: true,
-  some: true,
-  every: true,
-  reduce: true,
-  reduceRight: true,
-  forEach: true,
-};
 
 /**
  * The linked modules of a session: a module specifier maps to its exported
@@ -187,8 +175,8 @@ export class Session {
       case "assign":
         return this.evalAssignment(expr, env);
       case "arrow": {
-        const { params, rest } = splitParams(expr.params);
-        return ok(makeClosure(params, rest, expr.body, env));
+        const { params, required, rest } = splitParams(expr.params);
+        return ok(makeClosure(params, required, rest, expr.body, env));
       }
       case "call":
         return this.evalCall(expr.callee, expr.args, env);
@@ -629,20 +617,20 @@ export class Session {
   }
 
   callClosure(closure: Closure, args: ReadonlyArray<Value>): Outcome {
-    const required = closure.params.length;
-    const fits = closure.rest === null ? args.length === required : args.length >= required;
+    const total = closure.params.length;
+    const fits = args.length >= closure.required && (closure.rest !== null || args.length <= total);
     if (!fits) {
-      return fail({ tag: "wrong-arity", expected: required, given: args.length });
+      return fail({ tag: "wrong-arity", expected: closure.required, given: args.length });
     }
     const frame = child(closure.env);
-    for (let i = 0; i < required; i += 1) {
+    for (let i = 0; i < total; i += 1) {
       const name = closure.params[i];
       if (name !== undefined) {
         frame.bindings.set(name, makeCell(args[i], true));
       }
     }
     if (closure.rest !== null) {
-      frame.bindings.set(closure.rest, makeCell(makeArray(args.slice(required)), true));
+      frame.bindings.set(closure.rest, makeCell(makeArray(args.slice(total)), true));
     }
     return completionToOutcome(this.execSequence(closure.body.body, frame));
   }
@@ -850,7 +838,7 @@ export class Session {
     this.predeclare(this.switchItems(stmt), frame);
     let matchedIndex = -1;
     for (const [index, clause] of stmt.cases.entries()) {
-      const test = this.evaluate(clause.test, env);
+      const test = this.evaluate(clause.test, frame);
       if (test.tag === "error") {
         return { tag: "error", error: test.error };
       }
@@ -928,8 +916,8 @@ export class Session {
         continue;
       }
       if (item.tag === "function-decl") {
-        const { params, rest } = splitParams(item.params);
-        const closure = makeClosure(params, rest, item.body, frame);
+        const { params, required, rest } = splitParams(item.params);
+        const closure = makeClosure(params, required, rest, item.body, frame);
         frame.bindings.set(item.name, makeCell(closure, true));
       }
     }
@@ -968,8 +956,8 @@ export class Session {
       return normal(value.value);
     }
     if (item.tag === "function-decl") {
-      const { params, rest } = splitParams(item.params);
-      const closure = makeClosure(params, rest, item.body, frame);
+      const { params, required, rest } = splitParams(item.params);
+      const closure = makeClosure(params, required, rest, item.body, frame);
       frame.bindings.set(item.name, makeCell(closure, true));
       return normal(undefined);
     }
@@ -1036,8 +1024,9 @@ const renderShallow = (value: Value): string => {
 /** Splits a parameter list into positional names and one rest name. */
 export const splitParams = (
   params: ReadonlyArray<Param>,
-): { params: ReadonlyArray<string>; rest: string | null } => {
+): { params: ReadonlyArray<string>; required: number; rest: string | null } => {
   const names: string[] = [];
+  let required = 0;
   let rest: string | null = null;
   for (const entry of params) {
     if (entry.kind === "rest") {
@@ -1045,8 +1034,11 @@ export const splitParams = (
       continue;
     }
     names.push(entry.name);
+    if (!entry.optional) {
+      required += 1;
+    }
   }
-  return { params: names, rest };
+  return { params: names, required, rest };
 };
 
 /** Applies a unary operation to an evaluated operand. */
@@ -1157,7 +1149,7 @@ export const evalAssignment = (expr: Expr, env: Env): Outcome =>
 /** The book's `make-procedure`: packages a closure over its environment. */
 export const makeProcedure = (params: ReadonlyArray<string>, body: Program, env: Env): Closure => {
   const span = body[0]?.span ?? { start: 0, end: 0, line: 1, column: 1 };
-  return makeClosure(params, null, { body, span }, env);
+  return makeClosure(params, params.length, null, { body, span }, env);
 };
 
 /** The book's `extend-environment`: one frame binding names to values. */
@@ -1214,8 +1206,17 @@ const completionToOutcome = (completion: Completion): Outcome => {
 };
 
 /** Runs an admitted program in the given session, mapping completions. */
-export const executeProgram = (program: Program, session: Session): Outcome =>
-  completionToOutcome(session.execBody(program, session.globalEnv()));
+export const executeProgram = (program: Program, session: Session): Outcome => {
+  const env = session.globalEnv();
+  for (const form of program) {
+    // Imports link before the first form runs, like module instantiation.
+    const error = form.tag === "import" ? session.linkImport(form, env) : null;
+    if (error !== null) {
+      return fail(error);
+    }
+  }
+  return completionToOutcome(session.execBody(program, env));
+};
 
 const runProgram = (program: Program, mode: ExperimentMode, modules: LinkedModules): RunResult => {
   const session = new Session(mode, modules);
@@ -1309,6 +1310,13 @@ export const runAnalyzedSource = (
   const session = new Session(mode, modules);
   const env = session.globalEnv();
   session.predeclare(admission.program, env);
+  for (const form of admission.program) {
+    // Imports link before the first form runs, like module instantiation.
+    const error = form.tag === "import" ? session.linkImport(form, env) : null;
+    if (error !== null) {
+      return { outcome: fail(error), transcript: session.transcript };
+    }
+  }
   let outcome: Outcome = ok(undefined);
   for (const form of admission.program) {
     outcome =
@@ -1385,8 +1393,8 @@ const analyzedProcedure = (expr: Expr, session: Session): ExecutionProcedure => 
       };
     }
     case "arrow": {
-      const { params, rest } = splitParams(expr.params);
-      return (env) => ok(makeClosure(params, rest, expr.body, env));
+      const { params, required, rest } = splitParams(expr.params);
+      return (env) => ok(makeClosure(params, required, rest, expr.body, env));
     }
     case "call": {
       // Member calls (the `console.log` boundary and host methods) and spread

@@ -361,7 +361,7 @@ impl Eceval {
     fn execute_main(&mut self) -> Result<(), TrapReport> {
         let main = self.engine.sema.main;
         let body = self.engine.sema.funs[main.0 as usize].body.clone();
-        self.enter_function(main, Vec::new(), body)?;
+        self.enter_function(main, Vec::new(), &body)?;
         self.drive()
     }
 
@@ -369,7 +369,7 @@ impl Eceval {
         &mut self,
         fun: FunId,
         args: Vec<HostValue>,
-        body: std::sync::Arc<HirBlock>,
+        body: &HirBlock,
     ) -> Result<(), TrapReport> {
         let def = self.engine.sema.funs[fun.0 as usize].clone();
         let frame = self
@@ -383,7 +383,7 @@ impl Eceval {
         let caller_frame = self.frame;
         self.frame = frame;
         self.continues.push(Control::FunEnd { caller_frame });
-        self.control = Control::Exec((*body).clone());
+        self.control = Control::Exec(body.clone());
         Ok(())
     }
 
@@ -997,7 +997,7 @@ impl Eceval {
             Resume::Call { callee } => {
                 let def = self.engine.sema.funs[callee.0 as usize].clone();
                 let body = def.body.clone();
-                self.enter_function(callee, values, body)?;
+                self.enter_function(callee, values, &body)?;
             }
             Resume::CallValue => {
                 // The callee was evaluated first, like a method
@@ -1221,7 +1221,7 @@ impl Eceval {
             HostValue::FnPtr(fun) => {
                 let def = self.engine.sema.funs[fun.0 as usize].clone();
                 let body = def.body.clone();
-                self.enter_function(fun, args, body)?;
+                self.enter_function(fun, args, &body)?;
             }
             HostValue::Closure(closure) => {
                 let body = closure.body.clone();

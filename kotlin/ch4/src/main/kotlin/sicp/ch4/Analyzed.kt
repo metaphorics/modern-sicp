@@ -639,7 +639,12 @@ internal class Analysis(
                 val receiverValue = receiver(env)
                 val indexValue = index(env)
                 val current = if (operator == "=") GValue.VUnit else Primitives.readIndex(receiverValue, indexValue, statement.span)
-                Primitives.writeIndex(receiverValue, indexValue, Primitives.assigned(operator, current, value(env), statement.span), statement.span)
+                Primitives.writeIndex(
+                    receiverValue,
+                    indexValue,
+                    Primitives.assigned(operator, current, value(env), statement.span),
+                    statement.span,
+                )
                 GValue.VUnit
             }
         }

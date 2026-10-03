@@ -1456,16 +1456,15 @@ const analyzedBlock = (
   items: ReadonlyArray<Decl | Stmt>,
   session: Session,
 ): ((env: Env) => Completion) => {
-  const analyzed = items.map(
-    (item): ((env: Env) => Completion) =>
-      item.tag === "expr-stmt"
-        ? (env) => {
-            const outcome = analyzedProcedure(item.expr, session)(env);
-            return outcome.tag === "error"
-              ? { tag: "error", error: outcome.error }
-              : { tag: "normal", value: outcome.value };
-          }
-        : (env) => session.execItem(item, env),
+  const analyzed = items.map((item): ((env: Env) => Completion) =>
+    item.tag === "expr-stmt"
+      ? (env) => {
+          const outcome = analyzedProcedure(item.expr, session)(env);
+          return outcome.tag === "error"
+            ? { tag: "error", error: outcome.error }
+            : { tag: "normal", value: outcome.value };
+        }
+      : (env) => session.execItem(item, env),
   );
   return (env) => {
     session.predeclare(items, env);

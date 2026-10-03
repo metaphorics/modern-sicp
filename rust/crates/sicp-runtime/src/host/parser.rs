@@ -67,10 +67,7 @@ fn scan_map_import(tokens: &[Tok]) -> Option<String> {
             };
         }
         let mut end = at + 1;
-        while tokens
-            .get(end)
-            .is_some_and(|tok| tok.kind != TokKind::Semi)
-        {
+        while tokens.get(end).is_some_and(|tok| tok.kind != TokKind::Semi) {
             end += 1;
         }
         at = end + 1;
@@ -223,9 +220,7 @@ impl Parser {
             if let Some(diag) = Self::reject_excluded_keywords(tok) {
                 return Err(diag);
             }
-            if past_imports
-                && matches!(&tok.kind, TokKind::Ident(word) if word == "use")
-            {
+            if past_imports && matches!(&tok.kind, TokKind::Ident(word) if word == "use") {
                 return Err(Diag::syntax(
                     tok.span,
                     "imports must lead the unit (the grammar is `use_item* item*`)",

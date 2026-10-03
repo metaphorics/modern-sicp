@@ -1416,7 +1416,9 @@ impl Checker {
         // Methods returning references or iterator adaptors borrow their
         // receiver: the loan keeps mutation out while the result is live.
         let borrow = match op {
-            MethodOp::Iter | MethodOp::VecGet | MethodOp::MapGet | MethodOp::BoxAsRef => Some(false),
+            MethodOp::Iter | MethodOp::VecGet | MethodOp::MapGet | MethodOp::BoxAsRef => {
+                Some(false)
+            }
             MethodOp::IterMut | MethodOp::VecGetMut | MethodOp::MapGetMut | MethodOp::BoxAsMut => {
                 Some(true)
             }

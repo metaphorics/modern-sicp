@@ -18,12 +18,12 @@ const accepted = (source: string): void => {
 describe("host-object member admission", () => {
   const cases: ReadonlyArray<readonly [string, string]> = [
     ["eval(1);", "eval"],
-    ["new Function(\"x\");", "unsupported-new-target"],
-    ["require(\"x\");", "amb-depth-first-experiment"],
-    ["fetch(\"x\");", "fetch"],
+    ['new Function("x");', "unsupported-new-target"],
+    ['require("x");', "amb-depth-first-experiment"],
+    ['fetch("x");', "fetch"],
     ["process.env;", "process.env"],
     ["process.exit(1);", "process.exit"],
-    ["globalThis.eval(\"x\");", "globalThis.eval"],
+    ['globalThis.eval("x");', "globalThis.eval"],
     ["Date.now();", "Date.now"],
     ["Date.UTC(2020, 0, 1);", "Date.UTC"],
     ["performance.now();", "performance.now"],
@@ -65,9 +65,7 @@ describe("subset structure diagnostics", () => {
   });
 
   it("rejects a readonly field write", () => {
-    const run = admitSource(
-      "interface P { readonly x: number }\nconst p: P = { x: 1 };\np.x = 2;",
-    );
+    const run = admitSource("interface P { readonly x: number }\nconst p: P = { x: 1 };\np.x = 2;");
     expect(run.ok).toBe(false);
     expect(run.ok ? [] : run.diagnostics.map((d) => d.kind)).toContain("ReadOnlyField");
   });

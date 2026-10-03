@@ -636,7 +636,8 @@ internal open class Evaluator(
             val receiver = eval(target.receiver, env) as? GValue.VObject ?: r.raise(GuestError.UnassignedRead(target.span))
             val current = receiver.fields[target.name]
             if (current == null && statement.operator != "=") r.raise(GuestError.UnassignedRead(target.span))
-            receiver.fields[target.name] = Primitives.assigned(statement.operator, current ?: GValue.VUnit, eval(statement.value, env), statement.span)
+            receiver.fields[target.name] =
+                Primitives.assigned(statement.operator, current ?: GValue.VUnit, eval(statement.value, env), statement.span)
             return
         }
         if (target is Index) {

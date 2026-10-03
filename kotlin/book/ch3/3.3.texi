@@ -321,7 +321,8 @@ argument:
 
 @example kotlin
 fun lastPair(x: PairCell): PairCell =
-    if (x.second === Empty) x else lastPair(x.second as PairCell)
+    if (x.second === Empty) x
+    else lastPair(x.second as PairCell)
 @end example
 
 Consider the interaction, in which @code{z} and @code{w} both hold the four
@@ -367,7 +368,9 @@ Draw a box-and-pointer diagram that shows the structure @code{z} created by
 
 @example kotlin
 val z = makeCycle(
-    datumList(Symbol("a"), Symbol("b"), Symbol("c")) as PairCell,
+    datumList(
+        Symbol("a"), Symbol("b"), Symbol("c"),
+    ) as PairCell,
 )
 @end example
 

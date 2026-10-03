@@ -57,7 +57,7 @@ export const ex_5_51 = (): readonly string[] => {
     const input = join(dir, "program.json");
     writeFileSync(source, ECEVAL_C());
     writeFileSync(input, serializeProgram(readProgram(PROGRAM_SOURCE)));
-    const build = spawnSync("cc", ["-std=gnu23", "-O1", "-o", binary, source, "-lm"], {
+    const build = spawnSync("cc", ["-std=gnu11", "-O1", "-o", binary, source, "-lm"], {
       encoding: "utf8",
     });
     if (build.status !== 0) throw new Error(`the C translation failed to build: ${build.stderr}`);

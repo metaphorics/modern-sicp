@@ -338,7 +338,7 @@ export const ex_5_52 = (): readonly string[] => {
     const unit = join(dir, "metacircular_backend.c");
     const binary = join(dir, "metacircular");
     writeFileSync(unit, `${RUNTIME_C()}${formsC(compiled)}`);
-    const build = spawnSync("cc", ["-std=gnu23", "-O1", "-o", binary, unit, "-lm"], {
+    const build = spawnSync("cc", ["-std=gnu11", "-O1", "-o", binary, unit, "-lm"], {
       encoding: "utf8",
     });
     if (build.status !== 0) throw new Error(`the C backend failed to build: ${build.stderr}`);

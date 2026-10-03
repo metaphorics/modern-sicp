@@ -335,8 +335,8 @@ class Searcher {
         });
         return;
       case "arrow": {
-        const { params, rest } = splitParams(expr.params);
-        succeed(makeClosure(params, rest, expr.body, env), fail);
+        const { params, required, rest } = splitParams(expr.params);
+        succeed(makeClosure(params, rest, expr.body, env, required), fail);
         return;
       }
       case "call": {
@@ -668,21 +668,24 @@ class Searcher {
       this.retry(fail);
       return;
     }
-    const required = procedure.params.length;
-    const fits = procedure.rest === null ? args.length === required : args.length >= required;
+    const capacity = procedure.params.length;
+    const fits =
+      procedure.rest === null
+        ? args.length >= procedure.required && args.length <= capacity
+        : args.length >= procedure.required;
     if (!fits) {
       this.retry(fail);
       return;
     }
     const frame = child(procedure.env);
-    for (let i = 0; i < required; i += 1) {
+    for (let i = 0; i < capacity; i += 1) {
       const name = procedure.params[i];
       if (name !== undefined) {
         frame.bindings.set(name, makeCell(args[i], true));
       }
     }
     if (procedure.rest !== null) {
-      frame.bindings.set(procedure.rest, makeCell(makeArray(args.slice(required)), true));
+      frame.bindings.set(procedure.rest, makeCell(makeArray(args.slice(capacity)), true));
     }
     this.execBody(procedure.body.body, frame, succeed, fail);
   }
@@ -754,7 +757,7 @@ class Searcher {
             const items = iterable.items;
             const visitAt = (index: number, resume: Failure): void => {
               const item = items[index];
-              if (item === undefined) {
+              if (index >= items.length) {
                 succeed(undefined, resume);
                 return;
               }

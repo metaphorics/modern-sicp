@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Adapted-from-SICP: section 5.4
 
-import { type LinkedModules, type RunResult, Session } from "@sicp-ts/ch4/01-metacircular";
+import {
+  CALLBACK_METHODS,
+  type LinkedModules,
+  type RunResult,
+  Session,
+} from "@sicp-ts/ch4/01-metacircular";
 /**
  * The explicit-control evaluator (host-subsets grammar section 5): the
  * checked host-subset syntax executes on the teaching machine. The typed
@@ -26,6 +31,7 @@ import {
   ErrorValue,
   MapValue,
   makeMap,
+  makePrimitive,
   makeSet,
   PrimitiveProcedure,
   RecordValue,
@@ -467,6 +473,11 @@ const operationsFor = (state: EvaluatorState): Readonly<Record<string, Operation
     }
     if (typeof object === "string" && name === "length") {
       return object.length;
+    }
+    if (object instanceof ArrayValue && CALLBACK_METHODS[name] === true) {
+      return makePrimitive(`array.${name}`, (callArgs) =>
+        state.session.callArrayCallback(object, name, callArgs),
+      );
     }
     if (
       object instanceof ArrayValue ||

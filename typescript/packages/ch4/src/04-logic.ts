@@ -151,7 +151,7 @@ export const flattenStream = <A>(streams: Stream<Stream<A>>): Stream<A> =>
 
 /** The no-delay flatten variant of the exercises. */
 export const simpleFlatten = <A>(streams: Stream<Stream<A>>): Stream<A> =>
-  streamFlatmap(streams, (inner) => inner);
+  simpleStreamFlatmap(streams, (inner) => inner);
 
 /** The no-delay flatmap variant of the exercises. */
 export const simpleStreamFlatmap = <A, B>(
@@ -459,6 +459,9 @@ export const checkAnAssertion = (
   ) {
     return undefined;
   }
+  if (assertion.fields.length !== pattern.fields.length) {
+    return undefined;
+  }
   let current: Frame | undefined = frame;
   for (let i = 0; i < pattern.fields.length; i += 1) {
     const pat = pattern.fields[i];
@@ -615,9 +618,11 @@ export const lispValue = (
 ): Stream<Frame> => {
   void db;
   return streamFlatmap(frameStream, (frame) => {
-    const args = call.args.map((term) =>
-      termToValue(instantiate(term, frame, (name) => qvar(name))),
-    );
+    const instantiated = call.args.map((term) => instantiate(term, frame, (name) => qvar(name)));
+    if (instantiated.some(isVariable)) {
+      return emptyStream();
+    }
+    const args = instantiated.map(termToValue);
     return call.predicate(args) ? singletonStream(frame) : emptyStream();
   });
 };

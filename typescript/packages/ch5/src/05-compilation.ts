@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Adapted-from-SICP: section 5.5
 
-import { type LinkedModules, type RunResult, Session } from "@sicp-ts/ch4/01-metacircular";
+import {
+  CALLBACK_METHODS,
+  type LinkedModules,
+  type RunResult,
+  Session,
+} from "@sicp-ts/ch4/01-metacircular";
 import { format } from "@sicp-ts/ch4/read";
 import { builtinMember } from "@sicp-ts/ch4/runtime/builtins";
 import { child, type Env, findCell, makeCell } from "@sicp-ts/ch4/runtime/env";
@@ -24,6 +29,7 @@ import {
   Closure,
   ErrorValue,
   MapValue,
+  makePrimitive,
   PrimitiveProcedure,
   RecordValue,
   SetValue,
@@ -195,6 +201,7 @@ const paramsOf = (word: Word): readonly string[] => (word instanceof Closure ? w
 /** The runtime table for every operation the compiler emits. */
 export const compiledOperations = (
   output: string[] = [],
+  session?: Session,
 ): Readonly<Record<string, Operation<Word>>> => {
   const truthy = (value: Word): boolean =>
     !(
@@ -488,6 +495,15 @@ export const compiledOperations = (
       }
       if (typeof object === "string" && name === "length") {
         return object.length;
+      }
+      if (
+        session !== undefined &&
+        object instanceof ArrayValue &&
+        CALLBACK_METHODS[name] === true
+      ) {
+        return makePrimitive(`array.${name}`, (callArgs) =>
+          session.callArrayCallback(object, name, callArgs),
+        );
       }
       if (
         object instanceof ArrayValue ||
@@ -2017,12 +2033,12 @@ export const compileAndRun = (source: string, modules: LinkedModules = {}): RunR
     return { outcome: fail(compiled), transcript: [] };
   }
   const output: string[] = [];
+  const session = new Session("core", modules);
   const machine: Machine<Word> = makeMachine<Word>({
     registers: ["val", "env", "argl", "proc", "continue", "entry", "thrown", "item", "pending"],
-    operations: compiledOperations(output),
+    operations: compiledOperations(output, session),
     controller: compiled.instructions,
   });
-  const session = new Session("core", modules);
   const environment = session.globalEnv();
   for (const form of admission.program) {
     // Imports link before the first instruction runs, like module instantiation.

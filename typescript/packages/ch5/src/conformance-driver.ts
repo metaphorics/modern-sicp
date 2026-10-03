@@ -41,6 +41,7 @@ import {
   type Term,
 } from "@sicp-ts/ch4/04-logic";
 import type { Expr } from "@sicp-ts/ch4/syntax/ast";
+import { admitSource } from "@sicp-ts/ch4/syntax/check";
 import { type ExperimentMode, parseExperiment } from "@sicp-ts/ch4/syntax/parse";
 import type { MachineStatement, MachineValue, Operation, Source } from "./01-register-machines.ts";
 import { makeMachine } from "./02-simulator.ts";
@@ -390,11 +391,19 @@ const rewriteExtension = (text: string, node: Fields): string => {
 };
 
 /** Desugars a whole experiment unit into a native module exporting `__program(__reference)`. */
+class RejectedSource extends Error {}
+
 const loadDesugared = async (
   text: string,
   mode: ExperimentMode,
   work: string,
 ): Promise<(runtime: unknown) => void> => {
+  const admission = admitSource(text, mode);
+  if (!admission.ok) {
+    throw new RejectedSource(
+      [...admission.diagnostics, ...admission.hostDiagnostics].map((d) => d.message).join("; "),
+    );
+  }
   const program = parseExperiment(text, mode);
   let body = "";
   let at = 0;
@@ -413,6 +422,22 @@ const loadDesugared = async (
   return (runtime) => {
     Reflect.apply(entry, undefined, [runtime]);
   };
+};
+
+/** Desugared guest source that fails admission observes as rejected, like the teaching engines. */
+const desugaredOrRejected = async (
+  text: string,
+  mode: ExperimentMode,
+  work: string,
+): Promise<((runtime: unknown) => void) | null> => {
+  try {
+    return await loadDesugared(text, mode, work);
+  } catch (error) {
+    if (error instanceof RejectedSource) {
+      return null;
+    }
+    throw error;
+  }
 };
 
 /** Runs `body` with `console.log` writes captured through `sink`. */
@@ -439,7 +464,10 @@ class Thunk {
 }
 
 const lazyReference = async (text: string, work: string): Promise<Observation> => {
-  const run = await loadDesugared(text, "lazy-memoized-experiment", work);
+  const run = await desugaredOrRejected(text, "lazy-memoized-experiment", work);
+  if (run === null) {
+    return { termination: "rejected", stdout: "" };
+  }
   const runtime = {
     delay: (compute: () => unknown): Thunk => new Thunk(compute),
     force: (value: unknown): unknown => {
@@ -474,7 +502,10 @@ interface ChoicePoint {
 }
 
 const searchReference = async (text: string, work: string): Promise<Observation> => {
-  const run = await loadDesugared(text, "amb-depth-first-experiment", work);
+  const run = await desugaredOrRejected(text, "amb-depth-first-experiment", work);
+  if (run === null) {
+    return { termination: "rejected", stdout: "" };
+  }
   const lines: string[] = [];
   const path: ChoicePoint[] = [];
   // The choice point this run resumes: effects before it already happened on

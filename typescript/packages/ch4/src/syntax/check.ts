@@ -89,6 +89,21 @@ class Checker {
 
   run(program: Program): ReadonlyArray<Diagnostic> {
     this.#collectTypeFacts(program);
+    let stillLeading = true;
+    for (const item of program) {
+      if (item.tag === "import") {
+        if (!stillLeading) {
+          this.#report(
+            "UnsupportedSyntax",
+            "leading-imports-only",
+            item.span,
+            "imports must lead the unit (the grammar is `Import* DeclarationOrStatement*`)",
+          );
+        }
+      } else {
+        stillLeading = false;
+      }
+    }
     this.#runScope(program, null);
     return this.#diagnostics;
   }

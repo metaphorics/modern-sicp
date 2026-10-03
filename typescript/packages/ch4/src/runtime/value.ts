@@ -19,12 +19,20 @@ import type { Outcome } from "./errors.ts";
 export class Closure {
   readonly tag = "closure";
   readonly params: ReadonlyArray<string>;
+  readonly required: number;
   readonly rest: string | null;
   readonly body: Block;
   readonly env: Env;
 
-  constructor(params: ReadonlyArray<string>, rest: string | null, body: Block, env: Env) {
+  constructor(
+    params: ReadonlyArray<string>,
+    rest: string | null,
+    body: Block,
+    env: Env,
+    required: number = params.length,
+  ) {
     this.params = params;
+    this.required = required;
     this.rest = rest;
     this.body = body;
     this.env = env;
@@ -133,7 +141,8 @@ export const makeClosure = (
   rest: string | null,
   body: Block,
   env: Env,
-): Closure => new Closure(params, rest, body, env);
+  required: number = params.length,
+): Closure => new Closure(params, rest, body, env, required);
 
 /** Builds a host primitive. */
 export const makePrimitive = (

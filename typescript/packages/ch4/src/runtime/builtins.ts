@@ -114,7 +114,11 @@ const installArrayBuiltins = (table: OpTable): void => {
     if (!isArrayValue(receiver)) {
       return bad("includes", "receiver is not an array");
     }
-    return ok(receiver.items.some((item) => Object.is(item, args[1])));
+    return ok(
+      receiver.items.some(
+        (item) => item === args[1] || (Number.isNaN(item) && Number.isNaN(args[1])),
+      ),
+    );
   });
   table.put("array.join", (args) => {
     const receiver = args[0];

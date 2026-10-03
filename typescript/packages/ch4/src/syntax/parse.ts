@@ -634,6 +634,14 @@ class Parser {
     let defaultBody: ReadonlyArray<Decl | Stmt> | null = null;
     while (!this.#isText("}")) {
       if (this.#eat("case")) {
+        if (defaultBody !== null) {
+          this.#fail(
+            "SyntaxError",
+            "trailing-default",
+            this.#peek().span,
+            "the `default` clause must be the last clause in a switch",
+          );
+        }
         const test = this.#parseExpression();
         this.#expect(":", "after the case label");
         const body = this.#parseCaseBody();
@@ -641,6 +649,14 @@ class Parser {
         continue;
       }
       if (this.#eat("default")) {
+        if (defaultBody !== null) {
+          this.#fail(
+            "SyntaxError",
+            "trailing-default",
+            this.#peek().span,
+            "the `default` clause must be the last clause in a switch",
+          );
+        }
         this.#expect(":", "after `default`");
         defaultBody = this.#parseCaseBody();
         continue;
